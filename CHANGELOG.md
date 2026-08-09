@@ -5,7 +5,12 @@ All notable changes to this project will be documented in this file.
 ## [0.4.0] - 2026-08-09
 
 ### Added
-- Open-Source readiness with `.gitignore`, MIT License (`LICENSE`), and GitHub Actions release workflow (`.github/workflows/release.yml`).
+- Professional English Open-Source `README.md` with feature badges, setup instructions, and configuration guide.
+- Automated Security CI/CD Pipeline in `.github/workflows/release.yml`:
+  - Secret scanning via `gitleaks`.
+  - Static Application Security Testing (SAST) via `bandit`.
+  - Dependency vulnerability auditing via `pip-audit`.
+- Open-Source readiness with `.gitignore`, MIT License (`LICENSE`), and GitHub Actions release workflow.
 - Dedicated folder structure: `lectures/` for input PDF files and `output/` for output Markdown files (with `.gitkeep`).
 - `ensure_project_directories()` helper function to automatically create missing project directories.
 

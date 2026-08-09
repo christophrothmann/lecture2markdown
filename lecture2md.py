@@ -16,8 +16,8 @@ FAST_MODEL = "gpt-4o-mini"
 ENABLE_HYBRID_ROUTING = True
 LECTURES_DIR = "lectures"
 OUTPUT_DIR = "output"
-INPUT_PDF_FILENAME = "input-3.pdf"
-OUTPUT_MD_FILENAME = "output-3.md"
+INPUT_PDF_FILENAME = "input.pdf"
+OUTPUT_MD_FILENAME = "output.md"
 DPI = 200
 MAX_WORKERS = 3
 

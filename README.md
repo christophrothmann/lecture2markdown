@@ -1,39 +1,123 @@
-# Lecture2Markdown (Python Prototyp)
+# Lecture2Markdown 📚➡️📝
 
-Ein blitzschnelles Python-Tool zur Konvertierung von PDF-Vorlesungsfolien in strukturierte Markdown-Dateien unter Verwendung der OpenAI Multimodal Vision API (`gpt-4o` / `gpt-4o-mini`) und dem **uv** Paketmanager.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python Version](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
+[![Package Manager: uv](https://img.shields.io/badge/package%20manager-uv-de5b43.svg)](https://github.com/astral-sh/uv)
 
-## Features
-- 📁 **Saubere Ordnerstruktur**: Trennung von Eingabedateien (`lectures/`) und erzeugten Dokumenten (`output/`).
-- ⚡ **Paketverwaltung mit uv**: Extrem schnelle Installation und Ausführung.
-- 🔀 **Dynamisches Hybrid-Routing**: Schaltet automatisch zwischen `gpt-4o-mini` (Textfolien) und `gpt-4o` (visuelle Folien) um (~80% Kostenersparnis).
-- 🏷️ **Folie-Anker (`## [Folie X]`)**: Perfekt optimiert für den Upload in ChatGPT ohne Halluzinationen.
-- 🎯 **Deterministische Konvertierung**: `temperature=0.0` für 100% präzise Transkriptionen.
-- 📐 **LaTeX-Formeln & Mermaid.js**: Konvertiert mathematische Ausdrücke in LaTeX und Diagramme in Mermaid.js.
-- 🔒 **Sichere API-Key Verwaltung**: Verwendet `.env` für den OpenAI API-Schlüssel.
+A high-performance Python tool designed to convert academic PDF lecture slides into clean, structured, and LLM-optimized Markdown using OpenAI's Multimodal Vision API (`gpt-4o` and `gpt-4o-mini`).
+
+Specially engineered for students and researchers to upload lecture content into ChatGPT, Claude, Notion, or Obsidian with **zero hallucinations** and maximum context fidelity.
 
 ---
 
-## 🛠️ Installation & Einrichtung mit `uv`
+## ✨ Features
 
+- 🔀 **Smart Hybrid Routing**: Automatically detects whether a slide contains visual diagrams or text only via PyMuPDF pre-analysis. Dynamically routes simple slides to `gpt-4o-mini` and visual slides to `gpt-4o`, reducing API costs by up to 80%.
+- 🏷️ **Explicit Slide Anchors (`## [Folie X]`)**: Structures every slide with explicit anchors so you can reference specific slides directly in ChatGPT prompts (e.g., *"Explain the formula on slide 14"*).
+- 📊 **Mermaid.js Diagram Synthesis**: Converts flowcharts, state machines, and architecture diagrams into native, editable ` ```mermaid ` code blocks instead of static images.
+- 📐 **LaTeX Formula Extraction**: Automatically translates all mathematical equations into standard inline (`$...$`) or block (`$$...$$`) LaTeX.
+- 🛡️ **Prompt Injection Hardened**: Built-in security rules ignore hidden text, light-colored fonts, or embedded prompt injection traps inside lecture slides.
+- 🎯 **100% Deterministic Output**: Runs at `temperature=0.0` to eliminate creative hallucination and guarantee strict transcription fidelity.
+- 📂 **Clean Workspace Management**: Organizes input files (`lectures/`) and generated outputs (`output/`) automatically.
+- ⚡ **Powered by `uv`**: Uses Astral's `uv` for sub-second virtualenv setup and package management.
+
+---
+
+## 🛠️ Installation & Setup
+
+### Prerequisites
+- Python 3.10 or higher
+- An OpenAI API Key (`OPENAI_API_KEY`)
+- [uv](https://github.com/astral-sh/uv) (Recommended package manager)
+
+### 1. Install `uv` (if not already installed)
 ```bash
-# 1. Virtuelle Umgebung erstellen & Abhängigkeiten installieren
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+### 2. Set Up Virtual Environment & Dependencies
+```bash
+# Clone the repository
+git clone https://github.com/christophrothmann/lecture2markdown.git
+cd lecture2markdown
+
+# Initialize virtualenv and install dependencies
 uv venv
 uv pip install -r requirements.txt
+```
 
-# 2. .env Datei erstellen & API-Key eintragen
+### 3. Configure API Key
+Create a `.env` file in the project root:
+```bash
 cp .env.example .env
+```
+Open `.env` and add your OpenAI API Key:
+```env
+OPENAI_API_KEY=sk-proj-your-actual-api-key-here
 ```
 
 ---
 
-## 🚀 Nutzung
+## 🚀 Quick Start
 
-### 1. Vorlesungs-PDF ablegen
-Lege deine PDF-Datei im Unterordner `lectures/` ab (z.B. `lectures/input-2.pdf`).
+1. **Place your PDF slide deck** in the `lectures/` directory (e.g., `lectures/input-2.pdf`).
+2. **Run the converter** using `uv run`:
+   ```bash
+   uv run python lecture2md.py
+   ```
+3. **Find your converted Markdown** in the `output/` directory (e.g., `output/output-2.md`).
 
-### 2. Skript ausführen
-```bash
-uv run python lecture2md.py
+---
+
+## ⚙️ Configuration Options
+
+You can easily adjust project parameters directly at the top of `lecture2md.py`:
+
+```python
+DEFAULT_MODEL = "gpt-4o"          # Primary vision model for complex diagrams
+FAST_MODEL = "gpt-4o-mini"        # Fast, cost-efficient model for text slides
+ENABLE_HYBRID_ROUTING = True      # Enable automatic cost-saving model selection
+LECTURES_DIR = "lectures"         # Folder for input PDFs
+OUTPUT_DIR = "output"             # Folder for output Markdown files
+INPUT_PDF_FILENAME = "input.pdf" # Input PDF filename
+OUTPUT_MD_FILENAME = "output.md" # Output Markdown filename
+DPI = 200                         # Image rendering resolution for Vision API
+MAX_WORKERS = 3                   # Concurrent parallel slide workers
 ```
 
-Nach Abschluss findest du das generierte Ergebnis im Ordner `output/` (z.B. `output/output-2.md`).
+---
+
+## 📂 Project Structure
+
+```
+lecture2markdown/
+├── .github/
+│   └── workflows/
+│       └── release.yml        # CI/CD Release & Security Pipeline
+├── lectures/
+│   └── .gitkeep               # Place your PDF slides here
+├── output/
+│   └── .gitkeep               # Converted Markdown outputs appear here
+├── .env.example               # Example API key template
+├── .gitignore                 # Excludes secrets, virtual environments & PDFs
+├── CHANGELOG.md               # Version history
+├── LICENSE                    # MIT Open-Source License
+├── MODULES.md                 # Technical code and function documentation
+├── NOTE.md                    # LLM usage attribution
+├── lecture2md.py              # Main Python converter script
+├── pyproject.toml             # Project build configuration
+├── requirements.txt           # Python dependency requirements
+└── README.md                  # Project documentation
+```
+
+---
+
+## 📄 License
+
+Distributed under the **MIT License**. See `LICENSE` for more information.
+
+---
+
+## 🤝 Contributing
+
+Contributions, issues, and feature requests are welcome! Feel free to check the [issues page](https://github.com/christophrothmann/lecture2markdown/issues).

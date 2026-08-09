@@ -23,6 +23,21 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v5
 
+      - name: Secret Scanning (Gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Python Code Security Scan (Bandit)
+        run: |
+          uv pip install bandit
+          uv run bandit -r lecture2md.py
+
+      - name: Dependency Security Audit (pip-audit)
+        run: |
+          uv pip install pip-audit
+          uv run pip-audit
+
       - name: Verify Python Code Integrity
         run: |
           uv run python -m py_compile lecture2md.py
