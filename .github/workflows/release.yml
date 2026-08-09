@@ -23,6 +23,11 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v5
 
+      - name: Create Virtual Environment & Install Dependencies
+        run: |
+          uv venv
+          uv pip install -r requirements.txt
+
       - name: Secret Scanning (Gitleaks)
         uses: gitleaks/gitleaks-action@v2
         env:
@@ -30,13 +35,11 @@ jobs:
 
       - name: Python Code Security Scan (Bandit)
         run: |
-          uv pip install bandit
-          uv run bandit -r lecture2md.py
+          uvx bandit -r lecture2md.py
 
       - name: Dependency Security Audit (pip-audit)
         run: |
-          uv pip install pip-audit
-          uv run pip-audit
+          uvx pip-audit
 
       - name: Verify Python Code Integrity
         run: |

@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.1] - 2026-08-09
+
+### Fixed
+- Updated `.github/workflows/release.yml` to initialize virtualenv (`uv venv`) and use `uvx` for running `bandit` and `pip-audit` cleanly in GitHub Actions environment.
+
 ## [0.4.0] - 2026-08-09
 
 ### Added
