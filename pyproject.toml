@@ -1,7 +1,7 @@
 [project]
 name = "lecture2markdown"
-version = "0.1.0"
-description = "Konvertiert PDF-Vorlesungsfolien in Markdown mithilfe der OpenAI Vision API."
+version = "0.4.1"
+description = "Convert academic PDF lecture slides into structured Markdown using OpenAI Vision API & Hybrid Routing"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -10,7 +10,7 @@ dependencies = [
     "pillow>=10.0.0",
     "python-dotenv>=1.0.0",
     "tqdm>=4.66.0",
-    "tenacity>=9.1.4",
+    "tenacity>=8.2.0",
 ]
 
 [tool.uv]
