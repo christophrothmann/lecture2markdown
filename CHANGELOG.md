@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.2] - 2026-08-09
+
+### Added
+- Added a dedicated **Legal Disclaimer & Copyright Notice** section to `README.md` clarifying user copyright responsibilities, personal study scope, and author liability limitation.
+
 ## [0.4.1] - 2026-08-09
 
 ### Fixed
