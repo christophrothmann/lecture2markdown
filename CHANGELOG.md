@@ -2,16 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.4.2] - 2026-08-09
+## [0.4.4] - 2026-08-09
 
 ### Added
-- Added a dedicated **Legal Disclaimer & Copyright Notice** section to `README.md` clarifying user copyright responsibilities, personal study scope, and author liability limitation.
-
-## [0.4.1] - 2026-08-09
-
-### Fixed
-- Updated `.github/workflows/release.yml` to initialize virtual environment (`uv venv`) and use `uvx` for running `bandit` and `pip-audit` cleanly in GitHub Actions CI environment.
-- Bumped project version to `v0.4.1` in `pyproject.toml` and `uv.lock`.
+- Added explicit **Legal Disclaimer & Copyright Notice** section to `README.md` clarifying user copyright responsibilities, personal study scope, and author liability limitation.
+- Fixed GitHub Actions release workflow (`.github/workflows/release.yml`) using `uv venv` and `uvx` for automated `bandit` and `pip-audit` security scans.
+- Bumped project version to `v0.4.4` in `pyproject.toml` and `uv.lock`.
 
 ## [0.4.0] - 2026-08-09
 
