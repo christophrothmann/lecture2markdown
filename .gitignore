@@ -1,0 +1,25 @@
+# Secrets & Environment variables
+.env
+.env.local
+*.env
+
+# Personal working directories & contents
+lectures/*
+!lectures/.gitkeep
+output/*
+!output/.gitkeep
+images/*
+
+# Python & Package Managers
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+.uv/
+
+# OS & IDE files
+.DS_Store
+.idea/
+.vscode/
