@@ -182,7 +182,6 @@ def main():
         "output_path": str(output_path),
         "total_pages": total_pages,
         "elapsed_seconds": round(elapsed, 1),
-        "content": final_content
     })
 
 if __name__ == "__main__":
