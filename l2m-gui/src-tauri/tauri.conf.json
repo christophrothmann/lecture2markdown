@@ -13,7 +13,6 @@
     "windows": [
       {
         "title": "Lecture2Markdown",
-        "icon": "icons/128x128.png",
         "width": 1100,
         "height": 750,
         "resizable": true,
