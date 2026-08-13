@@ -1,0 +1,11 @@
+/Users/student/Documents/Webprojekt_Astro/AntigravityProjects/Lecture2Markdown/l2m-gui/src-tauri/target/debug/deps/web_atoms-084917e58dfe74fb.d: /Users/student/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/web_atoms-0.2.6/lib.rs /Users/student/Documents/Webprojekt_Astro/AntigravityProjects/Lecture2Markdown/l2m-gui/src-tauri/target/debug/build/web_atoms-af9788d33f0dda9f/out/named_entities.rs /Users/student/Documents/Webprojekt_Astro/AntigravityProjects/Lecture2Markdown/l2m-gui/src-tauri/target/debug/build/web_atoms-af9788d33f0dda9f/out/generated.rs
+
+/Users/student/Documents/Webprojekt_Astro/AntigravityProjects/Lecture2Markdown/l2m-gui/src-tauri/target/debug/deps/libweb_atoms-084917e58dfe74fb.rlib: /Users/student/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/web_atoms-0.2.6/lib.rs /Users/student/Documents/Webprojekt_Astro/AntigravityProjects/Lecture2Markdown/l2m-gui/src-tauri/target/debug/build/web_atoms-af9788d33f0dda9f/out/named_entities.rs /Users/student/Documents/Webprojekt_Astro/AntigravityProjects/Lecture2Markdown/l2m-gui/src-tauri/target/debug/build/web_atoms-af9788d33f0dda9f/out/generated.rs
+
+/Users/student/Documents/Webprojekt_Astro/AntigravityProjects/Lecture2Markdown/l2m-gui/src-tauri/target/debug/deps/libweb_atoms-084917e58dfe74fb.rmeta: /Users/student/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/web_atoms-0.2.6/lib.rs /Users/student/Documents/Webprojekt_Astro/AntigravityProjects/Lecture2Markdown/l2m-gui/src-tauri/target/debug/build/web_atoms-af9788d33f0dda9f/out/named_entities.rs /Users/student/Documents/Webprojekt_Astro/AntigravityProjects/Lecture2Markdown/l2m-gui/src-tauri/target/debug/build/web_atoms-af9788d33f0dda9f/out/generated.rs
+
+/Users/student/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/web_atoms-0.2.6/lib.rs:
+/Users/student/Documents/Webprojekt_Astro/AntigravityProjects/Lecture2Markdown/l2m-gui/src-tauri/target/debug/build/web_atoms-af9788d33f0dda9f/out/named_entities.rs:
+/Users/student/Documents/Webprojekt_Astro/AntigravityProjects/Lecture2Markdown/l2m-gui/src-tauri/target/debug/build/web_atoms-af9788d33f0dda9f/out/generated.rs:
+
+# env-dep:OUT_DIR=/Users/student/Documents/Webprojekt_Astro/AntigravityProjects/Lecture2Markdown/l2m-gui/src-tauri/target/debug/build/web_atoms-af9788d33f0dda9f/out
