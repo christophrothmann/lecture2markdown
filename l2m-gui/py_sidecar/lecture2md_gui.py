@@ -24,7 +24,7 @@ def parse_args():
     parser.add_argument("--output", required=True, help="Path to output Markdown file")
     parser.add_argument("--api-key", required=True, help="OpenAI API Key")
     parser.add_argument("--workers", type=int, default=3, help="Max concurrent workers")
-    parser.add_argument("--hybrid", type=bool, default=True, help="Enable hybrid model routing")
+    parser.add_argument("--hybrid", action=argparse.BooleanOptionalAction, default=True, help="Enable hybrid model routing")
     return parser.parse_args()
 
 def validate_pdf(doc: fitz.Document, pdf_path: str) -> None:
