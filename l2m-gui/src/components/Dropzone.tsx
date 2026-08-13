@@ -47,7 +47,11 @@ export const Dropzone: React.FC<DropzoneProps> = ({ onFileSelectedPath, disabled
 
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const file = e.dataTransfer.files[0];
-      const filePath = (file as any).path || file.name;
+      const filePath = (file as any).path;
+      if (!filePath) {
+        alert('Drag & Drop liefert keinen Dateipfad. Bitte klicke, um eine PDF auszuwählen.');
+        return;
+      }
       onFileSelectedPath(filePath, file.name);
     }
   };
