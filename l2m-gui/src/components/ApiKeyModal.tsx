@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { KeyRound, ExternalLink, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import { open as openUrl } from '@tauri-apps/plugin-shell';
+import { invoke } from '@tauri-apps/api/core';
 
 interface ApiKeyModalProps {
   isOpen: boolean;
@@ -31,28 +32,14 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
     setTestResult(null);
 
     try {
-      // client.models.list() Equivalent: GET https://api.openai.com/v1/models (0 Tokens Cost)
-      const response = await fetch('https://api.openai.com/v1/models', {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${keyInput.trim()}`,
-        },
-      });
-
-      if (response.ok) {
-        setTestResult({ success: true, message: 'Key ist gültig!' });
-        onSaveKey(keyInput.trim());
-      } else {
-        const errorData = await response.json().catch(() => ({}));
-        setTestResult({
-          success: false,
-          message: errorData.error?.message || 'Ungültiger API-Key oder keine Verbindung.',
-        });
-      }
+      // Invoke native backend validation (0 Tokens Cost, no CORS / Key exposure in renderer)
+      await invoke<boolean>('validate_api_key_native', { key: keyInput.trim() });
+      setTestResult({ success: true, message: 'Key ist gültig!' });
+      onSaveKey(keyInput.trim());
     } catch (err: any) {
       setTestResult({
         success: false,
-        message: 'Netzwerkfehler beim Testen des API-Keys.',
+        message: typeof err === 'string' ? err : 'Ungültiger API-Key oder keine Verbindung.',
       });
     } finally {
       setTesting(false);
@@ -63,17 +50,6 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
     e.preventDefault();
     e.stopPropagation();
     const url = 'https://platform.openai.com/api-keys';
-    try {
-      await openUrl(url);
-    } catch {
-      window.open(url, '_blank', 'noopener,noreferrer');
-    }
-  };
-
-  const handleOpenUsageDashboard = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const url = 'https://platform.openai.com/usage';
     try {
       await openUrl(url);
     } catch {
@@ -126,32 +102,13 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
             </button>
           </div>
 
-          <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-200/90 leading-relaxed flex items-start space-x-2.5">
-            <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-            <div className="space-y-1">
-              <p>
-                <strong>Hinweis:</strong> Bei der Nutzung des API-Keys entstehen Kosten bei OpenAI.
-              </p>
-              <p>
-                Deine aktuellen Kosten kannst du jederzeit im{' '}
-                <button
-                  type="button"
-                  onClick={handleOpenUsageDashboard}
-                  className="inline-flex items-center text-amber-300 hover:text-amber-100 underline gap-1 font-semibold bg-transparent border-0 p-0 cursor-pointer"
-                >
-                  OpenAI Verbrauchsdashboard <ExternalLink className="w-3 h-3" />
-                </button>{' '}
-                einsehen.
-              </p>
-            </div>
-          </div>
-
           {testResult && (
             <div
-              className={`p-3 rounded-xl flex items-center space-x-2 text-xs font-medium ${testResult.success
+              className={`p-3 rounded-xl flex items-center space-x-2 text-xs font-medium ${
+                testResult.success
                   ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
                   : 'bg-rose-500/10 text-rose-400 border border-rose-500/30'
-                }`}
+              }`}
             >
               {testResult.success ? (
                 <CheckCircle2 className="w-4 h-4 shrink-0" />
@@ -179,7 +136,7 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
             disabled={!keyInput.trim()}
             className="flex-1 py-3 px-4 bg-accent hover:bg-accent-hover text-white rounded-xl font-medium text-sm transition flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
           >
-            Schließen
+            Weiter
           </button>
         </div>
       </div>

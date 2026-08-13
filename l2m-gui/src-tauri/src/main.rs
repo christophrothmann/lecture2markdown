@@ -31,6 +31,43 @@ async fn get_api_key_native(app: tauri::AppHandle) -> Result<String, String> {
 }
 
 #[tauri::command]
+async fn validate_api_key_native(key: String) -> Result<bool, String> {
+    let sanitized_key = key.trim();
+    if sanitized_key.is_empty() {
+        return Err("Bitte gib einen API-Key ein.".to_string());
+    }
+
+    let script = format!(
+        "import sys; from openai import OpenAI; client = OpenAI(api_key='{}'); client.models.list()",
+        sanitized_key
+    );
+
+    let venv_python_candidates = [
+        "../../.venv/bin/python",
+        "../.venv/bin/python",
+        ".venv/bin/python",
+    ];
+
+    let venv_python = venv_python_candidates
+        .iter()
+        .find(|p| Path::new(p).exists())
+        .copied()
+        .unwrap_or("python3");
+
+    let output = Command::new(venv_python)
+        .arg("-c")
+        .arg(&script)
+        .output()
+        .map_err(|e| format!("Fehler beim Ausführen der Validierung: {}", e))?;
+
+    if output.status.success() {
+        Ok(true)
+    } else {
+        Err("Ungültiger API-Key oder keine Verbindung zu OpenAI.".to_string())
+    }
+}
+
+#[tauri::command]
 async fn convert_lecture_native(
     pdf_path: String,
     _output_path: String,
@@ -156,7 +193,8 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             convert_lecture_native,
             save_api_key_native,
-            get_api_key_native
+            get_api_key_native,
+            validate_api_key_native
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
