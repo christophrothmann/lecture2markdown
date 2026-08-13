@@ -23,3 +23,10 @@ __pycache__/
 .DS_Store
 .idea/
 .vscode/
+
+# GUI Build & Dependencies
+l2m-gui/node_modules/
+l2m-gui/dist/
+l2m-gui/src-tauri/target/
+l2m-gui/src-tauri/gen/
+
