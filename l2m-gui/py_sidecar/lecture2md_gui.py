@@ -22,7 +22,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Lecture2Markdown GUI Sidecar Script")
     parser.add_argument("--pdf", required=True, help="Path to input PDF file")
     parser.add_argument("--output", required=True, help="Path to output Markdown file")
-    parser.add_argument("--api-key", required=True, help="OpenAI API Key")
+    parser.add_argument("--api-key", required=False, help="OpenAI API Key")
     parser.add_argument("--workers", type=int, default=3, help="Max concurrent workers")
     parser.add_argument("--hybrid", action=argparse.BooleanOptionalAction, default=True, help="Enable hybrid model routing")
     return parser.parse_args()
@@ -135,12 +135,17 @@ def main():
     args = parse_args()
     pdf_path = Path(args.pdf)
     output_path = Path(args.output)
+    api_key = args.api_key or os.getenv("OPENAI_API_KEY")
     
     if not pdf_path.exists():
         emit_event("error", {"message": f"Input PDF file '{pdf_path}' not found."})
         sys.exit(1)
-        
-    client = OpenAI(api_key=args.api_key, max_retries=6)
+
+    if not api_key:
+        emit_event("error", {"message": "OpenAI API key is missing. Provide --api-key or OPENAI_API_KEY."})
+        sys.exit(1)
+         
+    client = OpenAI(api_key=api_key, max_retries=6)
     doc = fitz.open(pdf_path)
     validate_pdf(doc, str(pdf_path))
     
