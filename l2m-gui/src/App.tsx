@@ -13,7 +13,7 @@ import { HistorySidebar, type HistoryItem } from './components/HistorySidebar';
 export function App() {
   const [apiKey, setApiKey] = useState<string>('');
   const [isKeyModalOpen, setIsKeyModalOpen] = useState<boolean>(false);
-  
+
   const [selectedFilePath, setSelectedFilePath] = useState<string>('');
   const [selectedFileName, setSelectedFileName] = useState<string>('');
   const [pageCount, setPageCount] = useState<number>(0);
@@ -23,7 +23,7 @@ export function App() {
     total: 0,
     lastModel: '',
   });
-  
+
   const [markdownResult, setMarkdownResult] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>(() => {
     try {
@@ -175,7 +175,7 @@ export function App() {
           </div>
           <div>
             <h1 className="text-base font-bold text-slate-100 flex items-center gap-2">
-              Lecture2Markdown <Sparkles className="w-4 h-4 text-amber-400" />
+              Lecture2Markdown
             </h1>
             <p className="text-[11px] text-slate-400">PDF-Vorlesungen in halluzinationsfreies Markdown umwandeln</p>
           </div>
