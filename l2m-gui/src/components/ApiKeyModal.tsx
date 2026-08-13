@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { KeyRound, ExternalLink, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { KeyRound, ExternalLink, CheckCircle2, AlertCircle, Loader2, X } from 'lucide-react';
 import { open as openUrl } from '@tauri-apps/plugin-shell';
 import { invoke } from '@tauri-apps/api/core';
 
@@ -20,6 +20,11 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
+  // Sync state when initialKey loaded asynchronously from Rust backend
+  useEffect(() => {
+    setKeyInput(initialKey);
+  }, [initialKey, isOpen]);
+
   if (!isOpen) return null;
 
   const handleTestKey = async () => {
@@ -32,7 +37,6 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
     setTestResult(null);
 
     try {
-      // Invoke native backend validation (0 Tokens Cost, no CORS / Key exposure in renderer)
       await invoke<boolean>('validate_api_key_native', { key: keyInput.trim() });
       setTestResult({ success: true, message: 'Key ist gültig!' });
       onSaveKey(keyInput.trim());
@@ -58,14 +62,28 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
   };
 
   const handleProceed = () => {
-    onSaveKey(keyInput.trim());
+    if (keyInput.trim()) {
+      onSaveKey(keyInput.trim());
+    }
     onClose();
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
-      <div className="glass-card w-full max-w-md rounded-2xl p-6 shadow-2xl space-y-6">
-        <div className="flex items-center space-x-3 border-b border-border pb-4">
+      <div className="glass-card w-full max-w-md rounded-2xl p-6 shadow-2xl space-y-6 relative">
+        {/* Close X Button in settings mode */}
+        {initialKey && (
+          <button
+            type="button"
+            onClick={onClose}
+            className="absolute top-5 right-5 text-slate-400 hover:text-slate-100 transition p-1 rounded-lg hover:bg-surface-hover"
+            title="Schließen"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        )}
+
+        <div className="flex items-center space-x-3 border-b border-border pb-4 pr-8">
           <div className="p-2.5 bg-accent/20 text-accent rounded-xl">
             <KeyRound className="w-6 h-6" />
           </div>
