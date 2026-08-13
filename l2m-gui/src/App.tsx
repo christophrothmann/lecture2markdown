@@ -4,6 +4,7 @@ import { save as saveFileDialog } from '@tauri-apps/plugin-dialog';
 import { writeTextFile } from '@tauri-apps/plugin-fs';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { join, tempDir } from '@tauri-apps/api/path';
 import { ApiKeyModal } from './components/ApiKeyModal';
 import { Dropzone } from './components/Dropzone';
 import { ProgressDashboard } from './components/ProgressDashboard';
@@ -91,7 +92,7 @@ export function App() {
     setConverting(true);
     setMarkdownResult(null);
 
-    const outputMdPath = `output_${Date.now()}.md`;
+    const outputMdPath = await join(await tempDir(), `output_${Date.now()}.md`);
 
     try {
       const realGeneratedMarkdown = await invoke<string>('convert_lecture_native', {
