@@ -92,12 +92,10 @@ export function App() {
     setConverting(true);
     setMarkdownResult(null);
 
-    const outputMdPath = await join(await tempDir(), `output_${Date.now()}.md`);
-
     try {
       const realGeneratedMarkdown = await invoke<string>('convert_lecture_native', {
         pdfPath: selectedFilePath,
-        outputPath: outputMdPath,
+        outputPath: '',
         apiKey: apiKey,
       });
 
