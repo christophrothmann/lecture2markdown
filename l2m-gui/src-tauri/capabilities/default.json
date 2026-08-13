@@ -7,7 +7,6 @@
     "core:default",
     "shell:default",
     "shell:allow-open",
-    "shell:allow-execute",
     "dialog:default",
     "fs:default",
     "notification:default"
