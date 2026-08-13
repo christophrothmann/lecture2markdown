@@ -76,23 +76,38 @@ async fn convert_lecture_native(
             .map_err(|e| format!("Fehler beim Starten von {}: {}", python_bin, e))?
     };
 
-    if let Some(stdout) = child.stdout.take() {
-        let reader = BufReader::new(stdout);
-        for line in reader.lines() {
-            if let Ok(l) = line {
-                let _ = window.emit("python-event", l);
+    let mut stderr_buf = String::new();
+
+    let stdout_handle = if let Some(stdout) = child.stdout.take() {
+        let window = window.clone();
+        Some(std::thread::spawn(move || {
+            let reader = BufReader::new(stdout);
+            for line in reader.lines().flatten() {
+                let _ = window.emit("python-event", line);
             }
+        }))
+    } else {
+        None
+    };
+
+    if let Some(stderr) = child.stderr.take() {
+        let reader = BufReader::new(stderr);
+        for line in reader.lines().flatten() {
+            stderr_buf.push_str(&line);
+            stderr_buf.push('\n');
         }
     }
 
-    let output = child.wait_with_output().map_err(|e| e.to_string())?;
+    let status = child.wait().map_err(|e| e.to_string())?;
+    if let Some(h) = stdout_handle {
+        let _ = h.join();
+    }
 
-    if output.status.success() {
+    if status.success() {
         std::fs::read_to_string(&output_path)
             .map_err(|e| format!("Ausgabedatei konnte nicht gelesen werden: {}", e))
     } else {
-        let err_msg = String::from_utf8_lossy(&output.stderr);
-        Err(format!("Python-Skript Ausführungsfehler (stderr): {}", err_msg))
+        Err(format!("Python-Skript Ausführungsfehler (stderr): {}", stderr_buf))
     }
 }
 
