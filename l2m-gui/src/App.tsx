@@ -4,7 +4,6 @@ import { save as saveFileDialog } from '@tauri-apps/plugin-dialog';
 import { writeTextFile } from '@tauri-apps/plugin-fs';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { join, tempDir } from '@tauri-apps/api/path';
 import { ApiKeyModal } from './components/ApiKeyModal';
 import { Dropzone } from './components/Dropzone';
 import { ProgressDashboard } from './components/ProgressDashboard';
@@ -12,9 +11,9 @@ import { MarkdownPreview } from './components/MarkdownPreview';
 import { HistorySidebar, type HistoryItem } from './components/HistorySidebar';
 
 export function App() {
-  const [apiKey, setApiKey] = useState<string>(() => localStorage.getItem('openai_api_key') || '');
-  const [isKeyModalOpen, setIsKeyModalOpen] = useState<boolean>(!localStorage.getItem('openai_api_key'));
-
+  const [apiKey, setApiKey] = useState<string>('');
+  const [isKeyModalOpen, setIsKeyModalOpen] = useState<boolean>(false);
+  
   const [selectedFilePath, setSelectedFilePath] = useState<string>('');
   const [selectedFileName, setSelectedFileName] = useState<string>('');
   const [pageCount, setPageCount] = useState<number>(0);
@@ -24,7 +23,7 @@ export function App() {
     total: 0,
     lastModel: '',
   });
-
+  
   const [markdownResult, setMarkdownResult] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>(() => {
     try {
@@ -33,6 +32,21 @@ export function App() {
       return [];
     }
   });
+
+  // Load API Key securely from Rust backend store on startup
+  useEffect(() => {
+    invoke<string>('get_api_key_native')
+      .then((storedKey) => {
+        if (storedKey) {
+          setApiKey(storedKey);
+        } else {
+          setIsKeyModalOpen(true);
+        }
+      })
+      .catch(() => {
+        setIsKeyModalOpen(true);
+      });
+  }, []);
 
   useEffect(() => {
     let unlistenFn: (() => void) | null = null;
@@ -62,9 +76,13 @@ export function App() {
     };
   }, []);
 
-  const handleSaveApiKey = (key: string) => {
+  const handleSaveApiKey = async (key: string) => {
     setApiKey(key);
-    localStorage.setItem('openai_api_key', key);
+    try {
+      await invoke('save_api_key_native', { key });
+    } catch (e) {
+      console.error('Key konnte nicht im Backend gespeichert werden:', e);
+    }
   };
 
   const handleClearHistory = () => {
@@ -157,9 +175,9 @@ export function App() {
           </div>
           <div>
             <h1 className="text-base font-bold text-slate-100 flex items-center gap-2">
-              Lecture2Markdown
+              Lecture2Markdown <Sparkles className="w-4 h-4 text-amber-400" />
             </h1>
-            <p className="text-[11px] text-slate-400">PDF-Vorlesungen in Markdown umwandeln</p>
+            <p className="text-[11px] text-slate-400">PDF-Vorlesungen in halluzinationsfreies Markdown umwandeln</p>
           </div>
         </div>
 

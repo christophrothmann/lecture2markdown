@@ -3,7 +3,32 @@
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::io::{BufRead, BufReader};
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
+
+fn get_secret_file_path(app: &tauri::AppHandle) -> std::path::PathBuf {
+    let config_dir = app.path().app_config_dir().unwrap_or_else(|_| std::env::temp_dir());
+    let _ = std::fs::create_dir_all(&config_dir);
+    config_dir.join(".openai_key_store")
+}
+
+#[tauri::command]
+async fn save_api_key_native(key: String, app: tauri::AppHandle) -> Result<(), String> {
+    let secret_path = get_secret_file_path(&app);
+    std::fs::write(&secret_path, key.trim())
+        .map_err(|e| format!("API-Key konnte nicht sicher gespeichert werden: {}", e))
+}
+
+#[tauri::command]
+async fn get_api_key_native(app: tauri::AppHandle) -> Result<String, String> {
+    let secret_path = get_secret_file_path(&app);
+    if secret_path.exists() {
+        std::fs::read_to_string(&secret_path)
+            .map(|s| s.trim().to_string())
+            .map_err(|e| format!("API-Key konnte nicht ausgelesen werden: {}", e))
+    } else {
+        Ok("".to_string())
+    }
+}
 
 #[tauri::command]
 async fn convert_lecture_native(
@@ -128,7 +153,11 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_notification::init())
-        .invoke_handler(tauri::generate_handler![convert_lecture_native])
+        .invoke_handler(tauri::generate_handler![
+            convert_lecture_native,
+            save_api_key_native,
+            get_api_key_native
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
