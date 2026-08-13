@@ -63,10 +63,14 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
               </div>
 
               <button
-                onClick={(e) => {
+                onClick={async (e) => {
                   e.stopPropagation();
-                  navigator.clipboard.writeText(item.content);
-                  alert('Markdown kopiert!');
+                  try {
+                    await navigator.clipboard.writeText(item.content);
+                    alert('Markdown kopiert!');
+                  } catch {
+                    alert('Kopieren fehlgeschlagen.');
+                  }
                 }}
                 className="p-1.5 bg-background text-slate-400 hover:text-slate-100 rounded-lg border border-border transition"
                 title="Kopieren"
