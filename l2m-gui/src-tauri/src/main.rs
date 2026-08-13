@@ -8,11 +8,20 @@ use tauri::Emitter;
 #[tauri::command]
 async fn convert_lecture_native(
     pdf_path: String,
-    output_path: String,
+    _output_path: String,
     api_key: String,
     window: tauri::Window,
 ) -> Result<String, String> {
-    // 1. Resolve exact path to lecture2md_gui.py
+    // 1. Resolve deterministic, writeable OS temp directory for output
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    let temp_output_buf = std::env::temp_dir().join(format!("l2m_output_{}.md", timestamp));
+    let safe_output_path = temp_output_buf.to_string_lossy().to_string();
+
+    // 2. Resolve exact path to lecture2md_gui.py
     let script_candidates = [
         "../py_sidecar/lecture2md_gui.py",
         "py_sidecar/lecture2md_gui.py",
@@ -25,7 +34,7 @@ async fn convert_lecture_native(
         .copied()
         .unwrap_or("../py_sidecar/lecture2md_gui.py");
 
-    // 2. Resolve Python binary (prefer project virtualenv or uv run)
+    // 3. Resolve Python binary (prefer project virtualenv or uv run)
     let venv_python_candidates = [
         "../../.venv/bin/python",
         "../.venv/bin/python",
@@ -41,7 +50,7 @@ async fn convert_lecture_native(
         Command::new(py_bin)
             .arg(script_path)
             .arg("--pdf").arg(&pdf_path)
-            .arg("--output").arg(&output_path)
+            .arg("--output").arg(&safe_output_path)
             .env("OPENAI_API_KEY", &api_key)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -53,7 +62,7 @@ async fn convert_lecture_native(
             .arg("python")
             .arg(script_path)
             .arg("--pdf").arg(&pdf_path)
-            .arg("--output").arg(&output_path)
+            .arg("--output").arg(&safe_output_path)
             .env("OPENAI_API_KEY", &api_key)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -68,7 +77,7 @@ async fn convert_lecture_native(
         Command::new(python_bin)
             .arg(script_path)
             .arg("--pdf").arg(&pdf_path)
-            .arg("--output").arg(&output_path)
+            .arg("--output").arg(&safe_output_path)
             .env("OPENAI_API_KEY", &api_key)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -104,8 +113,10 @@ async fn convert_lecture_native(
     }
 
     if status.success() {
-        std::fs::read_to_string(&output_path)
-            .map_err(|e| format!("Ausgabedatei konnte nicht gelesen werden: {}", e))
+        let content = std::fs::read_to_string(&safe_output_path)
+            .map_err(|e| format!("Ausgabedatei ({}) konnte nicht gelesen werden: {}", safe_output_path, e))?;
+        let _ = std::fs::remove_file(&safe_output_path); // Cleanup temp file
+        Ok(content)
     } else {
         Err(format!("Python-Skript Ausführungsfehler (stderr): {}", stderr_buf))
     }
