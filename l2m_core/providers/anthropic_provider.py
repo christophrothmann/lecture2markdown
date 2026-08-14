@@ -21,7 +21,11 @@ class AnthropicProvider(BaseProvider):
         retry_error_callback=lambda state: print(f"Anthropic Rate limit. Retrying (Attempt {state.attempt_number})...")
     )
     def _execute_api_call(self, model: str, base64_image: str, page_number: int) -> str:
-        user_prompt = f"<slide_metadata>\nSlide Number: {page_number}\n</slide_metadata>\n\nTask: Transcribe the provided slide image into clean Markdown."
+        user_prompt = (
+            f"<slide_metadata>\nSlide Number: {page_number}\n</slide_metadata>\n\n"
+            "Task: Transcribe ALL text, bullet points, numbered lists, formulas, and diagrams visible on this lecture slide image into structured Markdown. "
+            "Do NOT summarize, condense, or omit any details. Transcribe every learning item verbatim in the slide's language."
+        )
         
         response = self.client.messages.create(
             model=model,
@@ -51,6 +55,7 @@ class AnthropicProvider(BaseProvider):
         content_blocks = [b.text for b in response.content if hasattr(b, "text")]
         content = "\n".join(content_blocks).strip()
         return "*(Kein relevanter Folieninhalt)*" if not content or content.strip().lower() in ["none", "none.", "no content", "n/a"] else content
+
     def transcribe_slide(self, base64_image: str, page_number: int, is_visual: bool, hybrid: bool = True) -> tuple[str, str]:
         model = self.select_model(is_visual, hybrid)
         markdown = self._execute_api_call(model, base64_image, page_number)

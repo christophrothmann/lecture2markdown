@@ -25,7 +25,11 @@ class MistralProvider(BaseProvider):
         retry_error_callback=lambda state: print(f"Mistral Rate limit. Retrying (Attempt {state.attempt_number})...")
     )
     def _execute_api_call(self, model: str, base64_image: str, page_number: int) -> str:
-        user_prompt = f"<slide_metadata>\nSlide Number: {page_number}\n</slide_metadata>\n\nTask: Transcribe the provided slide image into clean Markdown."
+        user_prompt = (
+            f"<slide_metadata>\nSlide Number: {page_number}\n</slide_metadata>\n\n"
+            "Task: Transcribe ALL text, bullet points, numbered lists, formulas, and diagrams visible on this lecture slide image into structured Markdown. "
+            "Do NOT summarize, condense, or omit any details. Transcribe every learning item verbatim in the slide's language."
+        )
         
         # If model is mistral-ocr-latest and OCR endpoint is available
         if model == "mistral-ocr-latest" and hasattr(self.client, "ocr"):
