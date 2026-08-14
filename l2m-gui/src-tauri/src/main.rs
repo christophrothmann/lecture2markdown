@@ -6,6 +6,9 @@ use std::process::{Command, Stdio};
 use std::io::{BufRead, BufReader};
 use tauri::{Emitter, Manager};
 
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
+
 enum PythonRunner {
     Executable(PathBuf),
     Uv,
@@ -81,6 +84,29 @@ fn resolve_safe_script_path() -> Result<PathBuf, String> {
     Err("Skript lecture2md.py konnte über canonical path nicht verifiziert werden.".to_string())
 }
 
+/// Applies a hardened environment whitelist, clearing sensitive host variables (CWE-214).
+fn apply_hardened_environment(cmd: &mut Command, extra_env: Option<(&str, &str)>) {
+    cmd.env_clear();
+    
+    // Explicit whitelist of safe environment variables
+    let safe_keys = [
+        "PATH", "HOME", "USER", "LOGNAME", "SHELL",
+        "TMPDIR", "TEMP", "TMP",
+        "SYSTEMROOT", "COMSPEC", "PATHEXT", "WINDIR", "APPDATA", "LOCALAPPDATA",
+        "LANG", "LC_ALL", "LC_CTYPE"
+    ];
+
+    for key in safe_keys {
+        if let Ok(val) = std::env::var(key) {
+            cmd.env(key, val);
+        }
+    }
+
+    if let Some((k, v)) = extra_env {
+        cmd.env(k, v);
+    }
+}
+
 #[tauri::command]
 async fn save_api_key_native(provider: String, key: String, app: tauri::AppHandle) -> Result<(), String> {
     let mut map = read_keys_map(&app);
@@ -89,7 +115,19 @@ async fn save_api_key_native(provider: String, key: String, app: tauri::AppHandl
     let secret_path = get_secret_file_path(&app);
     let serialized = serde_json::to_string(&map).map_err(|e| e.to_string())?;
     std::fs::write(&secret_path, serialized)
-        .map_err(|e| format!("API-Key konnte nicht sicher gespeichert werden: {}", e))
+        .map_err(|e| format!("API-Key konnte nicht sicher gespeichert werden: {}", e))?;
+
+    // Hardened restrictive file permissions (0600: read/write only by owner) on Unix
+    #[cfg(unix)]
+    {
+        if let Ok(file) = std::fs::File::open(&secret_path) {
+            let mut perms = file.metadata().map_err(|e| e.to_string())?.permissions();
+            perms.set_mode(0o600);
+            let _ = std::fs::set_permissions(&secret_path, perms);
+        }
+    }
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -132,11 +170,20 @@ async fn validate_api_key_native(provider: String, key: String) -> Result<bool, 
     };
 
     let runner = resolve_safe_python_runner();
-    let output = match runner {
-        PythonRunner::Executable(safe_bin) => Command::new(safe_bin).arg("-c").arg(&script).output(),
-        PythonRunner::Uv => Command::new("uv").arg("run").arg("python").arg("-c").arg(&script).output(),
-        PythonRunner::System(sys_bin) => Command::new(sys_bin).arg("-c").arg(&script).output(),
-    }.map_err(|e| format!("Fehler beim Ausführen der Validierung: {}", e))?;
+    let mut cmd = match runner {
+        PythonRunner::Executable(safe_bin) => Command::new(safe_bin),
+        PythonRunner::Uv => {
+            let mut c = Command::new("uv");
+            c.arg("run").arg("python");
+            c
+        }
+        PythonRunner::System(sys_bin) => Command::new(sys_bin),
+    };
+
+    apply_hardened_environment(&mut cmd, None);
+    cmd.arg("-c").arg(&script);
+
+    let output = cmd.output().map_err(|e| format!("Fehler beim Ausführen der Validierung: {}", e))?;
 
     if output.status.success() {
         Ok(true)
@@ -196,11 +243,12 @@ async fn convert_lecture_native(
         }
     };
 
+    apply_hardened_environment(&mut cmd, Some((env_var_key, &api_key)));
+
     cmd.arg("--pdf").arg(&pdf_path)
         .arg("--output").arg(&safe_output_path)
         .arg("--provider").arg(&chosen_provider)
         .arg("--json-stream")
-        .env(env_var_key, &api_key)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 

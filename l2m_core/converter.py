@@ -10,7 +10,10 @@ from .pdf import (
     render_page_to_base64,
     is_page_visual,
 )
+from .security import sanitize_markdown_output
 from .providers import BaseProvider
+
+SLIDE_TIMEOUT_SECONDS = 90
 
 def emit_event(event_type: str, data: dict) -> None:
     message = {"type": event_type, **data}
@@ -31,14 +34,15 @@ def process_page_worker(
     base64_image = render_page_to_base64(page, dpi=dpi)
     doc.close()
 
-    slide_markdown, used_model = provider.transcribe_slide(
+    raw_markdown, used_model = provider.transcribe_slide(
         base64_image=base64_image,
         page_number=page_number,
         is_visual=visual_flag,
         hybrid=hybrid
     )
 
-    formatted_segment = f"## [Folie {page_number}]\n{slide_markdown}\n"
+    sanitized_markdown = sanitize_markdown_output(raw_markdown)
+    formatted_segment = f"## [Folie {page_number}]\n{sanitized_markdown}\n"
     return page_index, formatted_segment, used_model
 
 def execute_conversion(
@@ -74,7 +78,13 @@ def execute_conversion(
 
         if json_stream:
             for future in as_completed(futures):
-                page_index, page_content, used_model = future.result()
+                try:
+                    page_index, page_content, used_model = future.result(timeout=SLIDE_TIMEOUT_SECONDS)
+                except Exception as err:
+                    page_index = 0
+                    page_content = f"*(Fehler bei Folienverarbeitung: {err})*"
+                    used_model = "error"
+
                 sections[page_index] = page_content
                 completed_count += 1
                 emit_event("progress", {
@@ -85,7 +95,11 @@ def execute_conversion(
                 })
         else:
             for future in tqdm(as_completed(futures), total=total_pages, desc="Processing slides"):
-                page_index, page_content, _ = future.result()
+                try:
+                    page_index, page_content, _ = future.result(timeout=SLIDE_TIMEOUT_SECONDS)
+                except Exception as err:
+                    page_index = 0
+                    page_content = f"*(Fehler bei Folienverarbeitung: {err})*"
                 sections[page_index] = page_content
 
     final_content = header + "\n---\n\n".join(sections)

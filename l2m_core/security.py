@@ -1,4 +1,4 @@
-"""Security rules and system prompts for LLM transcription."""
+import re
 
 def get_system_prompt() -> str:
     return (
@@ -21,3 +21,20 @@ def get_system_prompt() -> str:
         "### OUTPUT FORMAT:\n"
         "Provide ONLY the resulting Markdown content without conversational intro/outro text."
     )
+
+def sanitize_markdown_output(markdown_text: str) -> str:
+    """
+    Sanitizes LLM-generated markdown against indirect prompt injection exfiltration vectors.
+    1. Removes invisible zero-width unicode characters.
+    2. Neutralizes external tracking image tags (![...](https://...)).
+    """
+    if not markdown_text:
+        return ""
+
+    # Strip zero-width and control characters (except standard newlines/tabs)
+    cleaned = re.sub(r'[\u200B-\u200D\uFEFF\u0000-\u0008\u000B\u000C\u000E-\u001F]', '', markdown_text)
+
+    # Neutralize dangerous external markdown image exfiltration: ![alt](http...) -> [Image: alt] (URL removed)
+    cleaned = re.sub(r'!\[([^\]]*)\]\(https?://[^\)]+\)', r'> *[Visual Content: \1]*', cleaned)
+
+    return cleaned

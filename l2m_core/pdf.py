@@ -3,11 +3,16 @@ import base64
 from pathlib import Path
 import fitz
 
+MAX_ALLOWED_PAGES = 1000
+MAX_RENDER_DIMENSION = 4096
+
 def validate_pdf_document(doc: fitz.Document, pdf_path: Path) -> None:
     if doc.is_encrypted:
         sys.exit(f"Error: PDF file '{pdf_path}' is encrypted and cannot be processed.")
     if len(doc) == 0:
         sys.exit(f"Error: PDF file '{pdf_path}' contains no pages.")
+    if len(doc) > MAX_ALLOWED_PAGES:
+        sys.exit(f"Error: PDF file '{pdf_path}' exceeds the maximum allowed limit of {MAX_ALLOWED_PAGES} pages.")
 
 def extract_pdf_title(metadata: dict, fallback_name: str) -> str:
     title = metadata.get("title", "").strip() if metadata else ""
@@ -32,7 +37,13 @@ def format_metadata_header(doc: fitz.Document, pdf_path: Path) -> str:
     return "\n\n".join(header_lines) + "\n\n"
 
 def render_page_to_base64(page: fitz.Page, dpi: int = 200) -> str:
+    rect = page.rect
     zoom_factor = dpi / 72
+    
+    # Cap render dimensions to prevent memory exhaustion DoS
+    if rect.width * zoom_factor > MAX_RENDER_DIMENSION or rect.height * zoom_factor > MAX_RENDER_DIMENSION:
+        zoom_factor = min(MAX_RENDER_DIMENSION / rect.width, MAX_RENDER_DIMENSION / rect.height)
+
     transformation_matrix = fitz.Matrix(zoom_factor, zoom_factor)
     pixmap = page.get_pixmap(matrix=transformation_matrix)
     return base64.b64encode(pixmap.tobytes("png")).decode("utf-8")
