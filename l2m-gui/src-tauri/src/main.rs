@@ -83,18 +83,18 @@ async fn convert_lecture_native(
     let temp_output_buf = std::env::temp_dir().join(format!("l2m_output_{}.md", timestamp));
     let safe_output_path = temp_output_buf.to_string_lossy().to_string();
 
-    // 2. Resolve exact path to lecture2md_gui.py
+    // 2. Resolve Single-Source-of-Truth Python script (lecture2md.py)
     let script_candidates = [
-        "../py_sidecar/lecture2md_gui.py",
-        "py_sidecar/lecture2md_gui.py",
-        "src-tauri/py_sidecar/lecture2md_gui.py",
+        "../../lecture2md.py",
+        "../lecture2md.py",
+        "lecture2md.py",
     ];
 
     let script_path = script_candidates
         .iter()
         .find(|p| Path::new(p).exists())
         .copied()
-        .unwrap_or("../py_sidecar/lecture2md_gui.py");
+        .unwrap_or("../lecture2md.py");
 
     // 3. Resolve Python binary (prefer project virtualenv or uv run)
     let venv_python_candidates = [
@@ -113,6 +113,7 @@ async fn convert_lecture_native(
             .arg(script_path)
             .arg("--pdf").arg(&pdf_path)
             .arg("--output").arg(&safe_output_path)
+            .arg("--json-stream")
             .env("OPENAI_API_KEY", &api_key)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -125,6 +126,7 @@ async fn convert_lecture_native(
             .arg(script_path)
             .arg("--pdf").arg(&pdf_path)
             .arg("--output").arg(&safe_output_path)
+            .arg("--json-stream")
             .env("OPENAI_API_KEY", &api_key)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -140,6 +142,7 @@ async fn convert_lecture_native(
             .arg(script_path)
             .arg("--pdf").arg(&pdf_path)
             .arg("--output").arg(&safe_output_path)
+            .arg("--json-stream")
             .env("OPENAI_API_KEY", &api_key)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())

@@ -1,7 +1,9 @@
 import os
-import base64
 import sys
+import json
 import time
+import base64
+import argparse
 from pathlib import Path
 from dotenv import load_dotenv
 import fitz
@@ -10,41 +12,60 @@ from tenacity import retry, stop_after_attempt, wait_random_exponential
 from openai import OpenAI
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# TODO: Adjust folder paths, filenames, or thread counts if needed
+# TODO: Adjust default folder paths or model parameters if desired
 DEFAULT_MODEL = "gpt-4o"
 FAST_MODEL = "gpt-4o-mini"
-ENABLE_HYBRID_ROUTING = True
-LECTURES_DIR = "lectures"
-OUTPUT_DIR = "output"
-INPUT_PDF_FILENAME = "input.pdf"
-OUTPUT_MD_FILENAME = "output.md"
+DEFAULT_LECTURES_DIR = "lectures"
+DEFAULT_OUTPUT_DIR = "output"
+DEFAULT_INPUT_FILE = "input.pdf"
+DEFAULT_OUTPUT_FILE = "output.md"
 DPI = 200
-MAX_WORKERS = 3
+DEFAULT_WORKERS = 3
 
 load_dotenv()
 
-def get_openai_client() -> OpenAI:
-    api_key = os.getenv("OPENAI_API_KEY")
-    if api_key is None:
-        # TODO: Set OPENAI_API_KEY in your .env file
-        sys.exit("Error: OPENAI_API_KEY not found in .env file.")
-    return OpenAI(api_key=api_key, max_retries=6)
+def emit_event(event_type: str, data: dict) -> None:
+    message = {"type": event_type, **data}
+    print(json.dumps(message), flush=True)
+
+def parse_arguments():
+    parser = argparse.ArgumentParser(description="Lecture2Markdown: Convert lecture PDF slides to structured Markdown.")
+    parser.add_argument("--pdf", type=str, default=None, help="Path to input PDF file")
+    parser.add_argument("--output", type=str, default=None, help="Path to output Markdown file")
+    parser.add_argument("--api-key", type=str, default=None, help="OpenAI API Key (or set OPENAI_API_KEY in .env)")
+    parser.add_argument("--workers", type=int, default=DEFAULT_WORKERS, help="Parallel worker thread count")
+    parser.add_argument("--hybrid", action="store_true", default=True, help="Enable automatic hybrid model routing")
+    parser.add_argument("--json-stream", action="store_true", default=False, help="Stream progress events as JSON lines for GUI/IPC")
+    return parser.parse_args()
+
+def resolve_api_key(cli_key: str | None) -> str:
+    key = cli_key or os.getenv("OPENAI_API_KEY")
+    if not key:
+        # TODO: Set OPENAI_API_KEY in .env or pass --api-key
+        sys.exit("Error: OPENAI_API_KEY not found in environment or arguments.")
+    return key.strip()
 
 def ensure_project_directories() -> tuple[Path, Path]:
-    lectures_path = Path(LECTURES_DIR)
-    output_path = Path(OUTPUT_DIR)
+    lectures_path = Path(DEFAULT_LECTURES_DIR)
+    output_path = Path(DEFAULT_OUTPUT_DIR)
     lectures_path.mkdir(parents=True, exist_ok=True)
     output_path.mkdir(parents=True, exist_ok=True)
     return lectures_path, output_path
 
-def validate_pdf_document(doc: fitz.Document, pdf_path: Path) -> None:
+def validate_pdf_document(doc: fitz.Document, pdf_path: Path, json_stream: bool) -> None:
     if doc.is_encrypted:
-        sys.exit(f"Error: PDF file '{pdf_path}' is encrypted and cannot be processed.")
+        msg = f"PDF file '{pdf_path}' is encrypted and cannot be processed."
+        if json_stream:
+            emit_event("error", {"message": msg})
+        sys.exit(f"Error: {msg}")
     if len(doc) == 0:
-        sys.exit(f"Error: PDF file '{pdf_path}' contains no pages.")
+        msg = f"PDF file '{pdf_path}' contains no pages."
+        if json_stream:
+            emit_event("error", {"message": msg})
+        sys.exit(f"Error: {msg}")
 
-def select_model_for_page(page: fitz.Page) -> str:
-    if not ENABLE_HYBRID_ROUTING:
+def select_model_for_page(page: fitz.Page, hybrid_enabled: bool) -> str:
+    if not hybrid_enabled:
         return DEFAULT_MODEL
     has_images = len(page.get_images()) > 0
     has_drawings = len(page.get_drawings()) > 0
@@ -72,7 +93,7 @@ def format_metadata_header(doc: fitz.Document, pdf_path: Path) -> str:
     
     return "\n\n".join(header_lines) + "\n\n"
 
-def render_page_to_base64(page: fitz.Page, dpi: int = 200) -> str:
+def render_page_to_base64(page: fitz.Page, dpi: int = DPI) -> str:
     zoom_factor = dpi / 72
     transformation_matrix = fitz.Matrix(zoom_factor, zoom_factor)
     pixmap = page.get_pixmap(matrix=transformation_matrix)
@@ -125,56 +146,104 @@ def request_slide_markdown(client: OpenAI, model: str, base64_image: str, page_n
     content = response.choices[0].message.content
     return "*(Kein relevanter Folieninhalt)*" if not content or content.strip().lower() in ["none", "none.", "no content", "n/a"] else content.strip()
 
-def process_single_page(client: OpenAI, page: fitz.Page, page_number: int) -> str:
-    selected_model = select_model_for_page(page)
+def process_single_page(client: OpenAI, page: fitz.Page, page_number: int, hybrid_enabled: bool) -> tuple[str, str]:
+    selected_model = select_model_for_page(page, hybrid_enabled)
     base64_image = render_page_to_base64(page, dpi=DPI)
     slide_markdown = request_slide_markdown(client, selected_model, base64_image, page_number)
-    return f"## [Folie {page_number}]\n{slide_markdown}\n"
+    formatted_content = f"## [Folie {page_number}]\n{slide_markdown}\n"
+    return formatted_content, selected_model
 
-def process_page_worker(pdf_path: Path, page_index: int, client: OpenAI) -> tuple[int, str]:
+def process_page_worker(pdf_path: Path, page_index: int, client: OpenAI, hybrid_enabled: bool) -> tuple[int, str, str]:
     page_number = page_index + 1
     doc = fitz.open(pdf_path)
-    page_content = process_single_page(client, doc[page_index], page_number)
+    page_content, used_model = process_single_page(client, doc[page_index], page_number, hybrid_enabled)
     doc.close()
-    return page_index, page_content
+    return page_index, page_content, used_model
 
-def convert_pdf_to_markdown(pdf_path: Path, output_path: Path) -> None:
+def execute_conversion(pdf_path: Path, output_path: Path, api_key: str, workers: int, hybrid: bool, json_stream: bool) -> None:
     start_time = time.time()
-    client = get_openai_client()
+    client = OpenAI(api_key=api_key, max_retries=6)
     
     doc = fitz.open(pdf_path)
-    validate_pdf_document(doc, pdf_path)
+    validate_pdf_document(doc, pdf_path, json_stream)
     header = format_metadata_header(doc, pdf_path)
     total_pages = len(doc)
     doc.close()
 
+    if json_stream:
+        emit_event("start", {"total_pages": total_pages, "pdf_name": pdf_path.name})
+    else:
+        print(f"Starting processing of {total_pages} slides (Hybrid Routing: {hybrid}) with {workers} threads...")
+
     sections = [""] * total_pages
-    print(f"Starting processing of {total_pages} slides (Hybrid Routing: {ENABLE_HYBRID_ROUTING}) with {MAX_WORKERS} threads...")
-    
-    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        futures = [executor.submit(process_page_worker, pdf_path, idx, client) for idx in range(total_pages)]
-        for future in tqdm(as_completed(futures), total=total_pages, desc="Processing slides"):
-            page_index, page_content = future.result()
-            sections[page_index] = page_content
+    completed_count = 0
+
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = [executor.submit(process_page_worker, pdf_path, idx, client, hybrid) for idx in range(total_pages)]
+        
+        if json_stream:
+            for future in as_completed(futures):
+                page_index, page_content, used_model = future.result()
+                sections[page_index] = page_content
+                completed_count += 1
+                emit_event("progress", {
+                    "completed": completed_count,
+                    "total": total_pages,
+                    "page_number": page_index + 1,
+                    "model_used": used_model
+                })
+        else:
+            for future in tqdm(as_completed(futures), total=total_pages, desc="Processing slides"):
+                page_index, page_content, _ = future.result()
+                sections[page_index] = page_content
 
     final_content = header + "\n---\n\n".join(sections)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w", encoding="utf-8") as file:
         file.write(final_content)
 
     elapsed_time = time.time() - start_time
-    minutes, seconds = divmod(elapsed_time, 60)
-    print(f"\nDone! Processing {total_pages} slides took {int(minutes)}m {seconds:.1f}s. Saved to: '{output_path}'")
+    if json_stream:
+        emit_event("complete", {
+            "output_path": str(output_path),
+            "total_pages": total_pages,
+            "elapsed_seconds": round(elapsed_time, 1),
+            "content": final_content
+        })
+    else:
+        minutes, seconds = divmod(elapsed_time, 60)
+        print(f"\nDone! Processing {total_pages} slides took {int(minutes)}m {seconds:.1f}s. Saved to: '{output_path}'")
 
 def main():
-    lectures_dir, output_dir = ensure_project_directories()
-    input_pdf_path = lectures_dir / INPUT_PDF_FILENAME
-    output_md_path = output_dir / OUTPUT_MD_FILENAME
+    args = parse_arguments()
+    api_key = resolve_api_key(args.api_key)
+    
+    if args.pdf:
+        input_pdf_path = Path(args.pdf)
+    else:
+        lectures_dir, _ = ensure_project_directories()
+        input_pdf_path = lectures_dir / DEFAULT_INPUT_FILE
+
+    if args.output:
+        output_md_path = Path(args.output)
+    else:
+        _, output_dir = ensure_project_directories()
+        output_md_path = output_dir / DEFAULT_OUTPUT_FILE
 
     if not input_pdf_path.exists():
-        # TODO: Place your PDF file in the 'lectures' folder or update INPUT_PDF_FILENAME
-        sys.exit(f"Error: Input file '{input_pdf_path}' not found. Please place it in the '{LECTURES_DIR}' directory.")
+        msg = f"Input file '{input_pdf_path}' not found."
+        if args.json_stream:
+            emit_event("error", {"message": msg})
+        sys.exit(f"Error: {msg}")
 
-    convert_pdf_to_markdown(input_pdf_path, output_md_path)
+    execute_conversion(
+        pdf_path=input_pdf_path,
+        output_path=output_md_path,
+        api_key=api_key,
+        workers=args.workers,
+        hybrid=args.hybrid,
+        json_stream=args.json_stream
+    )
 
 if __name__ == "__main__":
     main()
