@@ -2,9 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.5.0] - 2026-08-13
+## [1.0.0] - 2026-08-14 "frosty-fox-gui"
 
 ### Added
+- Official **v1.0.0 "frosty-fox-gui"** major release!
 - Created brand new Desktop GUI application in `l2m-gui/` using **Tauri v2**, **Bun.js**, **React + TypeScript**, and **TailwindCSS**.
 - Initial API Key onboarding modal with `client.models.list()` validation (0 Tokens cost) and link to OpenAI portal.
 - Drag & Drop PDF uploader with German UI labels and native absolute file path resolution via Tauri dialogs.
