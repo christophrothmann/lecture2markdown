@@ -1,138 +1,63 @@
 # Modul-Dokumentation: Lecture2Markdown
 
-Diese Datei beschreibt die Funktionen und Module im Ordner `Lecture2Markdown`.
+Diese Datei beschreibt die modulare Architektur und Komponenten im Projekt **Lecture2Markdown**.
 
-## Dateisystem-Übersicht
+## Dateisystem- & Modul-Übersicht
 
-- **`lecture2md.py`**: Hauptskript zur Konvertierung von PDF-Dateien in Markdown unter Verwendung der OpenAI Multimodal Vision API, dynamischem Hybrid-Routing (`gpt-4o` vs. `gpt-4o-mini`), separaten Eingabe- (`lectures/`) und Ausgabe-Ordnern (`output/`), paralleler Threading-Verarbeitung und Metadaten-Extraktion.
-
----
-
-## Funktionen in `lecture2md.py`
-
-### `get_openai_client() -> OpenAI`
-- **Beschreibung**: Liest den `OPENAI_API_KEY` aus der `.env`-Datei und initialisiert den `OpenAI`-Client mit 6 automatischen Retries.
-- **Parameter**: Keine.
-- **Rückgabe**: `OpenAI` Client-Instanz.
-
----
-
-### `ensure_project_directories() -> tuple[Path, Path]`
-- **Beschreibung**: Erstellt die Ordner `lectures/` und `output/` automatisch auf der Festplatte, falls diese noch nicht existieren.
-- **Parameter**: Keine.
-- **Rückgabe**: `tuple[Path, Path]` – Pfad-Objekte für `lectures/` und `output/`.
-
----
-
-### `validate_pdf_document(doc: fitz.Document, pdf_path: Path) -> None`
-- **Beschreibung**: Führt Pre-Flight-Prüfungen durch (bricht ab, falls PDF verschlüsselt ist oder 0 Seiten enthält).
-- **Parameter**:
-  - `doc` (`fitz.Document`): Das geöffnete PyMuPDF-Dokument.
-  - `pdf_path` (`Path`): Pfad zur PDF-Datei.
-- **Rückgabe**: `None`.
+```
+lecture2markdown/
+├── l2m_core/
+│   ├── __init__.py           # Paket-Initialisierung
+│   ├── config.py             # Provider-Konstanten, Modelle, CLI-Argument-Parser
+│   ├── pdf.py                # PyMuPDF: Validierung, Base64-Rendering, Metadaten-Extraktion
+│   ├── security.py           # System-Prompts, Anti-AI-Canary-Filter & Prompt Injection Schutz
+│   ├── converter.py          # Parallelisierung (ThreadPoolExecutor) & JSON-Event-Streaming
+│   └── providers/
+│       ├── __init__.py       # Provider-Export
+│       ├── base.py           # Abstrakte BaseProvider Basisklasse
+│       ├── factory.py        # get_provider() Factory-Funktion
+│       ├── openai_provider.py    # OpenAI (gpt-4o & gpt-4o-mini)
+│       ├── gemini_provider.py    # Google Gemini (gemini-2.0-flash & gemini-1.5-pro)
+│       ├── anthropic_provider.py # Anthropic Claude (claude-3-7-sonnet & claude-3-5-haiku)
+│       └── mistral_provider.py   # Mistral AI (mistral-ocr-latest & pixtral-12b)
+├── l2m-gui/                  # Desktop-App (Tauri v2, React, TailwindCSS)
+├── lecture2md.py             # Schlanker CLI & IPC Einstiegspunkt
+├── requirements.txt          # Multi-Provider Python-Abhängigkeiten
+└── pyproject.toml            # Projekt-Konfiguration
+```
 
 ---
 
-### `select_model_for_page(page: fitz.Page) -> str`
-- **Beschreibung**: Prüft lokal via PyMuPDF, ob die Folie Bilder oder Vektorgrafiken enthält, und wählt dynamisch das passende Modell (`gpt-4o` für visuelle Folien, `gpt-4o-mini` für reine Textfolien).
-- **Parameter**:
-  - `page` (`fitz.Page`): Die aktuelle PDF-Folie.
-- **Rückgabe**: `str` – Modellname (`"gpt-4o"` oder `"gpt-4o-mini"`).
+## 1. `l2m_core/config.py`
+- **`PROVIDER_OPENAI`, `PROVIDER_GOOGLE`, `PROVIDER_ANTHROPIC`, `PROVIDER_MISTRAL`**: Unterstützte KI-Provider.
+- **`PROVIDER_MODELS`**: Mapping der schnellen Textmodelle vs. visuellen Diagramm-Modelle für jeden Anbieter.
+- **`parse_cli_arguments()`**: Parst CLI-Parameter (`--pdf`, `--output`, `--provider`, `--api-key`, `--workers`, `--hybrid`, `--json-stream`).
+- **`resolve_provider_api_key(provider, cli_key)`**: Ermittelt den passenden Key aus CLI oder `.env`.
 
 ---
 
-### `extract_pdf_title(metadata: dict, fallback_name: str) -> str`
-- **Beschreibung**: Liest den Titel aus den PDF-Metadaten aus oder gibt den Dateinamen als Fallback zurück.
-- **Parameter**:
-  - `metadata` (`dict`): Metadaten-Dictionary der PDF.
-  - `fallback_name` (`str`): Fallback-Name (z.B. Dateiname ohne Endung).
-- **Rückgabe**: `str` – Titel der Vorlesung.
+## 2. `l2m_core/providers/`
+- **`BaseProvider` (`base.py`)**: Abstrakte Basisklasse mit `transcribe_slide(base64_image, page_number, is_visual, hybrid) -> tuple[str, str]`.
+- **`OpenAIProvider` (`openai_provider.py`)**: Bindet `gpt-4o` und `gpt-4o-mini` via `openai` SDK ein.
+- **`GeminiProvider` (`gemini_provider.py`)**: Nutzt das `google-genai` SDK für `gemini-2.0-flash` und `gemini-1.5-pro`.
+- **`AnthropicProvider` (`anthropic_provider.py`)**: Verarbeitet Folien über `anthropic` SDK mit `claude-3-7-sonnet` und `claude-3-5-haiku`.
+- **`MistralProvider` (`mistral_provider.py`)**: Unterstützt das spezialisierte `mistral-ocr-latest` Modell sowie `pixtral-12b-2409`.
+- **`get_provider(provider_name, api_key)` (`factory.py`)**: Instanziiert die passende Provider-Klasse.
 
 ---
 
-### `extract_pdf_author(metadata: dict) -> str`
-- **Beschreibung**: Extrahierte den Autoren- / Dozentennamen aus den PDF-Metadaten, falls vorhanden.
-- **Parameter**:
-  - `metadata` (`dict`): Metadaten-Dictionary der PDF.
-- **Rückgabe**: `str` – Autor/Dozent oder leerer String.
+## 3. `l2m_core/pdf.py`
+- **`validate_pdf_document(doc, pdf_path)`**: Prüft auf Verschlüsselung und Seitenzahl.
+- **`format_metadata_header(doc, pdf_path)`**: Erzeugt den einheitlichen Markdown-Header.
+- **`render_page_to_base64(page, dpi)`**: Rendert PDF-Seiten als hochauflösende Base64-PNGs.
+- **`is_page_visual(page)`**: Erkennt Bilder und Vektorgrafiken für intelligentes Hybrid-Routing.
 
 ---
 
-### `format_metadata_header(doc: fitz.Document, pdf_path: Path) -> str`
-- **Beschreibung**: Formatiert den Markdown-Header inkl. Titel, Autor und Quell-Dateiname.
-- **Parameter**:
-  - `doc` (`fitz.Document`): Das PDF-Dokument.
-  - `pdf_path` (`Path`): Pfad zur PDF-Datei.
-- **Rückgabe**: `str` – Formatisierter Markdown-Header-String.
+## 4. `l2m_core/security.py`
+- **`get_system_prompt()`**: Vollständiger System-Prompt mit Anti-AI Canary Filter, LaTeX-Regeln und Mermaid.js-Konvertierung.
 
 ---
 
-### `render_page_to_base64(page: fitz.Page, dpi: int = 200) -> str`
-- **Beschreibung**: Rendert eine PDF-Seite als PNG-Grafik und gibt diese Base64-codiert zurück.
-- **Parameter**:
-  - `page` (`fitz.Page`): Die PyMuPDF PDF-Seite.
-  - `dpi` (`int`, optional): Auflösung in DPI (Standard: `200`).
-- **Rückgabe**: `str` – Base64-codierter String.
-
----
-
-### `get_system_prompt() -> str`
-- **Beschreibung**: Gibt den System-Prompt inklusive Prompt-Injection-Schutz, Mermaid.js-Regeln und Formatierungsvorgaben zurück.
-- **Parameter**: Keine.
-- **Rückgabe**: `str` – System-Prompt.
-
----
-
-### `build_user_message(base64_image: str, page_number: int) -> list[dict]`
-- **Beschreibung**: Erstellt die Benutzer-Nachricht mit XML-Metadaten und Bild-URL.
-- **Parameter**:
-  - `base64_image` (`str`): Base64-codiertes Folienbild.
-  - `page_number` (`int`): Seitennummer.
-- **Rückgabe**: `list[dict]` – Strukturierte Liste von Inhalts-Objekten.
-
----
-
-### `request_slide_markdown(client: OpenAI, model: str, base64_image: str, page_number: int) -> str`
-- **Beschreibung**: Sendet die Anfrage an OpenAI mit dynamischem Modell, `temperature=0.0` und automatischer `tenacity`-Retry-Logik bei Rate-Limits.
-- **Parameter**:
-  - `client` (`OpenAI`): API-Client.
-  - `model` (`str`): Name des Modells (`gpt-4o` oder `gpt-4o-mini`).
-  - `base64_image` (`str`): Folienbild als Base64.
-  - `page_number` (`int`): Seitennummer.
-- **Rückgabe**: `str` – Generiertes Markdown.
-
----
-
-### `process_single_page(client: OpenAI, page: fitz.Page, page_number: int) -> str`
-- **Beschreibung**: Ermittelt das optimale Modell, wandelt die Folie um und fügt den expliziten Folien-Anker (`## [Folie X]`) hinzu.
-- **Parameter**:
-  - `client` (`OpenAI`): API-Client.
-  - `page` (`fitz.Page`): PDF-Seite.
-  - `page_number` (`int`): Seitennummer.
-- **Rückgabe**: `str` – Formatiertes Markdown-Segment für die Folie.
-
----
-
-### `process_page_worker(pdf_path: Path, page_index: int, client: OpenAI) -> tuple[int, str]`
-- **Beschreibung**: Worker-Funktion für die parallele Verarbeitung im `ThreadPoolExecutor`.
-- **Parameter**:
-  - `pdf_path` (`Path`): Pfad zur PDF.
-  - `page_index` (`int`): Index der Seite (0-basiert).
-  - `client` (`OpenAI`): API-Client.
-- **Rückgabe**: `tuple[int, str]` – Paar aus Seiten-Index und generiertem Markdown.
-
----
-
-### `convert_pdf_to_markdown(pdf_path: Path, output_path: Path) -> None`
-- **Beschreibung**: Koordiniert Validierung, Header-Generierung, parallele Konvertierung und Speichern im `output/`-Ordner.
-- **Parameter**:
-  - `pdf_path` (`Path`): Eingabe-PDF.
-  - `output_path` (`Path`): Ziel-Markdown.
-- **Rückgabe**: `None`.
-
----
-
-### `main() -> None`
-- **Beschreibung**: Einstiegspunkt des Skripts. Erstellt benötigte Verzeichnisse und startet den Konvertierungsablauf.
-- **Parameter**: Keine.
-- **Rückgabe**: `None`.
+## 5. `l2m_core/converter.py`
+- **`execute_conversion(pdf_path, output_path, provider, workers, hybrid, json_stream, dpi)`**: Koordiniert den gesamten Ablauf, steuert den ThreadPoolExecutor und streamt strukturierte JSON-Events für GUI und CLI.

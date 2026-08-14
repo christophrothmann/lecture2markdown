@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::io::{BufRead, BufReader};
@@ -8,39 +9,70 @@ use tauri::{Emitter, Manager};
 fn get_secret_file_path(app: &tauri::AppHandle) -> std::path::PathBuf {
     let config_dir = app.path().app_config_dir().unwrap_or_else(|_| std::env::temp_dir());
     let _ = std::fs::create_dir_all(&config_dir);
-    config_dir.join(".openai_key_store")
+    config_dir.join(".l2m_provider_keys.json")
+}
+
+fn read_keys_map(app: &tauri::AppHandle) -> HashMap<String, String> {
+    let secret_path = get_secret_file_path(app);
+    if secret_path.exists() {
+        if let Ok(content) = std::fs::read_to_string(&secret_path) {
+            if let Ok(map) = serde_json::from_str::<HashMap<String, String>>(&content) {
+                return map;
+            }
+        }
+    }
+    HashMap::new()
 }
 
 #[tauri::command]
-async fn save_api_key_native(key: String, app: tauri::AppHandle) -> Result<(), String> {
+async fn save_api_key_native(provider: String, key: String, app: tauri::AppHandle) -> Result<(), String> {
+    let mut map = read_keys_map(&app);
+    map.insert(provider.trim().to_lowercase(), key.trim().to_string());
+    
     let secret_path = get_secret_file_path(&app);
-    std::fs::write(&secret_path, key.trim())
+    let serialized = serde_json::to_string(&map).map_err(|e| e.to_string())?;
+    std::fs::write(&secret_path, serialized)
         .map_err(|e| format!("API-Key konnte nicht sicher gespeichert werden: {}", e))
 }
 
 #[tauri::command]
-async fn get_api_key_native(app: tauri::AppHandle) -> Result<String, String> {
-    let secret_path = get_secret_file_path(&app);
-    if secret_path.exists() {
-        std::fs::read_to_string(&secret_path)
-            .map(|s| s.trim().to_string())
-            .map_err(|e| format!("API-Key konnte nicht ausgelesen werden: {}", e))
-    } else {
-        Ok("".to_string())
-    }
+async fn get_api_keys_native(app: tauri::AppHandle) -> Result<HashMap<String, String>, String> {
+    Ok(read_keys_map(&app))
 }
 
 #[tauri::command]
-async fn validate_api_key_native(key: String) -> Result<bool, String> {
+async fn get_api_key_native(provider: Option<String>, app: tauri::AppHandle) -> Result<String, String> {
+    let target = provider.unwrap_or_else(|| "openai".to_string()).to_lowercase();
+    let map = read_keys_map(&app);
+    Ok(map.get(&target).cloned().unwrap_or_default())
+}
+
+#[tauri::command]
+async fn validate_api_key_native(provider: String, key: String) -> Result<bool, String> {
     let sanitized_key = key.trim();
     if sanitized_key.is_empty() {
         return Err("Bitte gib einen API-Key ein.".to_string());
     }
 
-    let script = format!(
-        "import sys; from openai import OpenAI; client = OpenAI(api_key='{}'); client.models.list()",
-        sanitized_key
-    );
+    let target_provider = provider.trim().to_lowercase();
+    let script = match target_provider.as_str() {
+        "google" => format!(
+            "from google import genai; client = genai.Client(api_key='{}'); list(client.models.list())",
+            sanitized_key
+        ),
+        "anthropic" => format!(
+            "from anthropic import Anthropic; client = Anthropic(api_key='{}'); client.models.list()",
+            sanitized_key
+        ),
+        "mistral" => format!(
+            "from l2m_core.providers.mistral_provider import Mistral; client = Mistral(api_key='{}'); client.models.list()",
+            sanitized_key
+        ),
+        _ => format!(
+            "from openai import OpenAI; client = OpenAI(api_key='{}'); client.models.list()",
+            sanitized_key
+        ),
+    };
 
     let venv_python_candidates = [
         "../../.venv/bin/python",
@@ -63,7 +95,8 @@ async fn validate_api_key_native(key: String) -> Result<bool, String> {
     if output.status.success() {
         Ok(true)
     } else {
-        Err("Ungültiger API-Key oder keine Verbindung zu OpenAI.".to_string())
+        let err_msg = String::from_utf8_lossy(&output.stderr);
+        Err(format!("Ungültiger API-Key oder keine Verbindung: {}", err_msg.trim()))
     }
 }
 
@@ -71,9 +104,12 @@ async fn validate_api_key_native(key: String) -> Result<bool, String> {
 async fn convert_lecture_native(
     pdf_path: String,
     _output_path: String,
+    provider: Option<String>,
     api_key: String,
     window: tauri::Window,
 ) -> Result<String, String> {
+    let chosen_provider = provider.unwrap_or_else(|| "openai".to_string()).to_lowercase();
+
     // 1. Resolve deterministic, writeable OS temp directory for output
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -108,17 +144,25 @@ async fn convert_lecture_native(
         .find(|p| Path::new(p).exists())
         .copied();
 
+    let env_var_key = match chosen_provider.as_str() {
+        "google" => "GEMINI_API_KEY",
+        "anthropic" => "ANTHROPIC_API_KEY",
+        "mistral" => "MISTRAL_API_KEY",
+        _ => "OPENAI_API_KEY",
+    };
+
     let mut child = if let Some(py_bin) = venv_python {
         Command::new(py_bin)
             .arg(script_path)
             .arg("--pdf").arg(&pdf_path)
             .arg("--output").arg(&safe_output_path)
+            .arg("--provider").arg(&chosen_provider)
             .arg("--json-stream")
-            .env("OPENAI_API_KEY", &api_key)
+            .env(env_var_key, &api_key)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
-            .map_err(|e| format!("Fehler beim Starten des venv Python-Prozesses ({}): {}", py_bin, e))?
+            .map_err(|e| format!("Fehler beim Starten des Python-Prozesses ({}): {}", py_bin, e))?
     } else if Command::new("uv").arg("--version").output().is_ok() {
         Command::new("uv")
             .arg("run")
@@ -126,8 +170,9 @@ async fn convert_lecture_native(
             .arg(script_path)
             .arg("--pdf").arg(&pdf_path)
             .arg("--output").arg(&safe_output_path)
+            .arg("--provider").arg(&chosen_provider)
             .arg("--json-stream")
-            .env("OPENAI_API_KEY", &api_key)
+            .env(env_var_key, &api_key)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -142,8 +187,9 @@ async fn convert_lecture_native(
             .arg(script_path)
             .arg("--pdf").arg(&pdf_path)
             .arg("--output").arg(&safe_output_path)
+            .arg("--provider").arg(&chosen_provider)
             .arg("--json-stream")
-            .env("OPENAI_API_KEY", &api_key)
+            .env(env_var_key, &api_key)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -196,6 +242,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             convert_lecture_native,
             save_api_key_native,
+            get_api_keys_native,
             get_api_key_native,
             validate_api_key_native
         ])

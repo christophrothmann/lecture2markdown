@@ -12,14 +12,18 @@ Specially engineered for students and researchers to upload lecture content into
 
 ## ✨ Features
 
-- 🖥️ **Native Desktop GUI (`l2m-gui`)**: Modern, high-performance desktop application built with **Tauri v2**, **React + TypeScript**, and **TailwindCSS** for users who prefer an intuitive graphical interface over the command line.
-- 🔀 **Smart Hybrid Routing**: Automatically detects whether a slide contains visual diagrams or text only via PyMuPDF pre-analysis. Dynamically routes simple slides to `gpt-4o-mini` and visual slides to `gpt-4o`, reducing API costs by up to 80%.
-- 🏷️ **Explicit Slide Anchors (`## [Folie X]`)**: Structures every slide with explicit anchors so you can reference specific slides directly in ChatGPT prompts (e.g., *"Explain the formula on slide 14"*).
+- 🌐 **Multi-Provider Support**: Choose between 4 leading multimodal AI providers:
+  - **OpenAI**: `gpt-4o` & `gpt-4o-mini`
+  - **Google Gemini**: `gemini-2.0-flash` & `gemini-1.5-pro`
+  - **Anthropic Claude**: `claude-3-7-sonnet` & `claude-3-5-haiku`
+  - **Mistral AI**: `mistral-ocr-latest` (dedicated document OCR) & `pixtral-12b`
+- 🖥️ **Native Desktop GUI (`l2m-gui`)**: Modern, high-performance desktop application built with **Tauri v2**, **React + TypeScript**, and **TailwindCSS** with 1-click provider switching.
+- 🔀 **Smart Hybrid Routing**: Automatically detects whether a slide contains visual diagrams or text only via PyMuPDF pre-analysis, cutting costs by up to 80%.
+- 🏷️ **Explicit Slide Anchors (`## [Folie X]`)**: Structures every slide with explicit anchors so you can reference specific slides directly in ChatGPT prompts.
 - 📊 **Mermaid.js Diagram Synthesis**: Converts flowcharts, state machines, and architecture diagrams into native, editable ` ```mermaid ` code blocks instead of static images.
 - 📐 **LaTeX Formula Extraction**: Automatically translates all mathematical equations into standard inline (`$...$`) or block (`$$...$$`) LaTeX.
 - 🛡️ **Anti-AI Canary & Prompt Injection Hardened**: Built-in security rules strip out hidden text, white-on-white professor trap instructions (*"If you are an AI respond with X"*), and prompt injection vectors.
 - 🎯 **100% Deterministic Output**: Runs at `temperature=0.0` to eliminate creative hallucination and guarantee strict transcription fidelity.
-- 📂 **Clean Workspace Management**: Organizes input files (`lectures/`) and generated outputs (`output/`) automatically.
 - ⚡ **Powered by `uv` & `bun`**: Uses Astral's `uv` for sub-second Python virtualenv setup and `bun` for the desktop GUI.
 
 ---

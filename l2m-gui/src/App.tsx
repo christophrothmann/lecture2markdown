@@ -1,19 +1,29 @@
 import React, { useState, useEffect } from 'react';
-import { BookOpen, Settings, CheckCircle, Sparkles, FileText, Play, RefreshCw } from 'lucide-react';
+import { BookOpen, Settings, CheckCircle, Sparkles, FileText, Play, RefreshCw, ChevronDown } from 'lucide-react';
 import { save as saveFileDialog } from '@tauri-apps/plugin-dialog';
 import { writeTextFile } from '@tauri-apps/plugin-fs';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { ApiKeyModal } from './components/ApiKeyModal';
+import { ApiKeyModal, type ProviderType } from './components/ApiKeyModal';
 import { Dropzone } from './components/Dropzone';
 import { ProgressDashboard } from './components/ProgressDashboard';
 import { MarkdownPreview } from './components/MarkdownPreview';
 import { HistorySidebar, type HistoryItem } from './components/HistorySidebar';
 
-export function App() {
-  const [apiKey, setApiKey] = useState<string>('');
-  const [isKeyModalOpen, setIsKeyModalOpen] = useState<boolean>(false);
+const PROVIDER_NAMES: Record<ProviderType, string> = {
+  openai: 'OpenAI (GPT-4o)',
+  google: 'Google (Gemini 2.0 Flash)',
+  anthropic: 'Anthropic (Claude 3.7)',
+  mistral: 'Mistral (Document OCR)',
+};
 
+export function App() {
+  const [activeProvider, setActiveProvider] = useState<ProviderType>(() => {
+    return (localStorage.getItem('l2m_active_provider') as ProviderType) || 'openai';
+  });
+  const [providerKeys, setProviderKeys] = useState<Record<string, string>>({});
+  const [isKeyModalOpen, setIsKeyModalOpen] = useState<boolean>(false);
+  
   const [selectedFilePath, setSelectedFilePath] = useState<string>('');
   const [selectedFileName, setSelectedFileName] = useState<string>('');
   const [pageCount, setPageCount] = useState<number>(0);
@@ -23,7 +33,7 @@ export function App() {
     total: 0,
     lastModel: '',
   });
-
+  
   const [markdownResult, setMarkdownResult] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>(() => {
     try {
@@ -33,20 +43,20 @@ export function App() {
     }
   });
 
-  // Load API Key securely from Rust backend store on startup
+  // Load API Keys securely from Rust backend on startup
   useEffect(() => {
-    invoke<string>('get_api_key_native')
-      .then((storedKey) => {
-        if (storedKey) {
-          setApiKey(storedKey);
-        } else {
+    invoke<Record<string, string>>('get_api_keys_native')
+      .then((keys) => {
+        setProviderKeys(keys || {});
+        const currentKey = keys ? keys[activeProvider] : '';
+        if (!currentKey) {
           setIsKeyModalOpen(true);
         }
       })
       .catch(() => {
         setIsKeyModalOpen(true);
       });
-  }, []);
+  }, [activeProvider]);
 
   useEffect(() => {
     let unlistenFn: (() => void) | null = null;
@@ -55,7 +65,7 @@ export function App() {
       try {
         const payload = JSON.parse(event.payload);
         if (payload.type === 'start') {
-          setProgress({ completed: 0, total: payload.total_pages, lastModel: 'gpt-4o-mini' });
+          setProgress({ completed: 0, total: payload.total_pages, lastModel: '' });
           setPageCount(payload.total_pages);
         } else if (payload.type === 'progress') {
           setProgress({
@@ -65,7 +75,7 @@ export function App() {
           });
         }
       } catch {
-        // Ignoriere unformatierte Logs
+        // Ignore unformatted logs
       }
     }).then((unlisten) => {
       unlistenFn = unlisten;
@@ -76,13 +86,18 @@ export function App() {
     };
   }, []);
 
-  const handleSaveApiKey = async (key: string) => {
-    setApiKey(key);
+  const handleSaveProviderKey = async (provider: ProviderType, key: string) => {
+    setProviderKeys((prev) => ({ ...prev, [provider]: key }));
     try {
-      await invoke('save_api_key_native', { key });
+      await invoke('save_api_key_native', { provider, key });
     } catch (e) {
       console.error('Key konnte nicht im Backend gespeichert werden:', e);
     }
+  };
+
+  const handleSelectProvider = (provider: ProviderType) => {
+    setActiveProvider(provider);
+    localStorage.setItem('l2m_active_provider', provider);
   };
 
   const handleClearHistory = () => {
@@ -105,8 +120,10 @@ export function App() {
     setConverting(false);
   };
 
+  const currentActiveKey = providerKeys[activeProvider] || '';
+
   const handleStartConversion = async () => {
-    if (!selectedFilePath || !apiKey) return;
+    if (!selectedFilePath || !currentActiveKey) return;
     setConverting(true);
     setMarkdownResult(null);
 
@@ -114,7 +131,8 @@ export function App() {
       const realGeneratedMarkdown = await invoke<string>('convert_lecture_native', {
         pdfPath: selectedFilePath,
         outputPath: '',
-        apiKey: apiKey,
+        provider: activeProvider,
+        apiKey: currentActiveKey,
       });
 
       setMarkdownResult(realGeneratedMarkdown);
@@ -134,7 +152,7 @@ export function App() {
         return updated;
       });
     } catch (error: any) {
-      alert(`Fehler bei der echten Python-Konvertierung:\n${error}`);
+      alert(`Fehler bei der Konvertierung:\n${error}`);
       setConverting(false);
     }
   };
@@ -182,12 +200,16 @@ export function App() {
         </div>
 
         <div className="flex items-center space-x-3">
-          {apiKey ? (
-            <div className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-xl text-xs font-semibold">
-              <CheckCircle className="w-3.5 h-3.5" />
-              <span>API-Key Aktiv</span>
-            </div>
-          ) : null}
+          {/* Active Provider Selector Badge */}
+          <button
+            onClick={() => setIsKeyModalOpen(true)}
+            className="flex items-center space-x-2 px-3 py-1.5 bg-surface hover:bg-surface-hover border border-border rounded-xl text-xs font-semibold transition cursor-pointer"
+            title="Provider wechseln / Key einrichten"
+          >
+            <span className="w-2 h-2 rounded-full bg-emerald-400" />
+            <span className="text-slate-200">{PROVIDER_NAMES[activeProvider]}</span>
+            <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+          </button>
 
           <button
             onClick={() => setIsKeyModalOpen(true)}
@@ -205,7 +227,7 @@ export function App() {
         <div className="lg:col-span-3 space-y-6 flex flex-col">
           {/* State 1: Dropzone (No File selected) */}
           {!selectedFilePath && !converting && !markdownResult && (
-            <Dropzone onFileSelectedPath={handleFileSelectedPath} disabled={!apiKey} />
+            <Dropzone onFileSelectedPath={handleFileSelectedPath} disabled={!currentActiveKey} />
           )}
 
           {/* State 2: Selected File Card */}
@@ -218,7 +240,7 @@ export function App() {
               <div>
                 <h3 className="text-lg font-bold text-slate-100">{selectedFileName}</h3>
                 <p className="text-xs text-slate-400 mt-1">
-                  Bereit zur Konvertierung ({selectedFilePath})
+                  Bereit zur Konvertierung via <strong className="text-slate-200">{PROVIDER_NAMES[activeProvider]}</strong> ({selectedFilePath})
                 </p>
               </div>
 
@@ -246,7 +268,7 @@ export function App() {
               fileName={selectedFileName}
               completedPages={progress.completed}
               totalPages={progress.total}
-              lastModelUsed={progress.lastModel}
+              lastModelUsed={progress.lastModel || PROVIDER_NAMES[activeProvider]}
             />
           )}
 
@@ -275,11 +297,13 @@ export function App() {
         </div>
       </main>
 
-      {/* API Key Modal */}
+      {/* Multi-Provider API Key Modal */}
       <ApiKeyModal
         isOpen={isKeyModalOpen}
-        apiKey={apiKey}
-        onSaveKey={handleSaveApiKey}
+        activeProvider={activeProvider}
+        providerKeys={providerKeys}
+        onSelectProvider={handleSelectProvider}
+        onSaveKey={handleSaveProviderKey}
         onClose={() => setIsKeyModalOpen(false)}
       />
     </div>
