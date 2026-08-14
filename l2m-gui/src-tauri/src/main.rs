@@ -27,7 +27,9 @@ fn read_keys_map(app: &tauri::AppHandle) -> HashMap<String, String> {
     HashMap::new()
 }
 
-/// Dynamically locates the project root, canonical Python binary, and script path by traversing upwards.
+/// Dynamically locates the project root, virtualenv Python binary, and script path.
+/// NOTE: Virtualenv binaries must NOT be canonicalized because canonicalize resolves symlinks
+/// to the base system Python, losing the pyvenv.cfg virtualenv package context.
 fn find_project_environment() -> (Option<PathBuf>, Option<PathBuf>, Option<PathBuf>) {
     let mut search_dirs = Vec::new();
     if let Ok(cwd) = std::env::current_dir() {
@@ -56,20 +58,20 @@ fn find_project_environment() -> (Option<PathBuf>, Option<PathBuf>, Option<PathB
                 let py_bin_alt = venv_candidate.join("Scripts").join("python.exe");
 
                 let resolved_py = if py_bin.exists() {
-                    std::fs::canonicalize(py_bin).ok()
+                    Some(py_bin)
                 } else if py_bin_alt.exists() {
-                    std::fs::canonicalize(py_bin_alt).ok()
+                    Some(py_bin_alt)
                 } else {
                     None
                 };
 
                 let resolved_script = if script_candidate.exists() {
-                    std::fs::canonicalize(script_candidate).ok()
+                    Some(script_candidate)
                 } else {
                     None
                 };
 
-                let resolved_proj = std::fs::canonicalize(dir).ok();
+                let resolved_proj = Some(dir.to_path_buf());
 
                 return (resolved_py, resolved_script, resolved_proj);
             }
@@ -101,18 +103,21 @@ fn setup_process_command(
     if let Some(root) = proj_root {
         cmd.current_dir(root);
         cmd.env("PYTHONPATH", root);
-        if let Ok(current_path) = std::env::var("PATH") {
+        let venv_dir = root.join(".venv");
+        if venv_dir.exists() {
+            cmd.env("VIRTUAL_ENV", &venv_dir);
             #[cfg(unix)]
-            let venv_bin = root.join(".venv").join("bin");
+            let venv_bin = venv_dir.join("bin");
             #[cfg(windows)]
-            let venv_bin = root.join(".venv").join("Scripts");
+            let venv_bin = venv_dir.join("Scripts");
 
-            if venv_bin.exists() {
+            if let Ok(current_path) = std::env::var("PATH") {
                 #[cfg(unix)]
                 cmd.env("PATH", format!("{}:{}", venv_bin.to_string_lossy(), current_path));
                 #[cfg(windows)]
                 cmd.env("PATH", format!("{};{}", venv_bin.to_string_lossy(), current_path));
-                cmd.env("VIRTUAL_ENV", root.join(".venv"));
+            } else {
+                cmd.env("PATH", venv_bin);
             }
         }
     }
