@@ -2,12 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.0] - 2026-08-13
+
+### Added
+- Created brand new Desktop GUI application in `l2m-gui/` using **Tauri v2**, **Bun.js**, **React + TypeScript**, and **TailwindCSS**.
+- Initial API Key onboarding modal with `client.models.list()` validation (0 Tokens cost) and link to OpenAI portal.
+- Drag & Drop PDF uploader with German UI labels and native absolute file path resolution via Tauri dialogs.
+- Real-time progress dashboard with live Hybrid Routing badges (`gpt-4o-mini` vs `gpt-4o`) and estimated API cost calculator.
+- Markdown Live Preview with 1-click **"Markdown kopieren"** (full document ChatGPT clipboard) and native **"Markdown speichern"** OS dialogs.
+- **Anti-AI Canary & Trap Filtering**: Enhanced System Prompt security rules in `lecture2md.py` and `lecture2md_gui.py` to automatically detect, ignore, and strip out hidden professor anti-AI traps, micro-text, and canary instructions from generated Markdown files.
+- History sidebar for recent conversion tracking.
+- Multi-Platform GitHub Actions CI/CD pipeline generating `.msi` (Windows) and `.dmg` (macOS) installers.
+- Developed on feature branch `feature/frosty-fox-gui`.
+
 ## [0.4.4] - 2026-08-09
 
 ### Added
 - Added explicit **Legal Disclaimer & Copyright Notice** section to `README.md` clarifying user copyright responsibilities, personal study scope, and author liability limitation.
 - Fixed GitHub Actions release workflow (`.github/workflows/release.yml`) using `uv venv` and `uvx` for automated `bandit` and `pip-audit` security scans.
-- Bumped project version to `v0.4.4` in `pyproject.toml` and `uv.lock`.
 
 ## [0.4.0] - 2026-08-09
 

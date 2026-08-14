@@ -1,50 +1,42 @@
 import os
 import base64
 import sys
+import json
 import time
+import argparse
 from pathlib import Path
-from dotenv import load_dotenv
 import fitz
-from tqdm import tqdm
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 from openai import OpenAI
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# TODO: Adjust folder paths, filenames, or thread counts if needed
 DEFAULT_MODEL = "gpt-4o"
 FAST_MODEL = "gpt-4o-mini"
-ENABLE_HYBRID_ROUTING = True
-LECTURES_DIR = "lectures"
-OUTPUT_DIR = "output"
-INPUT_PDF_FILENAME = "input.pdf"
-OUTPUT_MD_FILENAME = "output.md"
 DPI = 200
-MAX_WORKERS = 3
 
-load_dotenv()
+def emit_event(event_type: str, data: dict) -> None:
+    message = {"type": event_type, **data}
+    print(json.dumps(message), flush=True)
 
-def get_openai_client() -> OpenAI:
-    api_key = os.getenv("OPENAI_API_KEY")
-    if api_key is None:
-        # TODO: Set OPENAI_API_KEY in your .env file
-        sys.exit("Error: OPENAI_API_KEY not found in .env file.")
-    return OpenAI(api_key=api_key, max_retries=6)
+def parse_args():
+    parser = argparse.ArgumentParser(description="Lecture2Markdown GUI Sidecar Script")
+    parser.add_argument("--pdf", required=True, help="Path to input PDF file")
+    parser.add_argument("--output", required=True, help="Path to output Markdown file")
+    parser.add_argument("--api-key", required=False, help="OpenAI API Key")
+    parser.add_argument("--workers", type=int, default=3, help="Max concurrent workers")
+    parser.add_argument("--hybrid", action=argparse.BooleanOptionalAction, default=True, help="Enable hybrid model routing")
+    return parser.parse_args()
 
-def ensure_project_directories() -> tuple[Path, Path]:
-    lectures_path = Path(LECTURES_DIR)
-    output_path = Path(OUTPUT_DIR)
-    lectures_path.mkdir(parents=True, exist_ok=True)
-    output_path.mkdir(parents=True, exist_ok=True)
-    return lectures_path, output_path
-
-def validate_pdf_document(doc: fitz.Document, pdf_path: Path) -> None:
+def validate_pdf(doc: fitz.Document, pdf_path: str) -> None:
     if doc.is_encrypted:
-        sys.exit(f"Error: PDF file '{pdf_path}' is encrypted and cannot be processed.")
+        emit_event("error", {"message": f"PDF file '{pdf_path}' is encrypted and cannot be processed."})
+        sys.exit(1)
     if len(doc) == 0:
-        sys.exit(f"Error: PDF file '{pdf_path}' contains no pages.")
+        emit_event("error", {"message": f"PDF file '{pdf_path}' contains no pages."})
+        sys.exit(1)
 
-def select_model_for_page(page: fitz.Page) -> str:
-    if not ENABLE_HYBRID_ROUTING:
+def select_model_for_page(page: fitz.Page, hybrid_enabled: bool) -> str:
+    if not hybrid_enabled:
         return DEFAULT_MODEL
     has_images = len(page.get_images()) > 0
     has_drawings = len(page.get_drawings()) > 0
@@ -125,56 +117,77 @@ def request_slide_markdown(client: OpenAI, model: str, base64_image: str, page_n
     content = response.choices[0].message.content
     return "*(Kein relevanter Folieninhalt)*" if not content or content.strip().lower() in ["none", "none.", "no content", "n/a"] else content.strip()
 
-def process_single_page(client: OpenAI, page: fitz.Page, page_number: int) -> str:
-    selected_model = select_model_for_page(page)
+def process_single_page(client: OpenAI, page: fitz.Page, page_number: int, hybrid_enabled: bool) -> tuple[str, str]:
+    selected_model = select_model_for_page(page, hybrid_enabled)
     base64_image = render_page_to_base64(page, dpi=DPI)
     slide_markdown = request_slide_markdown(client, selected_model, base64_image, page_number)
-    return f"## [Folie {page_number}]\n{slide_markdown}\n"
+    formatted_content = f"## [Folie {page_number}]\n{slide_markdown}\n"
+    return formatted_content, selected_model
 
-def process_page_worker(pdf_path: Path, page_index: int, client: OpenAI) -> tuple[int, str]:
+def process_page_worker(pdf_path: Path, page_index: int, client: OpenAI, hybrid_enabled: bool) -> tuple[int, str, str]:
     page_number = page_index + 1
     doc = fitz.open(pdf_path)
-    page_content = process_single_page(client, doc[page_index], page_number)
+    page_content, used_model = process_single_page(client, doc[page_index], page_number, hybrid_enabled)
     doc.close()
-    return page_index, page_content
+    return page_index, page_content, used_model
 
-def convert_pdf_to_markdown(pdf_path: Path, output_path: Path) -> None:
-    start_time = time.time()
-    client = get_openai_client()
+def main():
+    args = parse_args()
+    pdf_path = Path(args.pdf)
+    output_path = Path(args.output)
+    api_key = args.api_key or os.getenv("OPENAI_API_KEY")
     
+    if not pdf_path.exists():
+        emit_event("error", {"message": f"Input PDF file '{pdf_path}' not found."})
+        sys.exit(1)
+
+    if not api_key:
+        emit_event("error", {"message": "OpenAI API key is missing. Provide --api-key or OPENAI_API_KEY."})
+        sys.exit(1)
+         
+    client = OpenAI(api_key=api_key, max_retries=6)
     doc = fitz.open(pdf_path)
-    validate_pdf_document(doc, pdf_path)
+    validate_pdf(doc, str(pdf_path))
+    
     header = format_metadata_header(doc, pdf_path)
     total_pages = len(doc)
     doc.close()
 
+    emit_event("start", {"total_pages": total_pages, "pdf_name": pdf_path.name})
+
     sections = [""] * total_pages
-    print(f"Starting processing of {total_pages} slides (Hybrid Routing: {ENABLE_HYBRID_ROUTING}) with {MAX_WORKERS} threads...")
-    
-    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        futures = [executor.submit(process_page_worker, pdf_path, idx, client) for idx in range(total_pages)]
-        for future in tqdm(as_completed(futures), total=total_pages, desc="Processing slides"):
-            page_index, page_content = future.result()
+    completed_count = 0
+    start_time = time.time()
+
+    with ThreadPoolExecutor(max_workers=args.workers) as executor:
+        futures = [
+            executor.submit(process_page_worker, pdf_path, idx, client, args.hybrid) 
+            for idx in range(total_pages)
+        ]
+        
+        for future in as_completed(futures):
+            page_index, page_content, used_model = future.result()
             sections[page_index] = page_content
+            completed_count += 1
+            
+            emit_event("progress", {
+                "completed": completed_count,
+                "total": total_pages,
+                "page_number": page_index + 1,
+                "model_used": used_model
+            })
 
     final_content = header + "\n---\n\n".join(sections)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w", encoding="utf-8") as file:
         file.write(final_content)
 
-    elapsed_time = time.time() - start_time
-    minutes, seconds = divmod(elapsed_time, 60)
-    print(f"\nDone! Processing {total_pages} slides took {int(minutes)}m {seconds:.1f}s. Saved to: '{output_path}'")
-
-def main():
-    lectures_dir, output_dir = ensure_project_directories()
-    input_pdf_path = lectures_dir / INPUT_PDF_FILENAME
-    output_md_path = output_dir / OUTPUT_MD_FILENAME
-
-    if not input_pdf_path.exists():
-        # TODO: Place your PDF file in the 'lectures' folder or update INPUT_PDF_FILENAME
-        sys.exit(f"Error: Input file '{input_pdf_path}' not found. Please place it in the '{LECTURES_DIR}' directory.")
-
-    convert_pdf_to_markdown(input_pdf_path, output_md_path)
+    elapsed = time.time() - start_time
+    emit_event("complete", {
+        "output_path": str(output_path),
+        "total_pages": total_pages,
+        "elapsed_seconds": round(elapsed, 1),
+    })
 
 if __name__ == "__main__":
     main()

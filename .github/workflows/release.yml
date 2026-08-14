@@ -6,11 +6,8 @@ on:
       - 'v*'
 
 jobs:
-  build-and-release:
+  python-security-checks:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -45,9 +42,46 @@ jobs:
         run: |
           uv run python -m py_compile lecture2md.py
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+  build-tauri-gui:
+    needs: python-security-checks
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: 'macos-latest'
+            args: '--target aarch64-apple-darwin'
+          - platform: 'windows-latest'
+            args: ''
+
+    runs-on: ${{ matrix.platform }}
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node & Bun
+        uses: oven-sh/setup-bun@v2
         with:
-          generate_release_notes: true
+          bun-version: latest
+
+      - name: Setup Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Frontend Dependencies
+        run: |
+          cd l2m-gui
+          bun install
+
+      - name: Build Tauri Desktop App (.msi / .dmg)
+        uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: './l2m-gui'
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Lecture2Markdown ${{ github.ref_name }}'
+          releaseBody: 'See CHANGELOG.md for release details.'
+          releaseDraft: false
+          prerelease: false
