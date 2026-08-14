@@ -6,18 +6,64 @@ interface ProgressDashboardProps {
   completedPages: number;
   totalPages: number;
   lastModelUsed: string;
+  usedModels?: string[];
 }
+
+// Cost rates in EUR per slide inference
+const MODEL_RATES_EUR: Record<string, number> = {
+  // Google Gemini
+  'gemini-2.0-flash': 0.0001,
+  'gemini-1.5-pro': 0.0025,
+  // OpenAI
+  'gpt-4o-mini': 0.0002,
+  'gpt-4o': 0.0035,
+  // Anthropic Claude
+  'claude-3-5-haiku': 0.0003,
+  'claude-3-7-sonnet': 0.0045,
+  // Mistral AI
+  'pixtral-12b-2409': 0.0002,
+  'mistral-ocr-latest': 0.0010,
+};
+
+const getModelRate = (modelName: string): number => {
+  const m = (modelName || '').toLowerCase();
+  for (const [key, rate] of Object.entries(MODEL_RATES_EUR)) {
+    if (m.includes(key.toLowerCase())) return rate;
+  }
+  if (m.includes('pro') || m.includes('sonnet') || m.includes('ocr') || (m.includes('gpt-4o') && !m.includes('mini'))) {
+    return 0.003;
+  }
+  return 0.0002;
+};
 
 export const ProgressDashboard: React.FC<ProgressDashboardProps> = ({
   fileName,
   completedPages,
   totalPages,
   lastModelUsed,
+  usedModels = [],
 }) => {
   const percentage = totalPages > 0 ? Math.round((completedPages / totalPages) * 100) : 0;
   
-  // Estimate cost (~0.0001€ per gpt-4o-mini page, ~0.003€ per gpt-4o page)
-  const estimatedCostEuro = (completedPages * 0.0003).toFixed(4);
+  // Calculate exact dynamic accumulated costs based on each completed slide's model
+  const accumulatedCost = usedModels.length > 0
+    ? usedModels.reduce((acc, m) => acc + getModelRate(m), 0)
+    : completedPages * getModelRate(lastModelUsed);
+
+  const formattedCost = accumulatedCost.toFixed(4);
+
+  const isVisual = (model: string) => {
+    const m = (model || '').toLowerCase();
+    return (
+      m.includes('pro') ||
+      m.includes('sonnet') ||
+      m.includes('ocr') ||
+      m.includes('large') ||
+      (m.includes('gpt-4o') && !m.includes('mini'))
+    );
+  };
+
+  const isVision = isVisual(lastModelUsed);
 
   return (
     <div className="glass-card rounded-2xl p-6 space-y-6">
@@ -36,18 +82,20 @@ export const ProgressDashboard: React.FC<ProgressDashboardProps> = ({
           {lastModelUsed && (
             <span
               className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border ${
-                lastModelUsed === 'gpt-4o'
+                isVision
                   ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
                   : 'bg-blue-500/10 text-blue-400 border-blue-500/30'
               }`}
             >
-              {lastModelUsed === 'gpt-4o' ? (
+              {isVision ? (
                 <>
-                  <Sparkles className="w-3.5 h-3.5" /> gpt-4o (Diagramm)
+                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                  <span>{lastModelUsed} (Vision)</span>
                 </>
               ) : (
                 <>
-                  <Zap className="w-3.5 h-3.5" /> gpt-4o-mini (Text)
+                  <Zap className="w-3.5 h-3.5 text-blue-400" />
+                  <span>{lastModelUsed} (Text)</span>
                 </>
               )}
             </span>
@@ -74,10 +122,10 @@ export const ProgressDashboard: React.FC<ProgressDashboardProps> = ({
       <div className="flex items-center justify-between text-xs text-slate-400 bg-background/60 p-3 rounded-xl border border-border/50">
         <div className="flex items-center space-x-2">
           <Coins className="w-4 h-4 text-emerald-400" />
-          <span>Geschätzte API-Kosten:</span>
+          <span>Geschätzte dynamische API-Kosten:</span>
         </div>
         <span className="font-mono text-emerald-400 font-bold">
-          ~{estimatedCostEuro} €
+          ~{formattedCost} €
         </span>
       </div>
     </div>

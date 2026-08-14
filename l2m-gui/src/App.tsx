@@ -28,10 +28,11 @@ export function App() {
   const [selectedFileName, setSelectedFileName] = useState<string>('');
   const [pageCount, setPageCount] = useState<number>(0);
   const [converting, setConverting] = useState<boolean>(false);
-  const [progress, setProgress] = useState<{ completed: number; total: number; lastModel: string }>({
+  const [progress, setProgress] = useState<{ completed: number; total: number; lastModel: string; usedModels: string[] }>({
     completed: 0,
     total: 0,
     lastModel: '',
+    usedModels: [],
   });
   
   const [markdownResult, setMarkdownResult] = useState<string | null>(null);
@@ -65,14 +66,15 @@ export function App() {
       try {
         const payload = JSON.parse(event.payload);
         if (payload.type === 'start') {
-          setProgress({ completed: 0, total: payload.total_pages, lastModel: '' });
+          setProgress({ completed: 0, total: payload.total_pages, lastModel: '', usedModels: [] });
           setPageCount(payload.total_pages);
         } else if (payload.type === 'progress') {
-          setProgress({
+          setProgress((prev) => ({
             completed: payload.completed,
             total: payload.total,
             lastModel: payload.model_used,
-          });
+            usedModels: payload.model_used ? [...prev.usedModels, payload.model_used] : prev.usedModels,
+          }));
         }
       } catch {
         // Ignore unformatted logs
@@ -269,6 +271,7 @@ export function App() {
               completedPages={progress.completed}
               totalPages={progress.total}
               lastModelUsed={progress.lastModel || PROVIDER_NAMES[activeProvider]}
+              usedModels={progress.usedModels}
             />
           )}
 
