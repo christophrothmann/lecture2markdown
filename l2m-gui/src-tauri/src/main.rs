@@ -1,12 +1,18 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::io::{BufRead, BufReader};
 use tauri::{Emitter, Manager};
 
-fn get_secret_file_path(app: &tauri::AppHandle) -> std::path::PathBuf {
+enum PythonRunner {
+    Executable(PathBuf),
+    Uv,
+    System(String),
+}
+
+fn get_secret_file_path(app: &tauri::AppHandle) -> PathBuf {
     let config_dir = app.path().app_config_dir().unwrap_or_else(|_| std::env::temp_dir());
     let _ = std::fs::create_dir_all(&config_dir);
     config_dir.join(".l2m_provider_keys.json")
@@ -22,6 +28,57 @@ fn read_keys_map(app: &tauri::AppHandle) -> HashMap<String, String> {
         }
     }
     HashMap::new()
+}
+
+/// Resolves the Python binary using strict canonical path resolution against symlink hijacking.
+fn resolve_safe_python_runner() -> PythonRunner {
+    let venv_python_candidates = [
+        "../../.venv/bin/python",
+        "../.venv/bin/python",
+        ".venv/bin/python",
+        "../../.venv/Scripts/python.exe",
+        "../.venv/Scripts/python.exe",
+        ".venv/Scripts/python.exe",
+    ];
+
+    for candidate in venv_python_candidates {
+        let path = Path::new(candidate);
+        if path.exists() {
+            if let Ok(canonical_path) = std::fs::canonicalize(path) {
+                return PythonRunner::Executable(canonical_path);
+            }
+        }
+    }
+
+    if Command::new("uv").arg("--version").output().is_ok() {
+        return PythonRunner::Uv;
+    }
+
+    if Command::new("python3").arg("--version").output().is_ok() {
+        return PythonRunner::System("python3".to_string());
+    }
+
+    PythonRunner::System("python".to_string())
+}
+
+/// Resolves lecture2md.py using canonical path resolution to ensure absolute path integrity.
+fn resolve_safe_script_path() -> Result<PathBuf, String> {
+    let script_candidates = [
+        "../../lecture2md.py",
+        "../lecture2md.py",
+        "lecture2md.py",
+    ];
+
+    for candidate in script_candidates {
+        let path = Path::new(candidate);
+        if path.exists() {
+            if let Ok(canonical_path) = std::fs::canonicalize(path) {
+                return Ok(canonical_path);
+            }
+        }
+    }
+
+    Err("Skript lecture2md.py konnte über canonical path nicht verifiziert werden.".to_string())
 }
 
 #[tauri::command]
@@ -74,23 +131,12 @@ async fn validate_api_key_native(provider: String, key: String) -> Result<bool, 
         ),
     };
 
-    let venv_python_candidates = [
-        "../../.venv/bin/python",
-        "../.venv/bin/python",
-        ".venv/bin/python",
-    ];
-
-    let venv_python = venv_python_candidates
-        .iter()
-        .find(|p| Path::new(p).exists())
-        .copied()
-        .unwrap_or("python3");
-
-    let output = Command::new(venv_python)
-        .arg("-c")
-        .arg(&script)
-        .output()
-        .map_err(|e| format!("Fehler beim Ausführen der Validierung: {}", e))?;
+    let runner = resolve_safe_python_runner();
+    let output = match runner {
+        PythonRunner::Executable(safe_bin) => Command::new(safe_bin).arg("-c").arg(&script).output(),
+        PythonRunner::Uv => Command::new("uv").arg("run").arg("python").arg("-c").arg(&script).output(),
+        PythonRunner::System(sys_bin) => Command::new(sys_bin).arg("-c").arg(&script).output(),
+    }.map_err(|e| format!("Fehler beim Ausführen der Validierung: {}", e))?;
 
     if output.status.success() {
         Ok(true)
@@ -119,30 +165,11 @@ async fn convert_lecture_native(
     let temp_output_buf = std::env::temp_dir().join(format!("l2m_output_{}.md", timestamp));
     let safe_output_path = temp_output_buf.to_string_lossy().to_string();
 
-    // 2. Resolve Single-Source-of-Truth Python script (lecture2md.py)
-    let script_candidates = [
-        "../../lecture2md.py",
-        "../lecture2md.py",
-        "lecture2md.py",
-    ];
+    // 2. Resolve verified canonical script path
+    let script_path = resolve_safe_script_path()?;
 
-    let script_path = script_candidates
-        .iter()
-        .find(|p| Path::new(p).exists())
-        .copied()
-        .unwrap_or("../lecture2md.py");
-
-    // 3. Resolve Python binary (prefer project virtualenv or uv run)
-    let venv_python_candidates = [
-        "../../.venv/bin/python",
-        "../.venv/bin/python",
-        ".venv/bin/python",
-    ];
-
-    let venv_python = venv_python_candidates
-        .iter()
-        .find(|p| Path::new(p).exists())
-        .copied();
+    // 3. Resolve verified canonical Python runner
+    let python_runner = resolve_safe_python_runner();
 
     let env_var_key = match chosen_provider.as_str() {
         "google" => "GEMINI_API_KEY",
@@ -151,51 +178,33 @@ async fn convert_lecture_native(
         _ => "OPENAI_API_KEY",
     };
 
-    let mut child = if let Some(py_bin) = venv_python {
-        Command::new(py_bin)
-            .arg(script_path)
-            .arg("--pdf").arg(&pdf_path)
-            .arg("--output").arg(&safe_output_path)
-            .arg("--provider").arg(&chosen_provider)
-            .arg("--json-stream")
-            .env(env_var_key, &api_key)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| format!("Fehler beim Starten des Python-Prozesses ({}): {}", py_bin, e))?
-    } else if Command::new("uv").arg("--version").output().is_ok() {
-        Command::new("uv")
-            .arg("run")
-            .arg("python")
-            .arg(script_path)
-            .arg("--pdf").arg(&pdf_path)
-            .arg("--output").arg(&safe_output_path)
-            .arg("--provider").arg(&chosen_provider)
-            .arg("--json-stream")
-            .env(env_var_key, &api_key)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| format!("Fehler beim Starten von uv python: {}", e))?
-    } else {
-        let python_bin = if Command::new("python3").arg("--version").output().is_ok() {
-            "python3"
-        } else {
-            "python"
-        };
-        Command::new(python_bin)
-            .arg(script_path)
-            .arg("--pdf").arg(&pdf_path)
-            .arg("--output").arg(&safe_output_path)
-            .arg("--provider").arg(&chosen_provider)
-            .arg("--json-stream")
-            .env(env_var_key, &api_key)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| format!("Fehler beim Starten von {}: {}", python_bin, e))?
+    let mut cmd = match python_runner {
+        PythonRunner::Executable(safe_bin) => {
+            let mut c = Command::new(safe_bin);
+            c.arg(&script_path);
+            c
+        }
+        PythonRunner::Uv => {
+            let mut c = Command::new("uv");
+            c.arg("run").arg("python").arg(&script_path);
+            c
+        }
+        PythonRunner::System(sys_bin) => {
+            let mut c = Command::new(sys_bin);
+            c.arg(&script_path);
+            c
+        }
     };
 
+    cmd.arg("--pdf").arg(&pdf_path)
+        .arg("--output").arg(&safe_output_path)
+        .arg("--provider").arg(&chosen_provider)
+        .arg("--json-stream")
+        .env(env_var_key, &api_key)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    let mut child = cmd.spawn().map_err(|e| format!("Fehler beim Starten des Python-Prozesses: {}", e))?;
     let mut stderr_buf = String::new();
 
     let stdout_handle = if let Some(stdout) = child.stdout.take() {

@@ -28,19 +28,21 @@ Dieses Dokument analysiert den aktuellen Sicherheitsstatus von **Lecture2Markdow
 
 ---
 
+### D. Subprocess- & Canonical-Path-Validierung
+- **Strikte Pfad-Kanonisierung (`std::fs::canonicalize`)**:
+  Sowohl die Python-Binary als auch das Zielskript `lecture2md.py` werden vor dem Start via `std::fs::canonicalize` auf absolute Pfadintegrität validiert. Das verhindert Symlink-Hijacking oder nicht-autorisierte Pfadüberlagerungen.
+
+---
+
 ## 2. Dokumentierte Beobachtungen & Zukünftige Härtungspotenziale 🔍
 
 > [!NOTE]
-> Die folgenden Punkte dienen als Dokumentation möglicher weiterführender Optimierungen für zukünftige Releases.
+> Die folgenden Punkte dienen als Dokumentation möglicher weiterführender Optimierungen für zukünftige Enterprise-Releases.
 
 ### 1. Optionales OS-Keychain / Stronghold Backend
-- **Beobachtung**: Die Provider-Keys liegen aktuell als JSON-Datei im benutzerspezifischen Konfigurationsordner (`~/Library/Application Support/com.lecture2markdown.app/`).
+- **Beobachtung**: Die Provider-Keys liegen aktuell als geschützte JSON-Datei im benutzerspezifischen Konfigurationsordner (`~/Library/Application Support/com.lecture2markdown.app/`).
 - **Potenzielle Härtung**: Für Enterprise-Umgebungen könnte optional ein nativer OS-Schlüsselbund-Store (macOS Keychain via `security`, Windows Credential Manager via `DPAPI` oder Tauri Stronghold) anstelle einer Datei genutzt werden.
 
 ### 2. PDF-Größen- & Timeout-Begrenzung (DoS-Prävention)
 - **Beobachtung**: Bei sehr großen PDF-Dateien (z. B. 500+ Folien mit extrem hochauflösenden Vektorpfaden) könnte das Rendering signifikanten Arbeitsspeicher beanspruchen.
 - **Potenzielle Härtung**: Einführung eines konfigurierbaren Seitenlimits oder Timeouts pro Folien-Rendering im Worker-Pool.
-
-### 3. Subprocess-Pfadvalidierung
-- **Beobachtung**: Das Rust-Backend sucht Python über eine statische Liste von Kandidaten (`.venv/bin/python`, `uv`, `python3`).
-- **Potenzielle Härtung**: Strikte Canonical-Path-Prüfung (`std::fs::canonicalize`) zur Absicherung gegen Manipulationen lokaler Symlinks.
