@@ -33,8 +33,8 @@ fn read_keys_map(app: &tauri::AppHandle) -> HashMap<String, String> {
     HashMap::new()
 }
 
-/// Resolves the Python binary using strict canonical path resolution against symlink hijacking.
-fn resolve_safe_python_runner() -> PythonRunner {
+/// Resolves the Python binary and associated virtualenv & project roots.
+fn resolve_safe_python_runner() -> (PythonRunner, Option<PathBuf>, Option<PathBuf>) {
     let venv_python_candidates = [
         "../../.venv/bin/python",
         "../.venv/bin/python",
@@ -48,20 +48,30 @@ fn resolve_safe_python_runner() -> PythonRunner {
         let path = Path::new(candidate);
         if path.exists() {
             if let Ok(canonical_path) = std::fs::canonicalize(path) {
-                return PythonRunner::Executable(canonical_path);
+                let mut venv_dir = None;
+                let mut proj_dir = None;
+                if let Some(bin_dir) = canonical_path.parent() {
+                    if let Some(v_root) = bin_dir.parent() {
+                        venv_dir = Some(v_root.to_path_buf());
+                        if let Some(p_root) = v_root.parent() {
+                            proj_dir = Some(p_root.to_path_buf());
+                        }
+                    }
+                }
+                return (PythonRunner::Executable(canonical_path), venv_dir, proj_dir);
             }
         }
     }
 
     if Command::new("uv").arg("--version").output().is_ok() {
-        return PythonRunner::Uv;
+        return (PythonRunner::Uv, None, None);
     }
 
     if Command::new("python3").arg("--version").output().is_ok() {
-        return PythonRunner::System("python3".to_string());
+        return (PythonRunner::System("python3".to_string()), None, None);
     }
 
-    PythonRunner::System("python".to_string())
+    (PythonRunner::System("python".to_string()), None, None)
 }
 
 /// Resolves lecture2md.py using canonical path resolution to ensure absolute path integrity.
@@ -84,11 +94,15 @@ fn resolve_safe_script_path() -> Result<PathBuf, String> {
     Err("Skript lecture2md.py konnte über canonical path nicht verifiziert werden.".to_string())
 }
 
-/// Applies a hardened environment whitelist, clearing sensitive host variables (CWE-214).
-fn apply_hardened_environment(cmd: &mut Command, extra_env: Option<(&str, &str)>) {
+/// Applies a hardened environment whitelist with VIRTUAL_ENV and PYTHONPATH support.
+fn apply_hardened_environment(
+    cmd: &mut Command,
+    venv_dir: Option<&Path>,
+    proj_root: Option<&Path>,
+    extra_env: Option<(&str, &str)>
+) {
     cmd.env_clear();
     
-    // Explicit whitelist of safe environment variables
     let safe_keys = [
         "PATH", "HOME", "USER", "LOGNAME", "SHELL",
         "TMPDIR", "TEMP", "TMP",
@@ -100,6 +114,28 @@ fn apply_hardened_environment(cmd: &mut Command, extra_env: Option<(&str, &str)>
         if let Ok(val) = std::env::var(key) {
             cmd.env(key, val);
         }
+    }
+
+    if let Some(venv) = venv_dir {
+        cmd.env("VIRTUAL_ENV", venv);
+        #[cfg(unix)]
+        let bin_name = "bin";
+        #[cfg(windows)]
+        let bin_name = "Scripts";
+
+        let venv_bin = venv.join(bin_name);
+        if let Ok(current_path) = std::env::var("PATH") {
+            #[cfg(unix)]
+            cmd.env("PATH", format!("{}:{}", venv_bin.to_string_lossy(), current_path));
+            #[cfg(windows)]
+            cmd.env("PATH", format!("{};{}", venv_bin.to_string_lossy(), current_path));
+        } else {
+            cmd.env("PATH", venv_bin);
+        }
+    }
+
+    if let Some(proj) = proj_root {
+        cmd.env("PYTHONPATH", proj);
     }
 
     if let Some((k, v)) = extra_env {
@@ -169,7 +205,7 @@ async fn validate_api_key_native(provider: String, key: String) -> Result<bool, 
         ),
     };
 
-    let runner = resolve_safe_python_runner();
+    let (runner, venv_dir, proj_root) = resolve_safe_python_runner();
     let mut cmd = match runner {
         PythonRunner::Executable(safe_bin) => Command::new(safe_bin),
         PythonRunner::Uv => {
@@ -180,7 +216,7 @@ async fn validate_api_key_native(provider: String, key: String) -> Result<bool, 
         PythonRunner::System(sys_bin) => Command::new(sys_bin),
     };
 
-    apply_hardened_environment(&mut cmd, None);
+    apply_hardened_environment(&mut cmd, venv_dir.as_deref(), proj_root.as_deref(), None);
     cmd.arg("-c").arg(&script);
 
     let output = cmd.output().map_err(|e| format!("Fehler beim Ausführen der Validierung: {}", e))?;
@@ -215,8 +251,8 @@ async fn convert_lecture_native(
     // 2. Resolve verified canonical script path
     let script_path = resolve_safe_script_path()?;
 
-    // 3. Resolve verified canonical Python runner
-    let python_runner = resolve_safe_python_runner();
+    // 3. Resolve verified canonical Python runner with venv context
+    let (python_runner, venv_dir, proj_root) = resolve_safe_python_runner();
 
     let env_var_key = match chosen_provider.as_str() {
         "google" => "GEMINI_API_KEY",
@@ -243,7 +279,12 @@ async fn convert_lecture_native(
         }
     };
 
-    apply_hardened_environment(&mut cmd, Some((env_var_key, &api_key)));
+    apply_hardened_environment(
+        &mut cmd,
+        venv_dir.as_deref(),
+        proj_root.as_deref(),
+        Some((env_var_key, &api_key))
+    );
 
     cmd.arg("--pdf").arg(&pdf_path)
         .arg("--output").arg(&safe_output_path)
