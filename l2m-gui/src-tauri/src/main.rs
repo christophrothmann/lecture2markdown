@@ -28,8 +28,6 @@ fn read_keys_map(app: &tauri::AppHandle) -> HashMap<String, String> {
 }
 
 /// Dynamically locates the project root, virtualenv Python binary, and script path.
-/// NOTE: Virtualenv binaries must NOT be canonicalized because canonicalize resolves symlinks
-/// to the base system Python, losing the pyvenv.cfg virtualenv package context.
 fn find_project_environment() -> (Option<PathBuf>, Option<PathBuf>, Option<PathBuf>) {
     let mut search_dirs = Vec::new();
     if let Ok(cwd) = std::env::current_dir() {
@@ -187,19 +185,19 @@ async fn validate_api_key_native(provider: String, key: String) -> Result<bool, 
     let target_provider = provider.trim().to_lowercase();
     let script = match target_provider.as_str() {
         "google" => format!(
-            "from google import genai; client = genai.Client(api_key='{}'); list(client.models.list())",
+            "import sys\nfrom google import genai\ntry:\n    client = genai.Client(api_key='{}')\n    list(client.models.list())\n    print('OK')\nexcept Exception as e:\n    sys.exit(str(e))",
             sanitized_key
         ),
         "anthropic" => format!(
-            "from anthropic import Anthropic; client = Anthropic(api_key='{}'); client.models.list()",
+            "import sys\nfrom anthropic import Anthropic\ntry:\n    client = Anthropic(api_key='{}', max_retries=0, timeout=5.0)\n    client.models.list()\n    print('OK')\nexcept Exception as e:\n    sys.exit(str(e))",
             sanitized_key
         ),
         "mistral" => format!(
-            "from l2m_core.providers.mistral_provider import Mistral; client = Mistral(api_key='{}'); client.models.list()",
+            "import sys\nfrom l2m_core.providers.mistral_provider import Mistral\ntry:\n    client = Mistral(api_key='{}')\n    client.models.list()\n    print('OK')\nexcept Exception as e:\n    sys.exit(str(e))",
             sanitized_key
         ),
         _ => format!(
-            "from openai import OpenAI; client = OpenAI(api_key='{}'); client.models.list()",
+            "import sys\nfrom openai import OpenAI\ntry:\n    client = OpenAI(api_key='{}', max_retries=0, timeout=5.0)\n    client.models.list()\n    print('OK')\nexcept Exception as e:\n    sys.exit(str(e))",
             sanitized_key
         ),
     };
@@ -214,7 +212,12 @@ async fn validate_api_key_native(provider: String, key: String) -> Result<bool, 
         Ok(true)
     } else {
         let err_msg = String::from_utf8_lossy(&output.stderr);
-        Err(format!("Ungültiger API-Key oder keine Verbindung: {}", err_msg.trim()))
+        let cleaned_err = if err_msg.trim().is_empty() {
+            String::from_utf8_lossy(&output.stdout).to_string()
+        } else {
+            err_msg.to_string()
+        };
+        Err(format!("Validierungsfehler: {}", cleaned_err.trim()))
     }
 }
 

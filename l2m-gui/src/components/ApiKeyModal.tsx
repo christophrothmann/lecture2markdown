@@ -80,10 +80,11 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
     setSelectedTab(activeProvider);
   }, [activeProvider, isOpen]);
 
+  // Sync input when tab changes or modal opens (without erasing testResult on key save)
   useEffect(() => {
     setCurrentInput(providerKeys[selectedTab] || '');
     setTestResult(null);
-  }, [selectedTab, providerKeys, isOpen]);
+  }, [selectedTab, isOpen]);
 
   if (!isOpen) return null;
 
