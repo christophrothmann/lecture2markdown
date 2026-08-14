@@ -9,12 +9,6 @@ use tauri::{Emitter, Manager};
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 
-enum PythonRunner {
-    Executable(PathBuf),
-    Uv,
-    System(String),
-}
-
 fn get_secret_file_path(app: &tauri::AppHandle) -> PathBuf {
     let config_dir = app.path().app_config_dir().unwrap_or_else(|_| std::env::temp_dir());
     let _ = std::fs::create_dir_all(&config_dir);
@@ -33,76 +27,97 @@ fn read_keys_map(app: &tauri::AppHandle) -> HashMap<String, String> {
     HashMap::new()
 }
 
-/// Resolves the Python binary and associated virtualenv & project roots.
-fn resolve_safe_python_runner() -> (PythonRunner, Option<PathBuf>, Option<PathBuf>) {
-    let venv_python_candidates = [
-        "../../.venv/bin/python",
-        "../.venv/bin/python",
-        ".venv/bin/python",
-        "../../.venv/Scripts/python.exe",
-        "../.venv/Scripts/python.exe",
-        ".venv/Scripts/python.exe",
-    ];
-
-    for candidate in venv_python_candidates {
-        let path = Path::new(candidate);
-        if path.exists() {
-            if let Ok(canonical_path) = std::fs::canonicalize(path) {
-                let mut venv_dir = None;
-                let mut proj_dir = None;
-                if let Some(bin_dir) = canonical_path.parent() {
-                    if let Some(v_root) = bin_dir.parent() {
-                        venv_dir = Some(v_root.to_path_buf());
-                        if let Some(p_root) = v_root.parent() {
-                            proj_dir = Some(p_root.to_path_buf());
-                        }
-                    }
-                }
-                return (PythonRunner::Executable(canonical_path), venv_dir, proj_dir);
-            }
+/// Dynamically locates the project root, canonical Python binary, and script path by traversing upwards.
+fn find_project_environment() -> (Option<PathBuf>, Option<PathBuf>, Option<PathBuf>) {
+    let mut search_dirs = Vec::new();
+    if let Ok(cwd) = std::env::current_dir() {
+        search_dirs.push(cwd);
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(parent) = exe.parent() {
+            search_dirs.push(parent.to_path_buf());
         }
     }
 
-    if Command::new("uv").arg("--version").output().is_ok() {
-        return (PythonRunner::Uv, None, None);
-    }
+    for start_dir in search_dirs {
+        let mut curr = Some(start_dir.as_path());
+        while let Some(dir) = curr {
+            let venv_candidate = dir.join(".venv");
+            let script_candidate = dir.join("lecture2md.py");
 
-    if Command::new("python3").arg("--version").output().is_ok() {
-        return (PythonRunner::System("python3".to_string()), None, None);
-    }
+            if venv_candidate.exists() || script_candidate.exists() {
+                #[cfg(unix)]
+                let py_bin = venv_candidate.join("bin").join("python3");
+                #[cfg(unix)]
+                let py_bin_alt = venv_candidate.join("bin").join("python");
+                #[cfg(windows)]
+                let py_bin = venv_candidate.join("Scripts").join("python.exe");
+                #[cfg(windows)]
+                let py_bin_alt = venv_candidate.join("Scripts").join("python.exe");
 
-    (PythonRunner::System("python".to_string()), None, None)
-}
+                let resolved_py = if py_bin.exists() {
+                    std::fs::canonicalize(py_bin).ok()
+                } else if py_bin_alt.exists() {
+                    std::fs::canonicalize(py_bin_alt).ok()
+                } else {
+                    None
+                };
 
-/// Resolves lecture2md.py using canonical path resolution to ensure absolute path integrity.
-fn resolve_safe_script_path() -> Result<PathBuf, String> {
-    let script_candidates = [
-        "../../lecture2md.py",
-        "../lecture2md.py",
-        "lecture2md.py",
-    ];
+                let resolved_script = if script_candidate.exists() {
+                    std::fs::canonicalize(script_candidate).ok()
+                } else {
+                    None
+                };
 
-    for candidate in script_candidates {
-        let path = Path::new(candidate);
-        if path.exists() {
-            if let Ok(canonical_path) = std::fs::canonicalize(path) {
-                return Ok(canonical_path);
+                let resolved_proj = std::fs::canonicalize(dir).ok();
+
+                return (resolved_py, resolved_script, resolved_proj);
             }
+            curr = dir.parent();
         }
     }
 
-    Err("Skript lecture2md.py konnte über canonical path nicht verifiziert werden.".to_string())
+    (None, None, None)
 }
 
-/// Applies a hardened environment whitelist with VIRTUAL_ENV and PYTHONPATH support.
-fn apply_hardened_environment(
-    cmd: &mut Command,
-    venv_dir: Option<&Path>,
+/// Configures environment variables and working directory safely for child processes.
+fn setup_process_command(
+    py_bin: Option<&Path>,
     proj_root: Option<&Path>,
     extra_env: Option<(&str, &str)>
-) {
-    cmd.env_clear();
-    
+) -> Command {
+    let mut cmd = if let Some(bin) = py_bin {
+        Command::new(bin)
+    } else if Command::new("uv").arg("--version").output().is_ok() {
+        let mut c = Command::new("uv");
+        c.arg("run").arg("python");
+        c
+    } else if Command::new("python3").arg("--version").output().is_ok() {
+        Command::new("python3")
+    } else {
+        Command::new("python")
+    };
+
+    if let Some(root) = proj_root {
+        cmd.current_dir(root);
+        cmd.env("PYTHONPATH", root);
+        if let Ok(current_path) = std::env::var("PATH") {
+            #[cfg(unix)]
+            let venv_bin = root.join(".venv").join("bin");
+            #[cfg(windows)]
+            let venv_bin = root.join(".venv").join("Scripts");
+
+            if venv_bin.exists() {
+                #[cfg(unix)]
+                cmd.env("PATH", format!("{}:{}", venv_bin.to_string_lossy(), current_path));
+                #[cfg(windows)]
+                cmd.env("PATH", format!("{};{}", venv_bin.to_string_lossy(), current_path));
+                cmd.env("VIRTUAL_ENV", root.join(".venv"));
+            }
+        }
+    }
+
+    // Safe environment keys whitelist
     let safe_keys = [
         "PATH", "HOME", "USER", "LOGNAME", "SHELL",
         "TMPDIR", "TEMP", "TMP",
@@ -116,31 +131,11 @@ fn apply_hardened_environment(
         }
     }
 
-    if let Some(venv) = venv_dir {
-        cmd.env("VIRTUAL_ENV", venv);
-        #[cfg(unix)]
-        let bin_name = "bin";
-        #[cfg(windows)]
-        let bin_name = "Scripts";
-
-        let venv_bin = venv.join(bin_name);
-        if let Ok(current_path) = std::env::var("PATH") {
-            #[cfg(unix)]
-            cmd.env("PATH", format!("{}:{}", venv_bin.to_string_lossy(), current_path));
-            #[cfg(windows)]
-            cmd.env("PATH", format!("{};{}", venv_bin.to_string_lossy(), current_path));
-        } else {
-            cmd.env("PATH", venv_bin);
-        }
-    }
-
-    if let Some(proj) = proj_root {
-        cmd.env("PYTHONPATH", proj);
-    }
-
     if let Some((k, v)) = extra_env {
         cmd.env(k, v);
     }
+
+    cmd
 }
 
 #[tauri::command]
@@ -153,7 +148,6 @@ async fn save_api_key_native(provider: String, key: String, app: tauri::AppHandl
     std::fs::write(&secret_path, serialized)
         .map_err(|e| format!("API-Key konnte nicht sicher gespeichert werden: {}", e))?;
 
-    // Hardened restrictive file permissions (0600: read/write only by owner) on Unix
     #[cfg(unix)]
     {
         if let Ok(file) = std::fs::File::open(&secret_path) {
@@ -205,18 +199,8 @@ async fn validate_api_key_native(provider: String, key: String) -> Result<bool, 
         ),
     };
 
-    let (runner, venv_dir, proj_root) = resolve_safe_python_runner();
-    let mut cmd = match runner {
-        PythonRunner::Executable(safe_bin) => Command::new(safe_bin),
-        PythonRunner::Uv => {
-            let mut c = Command::new("uv");
-            c.arg("run").arg("python");
-            c
-        }
-        PythonRunner::System(sys_bin) => Command::new(sys_bin),
-    };
-
-    apply_hardened_environment(&mut cmd, venv_dir.as_deref(), proj_root.as_deref(), None);
+    let (py_bin, _script_path, proj_root) = find_project_environment();
+    let mut cmd = setup_process_command(py_bin.as_deref(), proj_root.as_deref(), None);
     cmd.arg("-c").arg(&script);
 
     let output = cmd.output().map_err(|e| format!("Fehler beim Ausführen der Validierung: {}", e))?;
@@ -248,11 +232,9 @@ async fn convert_lecture_native(
     let temp_output_buf = std::env::temp_dir().join(format!("l2m_output_{}.md", timestamp));
     let safe_output_path = temp_output_buf.to_string_lossy().to_string();
 
-    // 2. Resolve verified canonical script path
-    let script_path = resolve_safe_script_path()?;
-
-    // 3. Resolve verified canonical Python runner with venv context
-    let (python_runner, venv_dir, proj_root) = resolve_safe_python_runner();
+    // 2. Resolve environment & script
+    let (py_bin, script_path, proj_root) = find_project_environment();
+    let target_script = script_path.unwrap_or_else(|| PathBuf::from("lecture2md.py"));
 
     let env_var_key = match chosen_provider.as_str() {
         "google" => "GEMINI_API_KEY",
@@ -261,32 +243,14 @@ async fn convert_lecture_native(
         _ => "OPENAI_API_KEY",
     };
 
-    let mut cmd = match python_runner {
-        PythonRunner::Executable(safe_bin) => {
-            let mut c = Command::new(safe_bin);
-            c.arg(&script_path);
-            c
-        }
-        PythonRunner::Uv => {
-            let mut c = Command::new("uv");
-            c.arg("run").arg("python").arg(&script_path);
-            c
-        }
-        PythonRunner::System(sys_bin) => {
-            let mut c = Command::new(sys_bin);
-            c.arg(&script_path);
-            c
-        }
-    };
-
-    apply_hardened_environment(
-        &mut cmd,
-        venv_dir.as_deref(),
+    let mut cmd = setup_process_command(
+        py_bin.as_deref(),
         proj_root.as_deref(),
         Some((env_var_key, &api_key))
     );
 
-    cmd.arg("--pdf").arg(&pdf_path)
+    cmd.arg(&target_script)
+        .arg("--pdf").arg(&pdf_path)
         .arg("--output").arg(&safe_output_path)
         .arg("--provider").arg(&chosen_provider)
         .arg("--json-stream")
