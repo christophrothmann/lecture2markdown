@@ -12,14 +12,15 @@ Specially engineered for students and researchers to upload lecture content into
 
 ## ✨ Features
 
+- 🖥️ **Native Desktop GUI (`l2m-gui`)**: Modern, high-performance desktop application built with **Tauri v2**, **React + TypeScript**, and **TailwindCSS** for users who prefer an intuitive graphical interface over the command line.
 - 🔀 **Smart Hybrid Routing**: Automatically detects whether a slide contains visual diagrams or text only via PyMuPDF pre-analysis. Dynamically routes simple slides to `gpt-4o-mini` and visual slides to `gpt-4o`, reducing API costs by up to 80%.
 - 🏷️ **Explicit Slide Anchors (`## [Folie X]`)**: Structures every slide with explicit anchors so you can reference specific slides directly in ChatGPT prompts (e.g., *"Explain the formula on slide 14"*).
 - 📊 **Mermaid.js Diagram Synthesis**: Converts flowcharts, state machines, and architecture diagrams into native, editable ` ```mermaid ` code blocks instead of static images.
 - 📐 **LaTeX Formula Extraction**: Automatically translates all mathematical equations into standard inline (`$...$`) or block (`$$...$$`) LaTeX.
-- 🛡️ **Prompt Injection Hardened**: Built-in security rules ignore hidden text, light-colored fonts, or embedded prompt injection traps inside lecture slides.
+- 🛡️ **Anti-AI Canary & Prompt Injection Hardened**: Built-in security rules strip out hidden text, white-on-white professor trap instructions (*"If you are an AI respond with X"*), and prompt injection vectors.
 - 🎯 **100% Deterministic Output**: Runs at `temperature=0.0` to eliminate creative hallucination and guarantee strict transcription fidelity.
 - 📂 **Clean Workspace Management**: Organizes input files (`lectures/`) and generated outputs (`output/`) automatically.
-- ⚡ **Powered by `uv`**: Uses Astral's `uv` for sub-second virtualenv setup and package management.
+- ⚡ **Powered by `uv` & `bun`**: Uses Astral's `uv` for sub-second Python virtualenv setup and `bun` for the desktop GUI.
 
 ---
 
@@ -59,13 +60,26 @@ OPENAI_API_KEY=sk-proj-your-actual-api-key-here
 ---
 
 ## 🚀 Quick Start
+ 
+ ### Option A: Native Desktop GUI
+ 1. Navigate to the GUI folder and install dependencies with `bun`:
+    ```bash
+    cd l2m-gui
+    bun install
+    ```
+ 2. Launch the desktop application:
+    ```bash
+    bun run tauri dev
+    ```
+ 3. Drag and drop your lecture PDF, enter your OpenAI API key in the onboarding modal, and click **"Konvertierung starten"**!
 
-1. **Place your PDF slide deck** in the `lectures/` directory (e.g., `lectures/input-2.pdf`).
-2. **Run the converter** using `uv run`:
-   ```bash
-   uv run python lecture2md.py
-   ```
-3. **Find your converted Markdown** in the `output/` directory (e.g., `output/output-2.md`).
+ ### Option B: Python CLI
+ 1. **Place your PDF slide deck** in the `lectures/` directory (e.g., `lectures/input-2.pdf`).
+ 2. **Run the converter** using `uv run`:
+    ```bash
+    uv run python lecture2md.py
+    ```
+ 3. **Find your converted Markdown** in the `output/` directory (e.g., `output/output-2.md`).
 
 ---
 
