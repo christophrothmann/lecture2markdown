@@ -62,16 +62,18 @@ OPENAI_API_KEY=sk-proj-your-actual-api-key-here
 ## 🚀 Quick Start
  
  ### Option A: Native Desktop GUI
- 1. Navigate to the GUI folder and install dependencies with `bun`:
+ 1. Download the pre-built installer (`.dmg` for macOS, `.msi` for Windows) from [Releases](https://github.com/christophrothmann/lecture2markdown/releases), or run locally:
     ```bash
-    cd l2m-gui
-    bun install
+    cd l2m-gui && bun install && bun run tauri dev
     ```
- 2. Launch the desktop application:
-    ```bash
-    bun run tauri dev
-    ```
- 3. Drag and drop your lecture PDF, enter your OpenAI API key in the onboarding modal, and click **"Konvertierung starten"**!
+ 2. Drag and drop your lecture PDF, enter your OpenAI API key in the onboarding modal, and click **"Konvertierung starten"**!
+
+ > [!TIP]
+ > **macOS First Launch Note:**
+ > Since Open-Source releases are not notarized with a paid Apple Developer certificate, macOS Gatekeeper may show *"is damaged and can't be opened"*. Simply remove the quarantine flag in your terminal:
+ > ```bash
+ > xattr -cr /Applications/Lecture2Markdown.app
+ > ```
 
  ### Option B: Python CLI
  1. **Place your PDF slide deck** in the `lectures/` directory (e.g., `lectures/input-2.pdf`).
