@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.2] - 2026-08-15
+
+### Changed
+- Updated project version to `v1.1.2` across core Python packages (`l2m_core`), Desktop GUI (`l2m-gui`), Tauri config, Rust dependencies, and package manifests (`pyproject.toml`, `package.json`, `tauri.conf.json`, `Cargo.toml`).
+
 ## [1.1.0] - 2026-08-14 "chronical-canical"
 
 ### Added
