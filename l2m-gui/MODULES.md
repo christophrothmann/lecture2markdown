@@ -8,44 +8,47 @@ Diese Dokumentation beschreibt die Komponenten, Module und Hilfsfunktionen im Un
 l2m-gui/
 ├── src-tauri/             # Tauri v2 Rust Backend
 │   ├── Cargo.toml
-│   └── src/main.rs        # Einstiegspunkt für den Tauri Rust-Prozess
+│   └── src/main.rs        # Rust-Backend, IPC-Bridge & Canonical-Path-Subprocess Runner
 ├── src/                   # React + TypeScript Frontend
 │   ├── components/
-│   │   ├── ApiKeyModal.tsx        # Modal für API-Key Onboarding & client.models.list() Validierung
-│   │   ├── Dropzone.tsx           # Drag & Drop PDF Uploader auf Deutsch
-│   │   ├── ProgressDashboard.tsx  # Fortschrittsanzeige mit Live Hybrid Routing Badges & Kosten
+│   │   ├── ApiKeyModal.tsx        # Multi-Provider Modal (OpenAI, Gemini, Claude, Mistral)
+│   │   ├── Dropzone.tsx           # Drag & Drop PDF Uploader mit nativer Pfaderfassung
+│   │   ├── ProgressDashboard.tsx  # Fortschrittsanzeige mit Live Hybrid Routing Badges
 │   │   ├── MarkdownPreview.tsx    # Live Preview mit "Markdown kopieren" & "Markdown speichern"
 │   │   └── HistorySidebar.tsx     # Verlauf zuletzt verarbeiteter Vorlesungen
-│   ├── App.tsx                    # Hauptansicht & App-State Management
+│   ├── App.tsx                    # Hauptansicht, Provider-Umschaltung & App-State
 │   └── index.css                  # TailwindCSS Styles (Clean Dark Mode)
-├── py_sidecar/
-│   └── lecture2md_gui.py          # Python Sidecar-Skript mit JSON-Event-Streaming
 ```
+
+> **Hinweis zur Python-Geschäftslogik (Single Source of Truth)**:
+> Die Desktop-App nutzt direkt das modulare Paket `l2m_core/` und den Einstiegspunkt `lecture2md.py` aus dem Root-Verzeichnis mit dem Flag `--json-stream`.
 
 ---
 
 ## React-Komponenten (`src/components/`)
 
 ### `ApiKeyModal` (`src/components/ApiKeyModal.tsx`)
-- **Beschreibung**: Öffnet sich beim ersten Start oder per Einstellungs-Button. Fragt den `OPENAI_API_KEY` ab, bietet einen direkten Link zum OpenAI-Portal und führt einen kostenlosen Validierungstest (`GET https://api.openai.com/v1/models`) durch.
+- **Beschreibung**: Öffnet sich beim ersten Start oder per Provider-/Einstellungs-Button. Bietet Tabs für alle 4 Provider (OpenAI, Google Gemini, Anthropic Claude, Mistral AI), direkte Links zu den Entwicklerportalen und führt native Backend-Tests aus.
 - **Props**:
   - `isOpen` (`boolean`): Gibt an, ob das Modal angezeigt wird.
-  - `apiKey` (`string`): Aktueller Key-Wert.
-  - `onSaveKey` (`(key: string) => void`): Callback zum Speichern des Keys.
-  - `onClose` (`() => void`): Callback zum Schließen.
+  - `activeProvider` (`ProviderType`): Der aktuell gewählte Provider.
+  - `providerKeys` (`Record<string, string>`): Gespeicherte Keys pro Provider.
+  - `onSelectProvider` (`(provider: ProviderType) => void`): Provider aktivieren.
+  - `onSaveKey` (`(provider: ProviderType, key: string) => void`): Key speichern.
+  - `onClose` (`() => void`): Modal schließen.
 
 ---
 
 ### `Dropzone` (`src/components/Dropzone.tsx`)
-- **Beschreibung**: Bietet einen sauberen Drag & Drop-Bereich für PDF-Dateien auf Deutsch inkl. visueller Drag-Over-Effekte.
+- **Beschreibung**: Drag & Drop-Bereich für PDF-Dateien mit nativer Pfadauflösung über `@tauri-apps/plugin-dialog`.
 - **Props**:
-  - `onFileSelected` (`(file: File) => void`): Callback bei Dateiauswahl.
-  - `disabled` (`boolean`): Deaktiviert die Dropzone, falls kein API-Key hinterlegt ist.
+  - `onFileSelectedPath` (`(filePath: string, fileName: string) => void`): Callback bei Dateiauswahl mit absolutem Dateipfad.
+  - `disabled` (`boolean`): Deaktiviert die Dropzone, falls für den aktiven Provider kein API-Key hinterlegt ist.
 
 ---
 
 ### `ProgressDashboard` (`src/components/ProgressDashboard.tsx`)
-- **Beschreibung**: Zeigt den Verarbeitungsfortschritt mit prozentualer Ladeleiste, Live-Badge des aktuell genutzten Modells (`gpt-4o-mini` vs `gpt-4o`) und geschätzten API-Kosten an.
+- **Beschreibung**: Zeigt den Verarbeitungsfortschritt mit Ladeleiste, Live-Badge des aktiven Modells (z. B. `gpt-4o-mini`, `gemini-2.0-flash`, `claude-3-7-sonnet`, `mistral-ocr-latest`) und Kostenrechner.
 - **Props**:
   - `fileName` (`string`): Name der Vorlesungs-PDF.
   - `completedPages` (`number`): Anzahl fertiggestellter Folien.
@@ -55,24 +58,18 @@ l2m-gui/
 ---
 
 ### `MarkdownPreview` (`src/components/MarkdownPreview.tsx`)
-- **Beschreibung**: Zeigt die generierte Markdown-Vorschau an und bietet zwei Aktionen: 1-Klick *"Markdown kopieren"* (in die Zwischenablage für ChatGPT) und *"Markdown speichern"* (als `.md`-Datei).
+- **Beschreibung**: Zeigt die generierte Markdown-Vorschau an mit 1-Klick *"Markdown kopieren"*, nativer Datei-Speicherung via `@tauri-apps/plugin-fs` und *"Neue Vorlesung"*.
 - **Props**:
   - `content` (`string`): Der generierte Markdown-Inhalt.
   - `fileName` (`string`): Dateiname für den Export.
   - `onSaveFile` (`() => void`): Callback zum Speichern.
+  - `onNewConversion` (`() => void`): Zurücksetzen zur Standardansicht.
 
 ---
 
 ### `HistorySidebar` (`src/components/HistorySidebar.tsx`)
-- **Beschreibung**: Zeigt eine Seitenleiste mit den zuletzt konvertierten Vorlesungsdateien für den Schnellzugriff und schnelles erneutes Kopieren.
+- **Beschreibung**: Seitenleiste mit den zuletzt konvertierten Vorlesungsdateien für den Schnellzugriff.
 - **Props**:
   - `items` (`HistoryItem[]`): Liste der bisherigen Konvertierungen.
   - `onSelect` (`(item: HistoryItem) => void`): Auswählen eines Eintrags.
   - `onClear` (`() => void`): Verlauf leeren.
-
----
-
-## Python Sidecar (`py_sidecar/lecture2md_gui.py`)
-
-- **`emit_event(event_type: str, data: dict) -> None`**: Gibt strukturierte JSON-Events an stdout aus (`start`, `progress`, `complete`, `error`), damit Tauri und React den Live-Status anzeigen können.
-- **`process_single_page(...)`**: Verarbeitet eine Folie und ermittelt dynamisch das passende Modell via Hybrid-Routing.

@@ -30,3 +30,7 @@ l2m-gui/dist/
 l2m-gui/src-tauri/target/
 l2m-gui/src-tauri/gen/
 
+# Local Security Notes (Untracked)
+SECURITY_REVIEW.md
+security_review.md
+

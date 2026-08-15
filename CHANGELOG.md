@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.2] - 2026-08-15
+
+### Changed
+- Updated project version to `v1.1.2` across core Python packages (`l2m_core`), Desktop GUI (`l2m-gui`), Tauri config, Rust dependencies, and package manifests (`pyproject.toml`, `package.json`, `tauri.conf.json`, `Cargo.toml`).
+
+## [1.1.0] - 2026-08-14 "chronical-canical"
+
+### Added
+- **Multi-Provider Architecture**: Added full support for 4 major AI providers:
+  - **Mistral AI**: Support for **`mistral-ocr-latest`** (specialized document OCR) and `pixtral-12b-2409`.
+  - **Google Gemini**: Support for `gemini-2.0-flash` and `gemini-1.5-pro`.
+  - **Anthropic Claude**: Support for `claude-3-7-sonnet` and `claude-3-5-haiku`.
+  - **OpenAI**: Support for `gpt-4o` and `gpt-4o-mini`.
+- **Modular Core Package (`l2m_core/`)**: Reorganized codebase into clean, maintainable modules (`config.py`, `pdf.py`, `security.py`, `converter.py`, `providers/`).
+- **Desktop GUI Multi-Provider Tabs**: Added 4 provider tabs in Settings modal with individual API key stores and native validation.
+- **Header Provider Switcher**: 1-click active provider switcher in the desktop navigation bar.
+- **Subprocess Security Hardening**: Implemented strict canonical path verification (`std::fs::canonicalize`) for all Python binary and script invocations.
+
 ## [1.0.0] - 2026-08-14 "frosty-fox-gui"
 
 ### Added

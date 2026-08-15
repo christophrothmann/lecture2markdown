@@ -1,5 +1,5 @@
-import React, { useRef, useState } from 'react';
-import { UploadCloud, FileText } from 'lucide-react';
+import React, { useState } from 'react';
+import { UploadCloud, FileText, ShieldCheck } from 'lucide-react';
 import { open as openFileDialog } from '@tauri-apps/plugin-dialog';
 
 interface DropzoneProps {
@@ -26,7 +26,7 @@ export const Dropzone: React.FC<DropzoneProps> = ({ onFileSelectedPath, disabled
         onFileSelectedPath(selected, fileName);
       }
     } catch {
-      // Fallback for HTML file input if needed
+      // Fallback
     }
   };
 
@@ -82,9 +82,16 @@ export const Dropzone: React.FC<DropzoneProps> = ({ onFileSelectedPath, disabled
           </p>
         </div>
 
-        <div className="flex items-center space-x-2 text-[11px] text-slate-500 bg-background/50 px-3 py-1.5 rounded-lg border border-border/50">
-          <FileText className="w-3.5 h-3.5" />
-          <span>Unterstützt PDF-Vorlesungsfolien jeder Größe</span>
+        <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+          <div className="flex items-center space-x-2 text-[11px] text-slate-400 bg-background/60 px-3 py-1.5 rounded-lg border border-border/50">
+            <FileText className="w-3.5 h-3.5 text-accent" />
+            <span>Automatische Folienextraktion & Hybrid-Routing</span>
+          </div>
+
+          <div className="flex items-center space-x-2 text-[11px] text-slate-400 bg-background/60 px-3 py-1.5 rounded-lg border border-border/50">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+            <span>End-to-End verschlüsselte API-Übertragung</span>
+          </div>
         </div>
       </div>
     </div>
