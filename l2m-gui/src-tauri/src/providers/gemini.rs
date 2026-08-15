@@ -1,5 +1,6 @@
 use super::{sanitize_markdown_output, BaseProvider, SYSTEM_PROMPT, get_user_prompt};
 use async_trait::async_trait;
+use regex::Regex;
 use serde_json::json;
 use std::time::Duration;
 
@@ -11,7 +12,7 @@ pub struct GeminiProvider {
 impl GeminiProvider {
     pub fn new(api_key: &str) -> Self {
         let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(90))
+            .timeout(Duration::from_secs(120))
             .build()
             .unwrap_or_default();
         Self {
@@ -19,6 +20,22 @@ impl GeminiProvider {
             client,
         }
     }
+}
+
+fn parse_gemini_retry_duration(error_msg: &str) -> Duration {
+    if error_msg.contains("RESOURCE_EXHAUSTED") || error_msg.contains("quota") || error_msg.contains("TPM") {
+        return Duration::from_millis(3500);
+    }
+    if let Ok(re_sec) = Regex::new(r"try again in ([0-9]+(?:\.[0-9]+)?)s") {
+        if let Some(caps) = re_sec.captures(error_msg) {
+            if let Some(m) = caps.get(1) {
+                if let Ok(secs) = m.as_str().parse::<f64>() {
+                    return Duration::from_millis(((secs + 1.0) * 1000.0) as u64);
+                }
+            }
+        }
+    }
+    Duration::from_millis(3000)
 }
 
 #[async_trait]
@@ -51,51 +68,50 @@ impl BaseProvider for GeminiProvider {
         is_visual: bool,
         hybrid: bool,
     ) -> Result<(String, String), String> {
-        let model = if !hybrid || is_visual {
+        let mut model = if !hybrid || is_visual {
             "gemini-1.5-pro"
         } else {
             "gemini-2.0-flash"
         };
 
-        let url = format!(
-            "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
-            model, self.api_key
-        );
-
         let user_prompt = get_user_prompt(page_number);
 
-        let payload = json!({
-            "contents": [
-                {
-                    "parts": [
-                        {
-                            "inline_data": {
-                                "mime_type": "image/webp",
-                                "data": webp_base64
-                            }
-                        },
-                        {
-                            "text": user_prompt
-                        }
-                    ]
-                }
-            ],
-            "system_instruction": {
-                "parts": [
-                    { "text": SYSTEM_PROMPT }
-                ]
-            },
-            "generationConfig": {
-                "temperature": 0.0
-            }
-        });
-
         let mut attempts = 0;
-        let max_attempts = 6;
-        let mut backoff_delay = Duration::from_millis(2500);
+        let max_attempts = 30; // 30 resilient retries
 
         loop {
             attempts += 1;
+
+            let url = format!(
+                "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
+                model, self.api_key
+            );
+
+            let payload = json!({
+                "contents": [
+                    {
+                        "parts": [
+                            {
+                                "inline_data": {
+                                    "mime_type": "image/webp",
+                                    "data": webp_base64
+                                }
+                            },
+                            {
+                                "text": user_prompt
+                            }
+                        ]
+                    }
+                ],
+                "system_instruction": {
+                    "parts": [
+                        { "text": SYSTEM_PROMPT }
+                    ]
+                },
+                "generationConfig": {
+                    "temperature": 0.0
+                }
+            });
 
             let res_result = self
                 .client
@@ -108,24 +124,24 @@ impl BaseProvider for GeminiProvider {
                 Ok(res) => {
                     let status = res.status();
 
+                    // Handle 429 Rate Limits / Quotas / Overload
                     if status.as_u16() == 429 || status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+                        let err_body = res.text().await.unwrap_or_default();
+
+                        // Fallback from 1.5-pro to fast 2.0-flash on rate limits
+                        if model == "gemini-1.5-pro" {
+                            model = "gemini-2.0-flash";
+                            tokio::time::sleep(Duration::from_millis(800)).await;
+                            continue;
+                        }
+
                         if attempts >= max_attempts {
-                            let err_body = res.text().await.unwrap_or_default();
                             return Err(format!("Google Gemini Rate-Limit: {}", err_body));
                         }
 
-                        let sleep_duration = if let Some(retry_header) = res.headers().get("retry-after") {
-                            if let Ok(retry_str) = retry_header.to_str() {
-                                retry_str.parse::<f64>().map(|s| Duration::from_millis((s * 1000.0) as u64)).unwrap_or(backoff_delay)
-                            } else {
-                                backoff_delay
-                            }
-                        } else {
-                            backoff_delay
-                        };
-
-                        tokio::time::sleep(sleep_duration).await;
-                        backoff_delay = Duration::from_millis((backoff_delay.as_millis() as f64 * 1.8) as u64);
+                        let wait_duration = parse_gemini_retry_duration(&err_body);
+                        let jitter = Duration::from_millis((rand::random::<u64>() % 1500) + 500);
+                        tokio::time::sleep(wait_duration + jitter).await;
                         continue;
                     }
 
@@ -150,8 +166,8 @@ impl BaseProvider for GeminiProvider {
                     if attempts >= max_attempts {
                         return Err(format!("Netzwerkfehler bei Folie {}: {}", page_number, e));
                     }
-                    tokio::time::sleep(backoff_delay).await;
-                    backoff_delay = Duration::from_millis((backoff_delay.as_millis() as f64 * 1.8) as u64);
+                    let jitter = Duration::from_millis((rand::random::<u64>() % 1500) + 1000);
+                    tokio::time::sleep(Duration::from_millis(2500) + jitter).await;
                 }
             }
         }

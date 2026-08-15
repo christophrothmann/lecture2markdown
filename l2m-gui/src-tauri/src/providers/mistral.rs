@@ -1,5 +1,6 @@
 use super::{sanitize_markdown_output, BaseProvider, SYSTEM_PROMPT, get_user_prompt};
 use async_trait::async_trait;
+use regex::Regex;
 use serde_json::json;
 use std::time::Duration;
 
@@ -11,7 +12,7 @@ pub struct MistralProvider {
 impl MistralProvider {
     pub fn new(api_key: &str) -> Self {
         let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(90))
+            .timeout(Duration::from_secs(120))
             .build()
             .unwrap_or_default();
         Self {
@@ -19,6 +20,22 @@ impl MistralProvider {
             client,
         }
     }
+}
+
+fn parse_mistral_retry_duration(error_msg: &str) -> Duration {
+    if error_msg.contains("rate_limit") || error_msg.contains("usage_limit") {
+        return Duration::from_millis(3500);
+    }
+    if let Ok(re_sec) = Regex::new(r"try again in ([0-9]+(?:\.[0-9]+)?)s") {
+        if let Some(caps) = re_sec.captures(error_msg) {
+            if let Some(m) = caps.get(1) {
+                if let Ok(secs) = m.as_str().parse::<f64>() {
+                    return Duration::from_millis(((secs + 1.0) * 1000.0) as u64);
+                }
+            }
+        }
+    }
+    Duration::from_millis(3000)
 }
 
 #[async_trait]
@@ -49,10 +66,9 @@ impl BaseProvider for MistralProvider {
         hybrid: bool,
     ) -> Result<(String, String), String> {
         let mut attempts = 0;
-        let max_attempts = 6;
-        let mut backoff_delay = Duration::from_millis(2500);
+        let max_attempts = 30; // 30 resilient retries
 
-        // 1. Try dedicated Mistral Document OCR endpoint if visual
+        // 1. First try dedicated Mistral Document OCR endpoint if visual
         if !hybrid || is_visual {
             let ocr_payload = json!({
                 "model": "mistral-ocr-latest",
@@ -87,7 +103,7 @@ impl BaseProvider for MistralProvider {
             }
         }
 
-        // 2. Standard Multimodal Chat Completion (Pixtral 12B) with exponential backoff
+        // 2. Standard Multimodal Chat Completion (Pixtral 12B) with 30 retries and jitter
         let model = "pixtral-12b-2409";
         let user_prompt = get_user_prompt(page_number);
         let image_url = format!("data:image/webp;base64,{}", webp_base64);
@@ -131,18 +147,9 @@ impl BaseProvider for MistralProvider {
                             return Err(format!("Mistral Rate-Limit: {}", err_body));
                         }
 
-                        let sleep_duration = if let Some(retry_header) = res.headers().get("retry-after") {
-                            if let Ok(retry_str) = retry_header.to_str() {
-                                retry_str.parse::<f64>().map(|s| Duration::from_millis((s * 1000.0) as u64)).unwrap_or(backoff_delay)
-                            } else {
-                                backoff_delay
-                            }
-                        } else {
-                            backoff_delay
-                        };
-
-                        tokio::time::sleep(sleep_duration).await;
-                        backoff_delay = Duration::from_millis((backoff_delay.as_millis() as f64 * 1.8) as u64);
+                        let wait_duration = parse_mistral_retry_duration(&res.text().await.unwrap_or_default());
+                        let jitter = Duration::from_millis((rand::random::<u64>() % 1500) + 500);
+                        tokio::time::sleep(wait_duration + jitter).await;
                         continue;
                     }
 
@@ -167,8 +174,8 @@ impl BaseProvider for MistralProvider {
                     if attempts >= max_attempts {
                         return Err(format!("Netzwerkfehler bei Folie {}: {}", page_number, e));
                     }
-                    tokio::time::sleep(backoff_delay).await;
-                    backoff_delay = Duration::from_millis((backoff_delay.as_millis() as f64 * 1.8) as u64);
+                    let jitter = Duration::from_millis((rand::random::<u64>() % 1500) + 1000);
+                    tokio::time::sleep(Duration::from_millis(2500) + jitter).await;
                 }
             }
         }
