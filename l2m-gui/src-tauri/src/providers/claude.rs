@@ -75,7 +75,7 @@ impl BaseProvider for ClaudeProvider {
         let user_prompt = get_user_prompt(page_number);
 
         let mut attempts = 0;
-        let max_attempts = 30; // 30 resilient retries
+        let max_attempts = 30;
 
         loop {
             attempts += 1;
@@ -119,29 +119,37 @@ impl BaseProvider for ClaudeProvider {
                 Ok(res) => {
                     let status = res.status();
 
-                    // Handle 429 Rate Limit and 529 Overloaded Server
-                    if status.as_u16() == 429 || status.as_u16() == 529 || status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+                    if !status.is_success() {
                         let err_body = res.text().await.unwrap_or_default();
 
-                        // Fallback from Sonnet to Haiku on rate limits
-                        if model.contains("sonnet") {
+                        // If model 404s or is inaccessible, fallback gracefully
+                        if (status == reqwest::StatusCode::NOT_FOUND || status.as_u16() == 400)
+                            && (err_body.contains("not_found_error") || err_body.contains("model"))
+                            && model != "claude-3-5-haiku-20241022"
+                        {
                             model = "claude-3-5-haiku-20241022";
-                            tokio::time::sleep(Duration::from_millis(800)).await;
+                            tokio::time::sleep(Duration::from_millis(500)).await;
                             continue;
                         }
 
-                        if attempts >= max_attempts {
-                            return Err(format!("Anthropic Claude Rate-Limit: {}", err_body));
+                        // Handle 429 Rate Limit and 529 Overloaded Server
+                        if status.as_u16() == 429 || status.as_u16() == 529 || status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+                            if model.contains("sonnet") {
+                                model = "claude-3-5-haiku-20241022";
+                                tokio::time::sleep(Duration::from_millis(800)).await;
+                                continue;
+                            }
+
+                            if attempts >= max_attempts {
+                                return Err(format!("Anthropic Claude Rate-Limit: {}", err_body));
+                            }
+
+                            let wait_duration = parse_claude_retry_duration(&err_body);
+                            let jitter = Duration::from_millis((rand::random::<u64>() % 1500) + 500);
+                            tokio::time::sleep(wait_duration + jitter).await;
+                            continue;
                         }
 
-                        let wait_duration = parse_claude_retry_duration(&err_body);
-                        let jitter = Duration::from_millis((rand::random::<u64>() % 1500) + 500);
-                        tokio::time::sleep(wait_duration + jitter).await;
-                        continue;
-                    }
-
-                    if !status.is_success() {
-                        let err_body = res.text().await.unwrap_or_default();
                         return Err(format!("Anthropic Claude Inferenz-Fehler ({}): {}", status, err_body));
                     }
 

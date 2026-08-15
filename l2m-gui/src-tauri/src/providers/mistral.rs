@@ -66,7 +66,7 @@ impl BaseProvider for MistralProvider {
         hybrid: bool,
     ) -> Result<(String, String), String> {
         let mut attempts = 0;
-        let max_attempts = 30; // 30 resilient retries
+        let max_attempts = 30;
 
         // 1. First try dedicated Mistral Document OCR endpoint if visual
         if !hybrid || is_visual {
@@ -103,31 +103,31 @@ impl BaseProvider for MistralProvider {
             }
         }
 
-        // 2. Standard Multimodal Chat Completion (Pixtral 12B) with 30 retries and jitter
-        let model = "pixtral-12b-2409";
+        // 2. Standard Multimodal Chat Completion (Pixtral 12B) with 404 fallback & 30 retries
+        let mut model = "pixtral-12b-2409";
         let user_prompt = get_user_prompt(page_number);
         let image_url = format!("data:image/webp;base64,{}", webp_base64);
 
-        let payload = json!({
-            "model": model,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": SYSTEM_PROMPT
-                },
-                {
-                    "role": "user",
-                    "content": [
-                        { "type": "text", "text": user_prompt },
-                        { "type": "image_url", "image_url": { "url": image_url } }
-                    ]
-                }
-            ],
-            "temperature": 0.0
-        });
-
         loop {
             attempts += 1;
+
+            let payload = json!({
+                "model": model,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": SYSTEM_PROMPT
+                    },
+                    {
+                        "role": "user",
+                        "content": [
+                            { "type": "text", "text": user_prompt },
+                            { "type": "image_url", "image_url": { "url": image_url } }
+                        ]
+                    }
+                ],
+                "temperature": 0.0
+            });
 
             let res_result = self
                 .client
@@ -141,20 +141,27 @@ impl BaseProvider for MistralProvider {
                 Ok(res) => {
                     let status = res.status();
 
-                    if status.as_u16() == 429 || status == reqwest::StatusCode::TOO_MANY_REQUESTS {
-                        if attempts >= max_attempts {
-                            let err_body = res.text().await.unwrap_or_default();
-                            return Err(format!("Mistral Rate-Limit: {}", err_body));
-                        }
-
-                        let wait_duration = parse_mistral_retry_duration(&res.text().await.unwrap_or_default());
-                        let jitter = Duration::from_millis((rand::random::<u64>() % 1500) + 500);
-                        tokio::time::sleep(wait_duration + jitter).await;
-                        continue;
-                    }
-
                     if !status.is_success() {
                         let err_body = res.text().await.unwrap_or_default();
+
+                        // If model 404s, switch to fallback
+                        if (status == reqwest::StatusCode::NOT_FOUND || err_body.contains("not found")) && model != "pixtral-large-latest" {
+                            model = "pixtral-large-latest";
+                            tokio::time::sleep(Duration::from_millis(500)).await;
+                            continue;
+                        }
+
+                        if status.as_u16() == 429 || status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+                            if attempts >= max_attempts {
+                                return Err(format!("Mistral Rate-Limit: {}", err_body));
+                            }
+
+                            let wait_duration = parse_mistral_retry_duration(&err_body);
+                            let jitter = Duration::from_millis((rand::random::<u64>() % 1500) + 500);
+                            tokio::time::sleep(wait_duration + jitter).await;
+                            continue;
+                        }
+
                         return Err(format!("Mistral Inferenz-Fehler ({}): {}", status, err_body));
                     }
 

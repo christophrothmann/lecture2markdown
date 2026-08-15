@@ -23,7 +23,6 @@ impl OpenAIProvider {
 }
 
 fn parse_retry_duration(error_msg: &str) -> Duration {
-    // If it's a TPM (tokens per minute) limit, give the rolling window at least 3.5s to cool down
     if error_msg.contains("tokens per min") || error_msg.contains("TPM") {
         if let Ok(re_sec) = Regex::new(r"try again in ([0-9]+(?:\.[0-9]+)?)s") {
             if let Some(caps) = re_sec.captures(error_msg) {
@@ -97,7 +96,7 @@ impl BaseProvider for OpenAIProvider {
         let image_url = format!("data:image/webp;base64,{}", webp_base64);
 
         let mut attempts = 0;
-        let max_attempts = 30; // Resilient retry count for large slide decks
+        let max_attempts = 30;
 
         loop {
             attempts += 1;
@@ -132,6 +131,13 @@ impl BaseProvider for OpenAIProvider {
                 Ok(res) => {
                     let status = res.status();
 
+                    // If model 404s or is deprecated/inaccessible, fallback to gpt-4o-mini
+                    if status == reqwest::StatusCode::NOT_FOUND && model != "gpt-4o-mini" {
+                        model = "gpt-4o-mini";
+                        tokio::time::sleep(Duration::from_millis(500)).await;
+                        continue;
+                    }
+
                     if status.as_u16() == 429 || status == reqwest::StatusCode::TOO_MANY_REQUESTS {
                         let err_body = res.text().await.unwrap_or_default();
 
@@ -147,7 +153,6 @@ impl BaseProvider for OpenAIProvider {
                         }
 
                         let wait_duration = parse_retry_duration(&err_body);
-                        // Add randomized jitter (500ms to 2000ms)
                         let jitter = Duration::from_millis((rand::random::<u64>() % 1500) + 500);
                         let total_wait = wait_duration + jitter;
 
