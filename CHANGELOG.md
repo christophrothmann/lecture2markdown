@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.0] - 2026-08-15 "pure-rust-core"
+
+### Added
+- **Pure-Rust Core Engine**: Migrated the entire multimodal inference and PDF conversion pipeline to native Rust using `tokio` and `reqwest`.
+- **In-Memory WebP Pipeline**: Replaced uncompressed PNGs with memory-efficient WebP encoding (Quality: 80), reducing payload size by ~80%.
+- **Content-Addressed Slide-Cache (SHA-256)**: Added instant local slide cache with 180-day (6 months) TTL and LRU eviction.
+- **"Folien Cache leeren" Button**: Added clear cache management with live storage stats in settings modal.
+- **LiteLLM Dynamic Cost Calculator**: Integrated official LiteLLM pricing matrix for accurate, model-specific cost estimation.
+- **High-Throughput Async Concurrency**: Parallelized slide processing up to 12 concurrent async tasks.
+
 ## [1.1.2] - 2026-08-15
 
 ### Changed

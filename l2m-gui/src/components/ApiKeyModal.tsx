@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { KeyRound, ExternalLink, CheckCircle2, AlertCircle, Loader2, X, Sparkles } from 'lucide-react';
+import { KeyRound, ExternalLink, CheckCircle2, AlertCircle, Loader2, X, Sparkles, Trash2, Database } from 'lucide-react';
 import { open as openUrl } from '@tauri-apps/plugin-shell';
 import { invoke } from '@tauri-apps/api/core';
 
@@ -75,15 +75,29 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
   const [currentInput, setCurrentInput] = useState<string>('');
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [cacheStats, setCacheStats] = useState<{ count: number; size_kb: number }>({ count: 0, size_kb: 0 });
+  const [cacheClearing, setCacheClearing] = useState(false);
+
+  const fetchCacheStats = async () => {
+    try {
+      const stats = await invoke<{ count: number; size_kb: number }>('get_slide_cache_stats_native');
+      setCacheStats(stats);
+    } catch {
+      // Ignore
+    }
+  };
 
   useEffect(() => {
     setSelectedTab(activeProvider);
   }, [activeProvider, isOpen]);
 
-  // Sync input when tab changes or modal opens (without erasing testResult on key save)
+  // Sync input when tab changes or modal opens
   useEffect(() => {
     setCurrentInput(providerKeys[selectedTab] || '');
     setTestResult(null);
+    if (isOpen) {
+      fetchCacheStats();
+    }
   }, [selectedTab, isOpen]);
 
   if (!isOpen) return null;
@@ -114,6 +128,19 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
       });
     } finally {
       setTesting(false);
+    }
+  };
+
+  const handleClearSlideCache = async () => {
+    setCacheClearing(true);
+    try {
+      const deletedCount = await invoke<number>('clear_slide_cache_native');
+      setCacheStats({ count: 0, size_kb: 0 });
+      alert(`Folien-Cache erfolgreich geleert (${deletedCount} Folien gelöscht).`);
+    } catch (e) {
+      alert(`Fehler beim Leeren des Caches: ${e}`);
+    } finally {
+      setCacheClearing(false);
     }
   };
 
@@ -157,9 +184,9 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
           </div>
           <div>
             <h2 className="text-xl font-bold text-slate-100 flex items-center gap-2">
-              KI-Provider & API-Keys <Sparkles className="w-4 h-4 text-amber-400" />
+              KI-Provider & Einstellungen <Sparkles className="w-4 h-4 text-amber-400" />
             </h2>
-            <p className="text-xs text-slate-400">Wähle deinen Provider und hinterlege den API-Key</p>
+            <p className="text-xs text-slate-400">Verwalte Provider, API-Keys und den Folien-Cache</p>
           </div>
         </div>
 
@@ -248,6 +275,28 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
               <span>{testResult.message}</span>
             </div>
           )}
+        </div>
+
+        {/* Folien-Cache Management Card */}
+        <div className="p-3 bg-surface/50 border border-border/80 rounded-xl flex items-center justify-between">
+          <div className="flex items-center space-x-2.5">
+            <Database className="w-4 h-4 text-slate-400" />
+            <div>
+              <span className="text-xs font-semibold text-slate-200 block">Folien-Cache (6 Monate TTL)</span>
+              <span className="text-[11px] text-slate-400">
+                {cacheStats.count} Folien gespeichert (~{cacheStats.size_kb} KB)
+              </span>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleClearSlideCache}
+            disabled={cacheClearing || cacheStats.count === 0}
+            className="px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 disabled:opacity-40 cursor-pointer"
+          >
+            <Trash2 className="w-3.5 h-3.5" /> Folien Cache leeren
+          </button>
         </div>
 
         {/* Action Buttons */}
