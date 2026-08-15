@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 use tauri::{Emitter, Manager};
 use tokio::sync::Semaphore;
 
@@ -178,7 +179,9 @@ async fn convert_lecture_native(
 
     let prov: Arc<Box<dyn providers::BaseProvider>> = Arc::new(providers::get_provider(&chosen_provider, &api_key));
     let mut sections: Vec<String> = vec![String::new(); total_pages];
-    let semaphore = Arc::new(Semaphore::new(4)); // Safe concurrent limit avoiding Tier-1 30k TPM rate-limits
+    
+    // Concurrency limit: 3 concurrent requests to prevent hitting strict 200k/30k TPM rate-limits
+    let semaphore = Arc::new(Semaphore::new(3));
 
     let mut tasks: Vec<tokio::task::JoinHandle<Result<(usize, String, String), String>>> = Vec::new();
 
@@ -221,6 +224,9 @@ async fn convert_lecture_native(
 
             // 4. Save to Cache
             cache::store_cached_slide(&app_handle, &rendered.hash, &markdown);
+
+            // Small breathing gap between slides
+            tokio::time::sleep(Duration::from_millis(150)).await;
 
             Ok((
                 idx,
