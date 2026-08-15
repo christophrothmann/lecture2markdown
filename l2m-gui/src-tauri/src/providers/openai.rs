@@ -11,7 +11,7 @@ pub struct OpenAIProvider {
 impl OpenAIProvider {
     pub fn new(api_key: &str) -> Self {
         let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(60))
+            .timeout(Duration::from_secs(90))
             .build()
             .unwrap_or_default();
         Self {
@@ -75,30 +75,73 @@ impl BaseProvider for OpenAIProvider {
             "temperature": 0.0
         });
 
-        let res = self
-            .client
-            .post("https://api.openai.com/v1/chat/completions")
-            .bearer_auth(&self.api_key)
-            .json(&payload)
-            .send()
-            .await
-            .map_err(|e| format!("Netzwerkfehler bei Folie {}: {}", page_number, e))?;
+        let mut attempts = 0;
+        let max_attempts = 6;
+        let mut backoff_delay = Duration::from_millis(2500);
 
-        if !res.status().is_success() {
-            let err_body = res.text().await.unwrap_or_default();
-            return Err(format!("OpenAI Inferenz-Fehler: {}", err_body));
+        loop {
+            attempts += 1;
+
+            let res_result = self
+                .client
+                .post("https://api.openai.com/v1/chat/completions")
+                .bearer_auth(&self.api_key)
+                .json(&payload)
+                .send()
+                .await;
+
+            match res_result {
+                Ok(res) => {
+                    let status = res.status();
+
+                    // Handle 429 Rate Limit with automatic exponential backoff
+                    if status.as_u16() == 429 || status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+                        if attempts >= max_attempts {
+                            let err_body = res.text().await.unwrap_or_default();
+                            return Err(format!("OpenAI Rate-Limit überschritten: {}", err_body));
+                        }
+
+                        // Check Retry-After header or use backoff delay
+                        let sleep_duration = if let Some(retry_header) = res.headers().get("retry-after") {
+                            if let Ok(retry_str) = retry_header.to_str() {
+                                retry_str.parse::<f64>().map(|s| Duration::from_millis((s * 1000.0) as u64)).unwrap_or(backoff_delay)
+                            } else {
+                                backoff_delay
+                            }
+                        } else {
+                            backoff_delay
+                        };
+
+                        tokio::time::sleep(sleep_duration).await;
+                        backoff_delay = Duration::from_millis((backoff_delay.as_millis() as f64 * 1.8) as u64);
+                        continue;
+                    }
+
+                    if !status.is_success() {
+                        let err_body = res.text().await.unwrap_or_default();
+                        return Err(format!("OpenAI Inferenz-Fehler ({}): {}", status, err_body));
+                    }
+
+                    let json_resp: serde_json::Value = res
+                        .json()
+                        .await
+                        .map_err(|e| format!("JSON-Parsing-Fehler: {}", e))?;
+
+                    let raw_content = json_resp["choices"][0]["message"]["content"]
+                        .as_str()
+                        .unwrap_or("*(Kein Inhalt)*");
+
+                    let sanitized = sanitize_markdown_output(raw_content);
+                    return Ok((sanitized, model.to_string()));
+                }
+                Err(e) => {
+                    if attempts >= max_attempts {
+                        return Err(format!("Netzwerkfehler bei Folie {}: {}", page_number, e));
+                    }
+                    tokio::time::sleep(backoff_delay).await;
+                    backoff_delay = Duration::from_millis((backoff_delay.as_millis() as f64 * 1.8) as u64);
+                }
+            }
         }
-
-        let json_resp: serde_json::Value = res
-            .json()
-            .await
-            .map_err(|e| format!("JSON-Parsing-Fehler: {}", e))?;
-
-        let raw_content = json_resp["choices"][0]["message"]["content"]
-            .as_str()
-            .unwrap_or("*(Kein Inhalt)*");
-
-        let sanitized = sanitize_markdown_output(raw_content);
-        Ok((sanitized, model.to_string()))
     }
 }

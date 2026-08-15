@@ -178,7 +178,7 @@ async fn convert_lecture_native(
 
     let prov: Arc<Box<dyn providers::BaseProvider>> = Arc::new(providers::get_provider(&chosen_provider, &api_key));
     let mut sections: Vec<String> = vec![String::new(); total_pages];
-    let semaphore = Arc::new(Semaphore::new(12)); // High-throughput async concurrency
+    let semaphore = Arc::new(Semaphore::new(4)); // Safe concurrent limit avoiding Tier-1 30k TPM rate-limits
 
     let mut tasks: Vec<tokio::task::JoinHandle<Result<(usize, String, String), String>>> = Vec::new();
 
