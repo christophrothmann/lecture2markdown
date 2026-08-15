@@ -69,15 +69,15 @@ impl BaseProvider for GeminiProvider {
         hybrid: bool,
     ) -> Result<(String, String), String> {
         let mut model = if !hybrid || is_visual {
-            "gemini-1.5-pro"
+            "gemini-pro-latest"
         } else {
-            "gemini-2.0-flash"
+            "gemini-flash-latest"
         };
 
         let user_prompt = get_user_prompt(page_number);
 
         let mut attempts = 0;
-        let max_attempts = 30; // 30 resilient retries
+        let max_attempts = 30;
 
         loop {
             attempts += 1;
@@ -124,13 +124,19 @@ impl BaseProvider for GeminiProvider {
                 Ok(res) => {
                     let status = res.status();
 
+                    // If model 404s, switch to standard gemini-flash-latest
+                    if status == reqwest::StatusCode::NOT_FOUND && model != "gemini-flash-latest" {
+                        model = "gemini-flash-latest";
+                        tokio::time::sleep(Duration::from_millis(500)).await;
+                        continue;
+                    }
+
                     // Handle 429 Rate Limits / Quotas / Overload
-                    if status.as_u16() == 429 || status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+                    if status.as_u16() == 429 || status == reqwest::StatusCode::TOO_MANY_REQUESTS || status.as_u16() == 503 {
                         let err_body = res.text().await.unwrap_or_default();
 
-                        // Fallback from 1.5-pro to fast 2.0-flash on rate limits
-                        if model == "gemini-1.5-pro" {
-                            model = "gemini-2.0-flash";
+                        if model != "gemini-flash-latest" {
+                            model = "gemini-flash-latest";
                             tokio::time::sleep(Duration::from_millis(800)).await;
                             continue;
                         }
