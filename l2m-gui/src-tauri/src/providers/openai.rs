@@ -1,5 +1,6 @@
 use super::{sanitize_markdown_output, BaseProvider, SYSTEM_PROMPT, get_user_prompt};
 use async_trait::async_trait;
+use regex::Regex;
 use serde_json::json;
 use std::time::Duration;
 
@@ -19,6 +20,29 @@ impl OpenAIProvider {
             client,
         }
     }
+}
+
+fn parse_retry_duration(error_msg: &str, default_delay: Duration) -> Duration {
+    // Look for patterns like "Please try again in 2.872s" or "in 124ms"
+    if let Ok(re_sec) = Regex::new(r"try again in ([0-9]+(?:\.[0-9]+)?)s") {
+        if let Some(caps) = re_sec.captures(error_msg) {
+            if let Some(m) = caps.get(1) {
+                if let Ok(secs) = m.as_str().parse::<f64>() {
+                    return Duration::from_millis(((secs + 0.5) * 1000.0) as u64);
+                }
+            }
+        }
+    }
+    if let Ok(re_ms) = Regex::new(r"try again in ([0-9]+)ms") {
+        if let Some(caps) = re_ms.captures(error_msg) {
+            if let Some(m) = caps.get(1) {
+                if let Ok(ms) = m.as_str().parse::<u64>() {
+                    return Duration::from_millis(ms + 600);
+                }
+            }
+        }
+    }
+    default_delay
 }
 
 #[async_trait]
@@ -48,7 +72,7 @@ impl BaseProvider for OpenAIProvider {
         is_visual: bool,
         hybrid: bool,
     ) -> Result<(String, String), String> {
-        let model = if !hybrid || is_visual {
+        let mut model = if !hybrid || is_visual {
             "gpt-4o"
         } else {
             "gpt-4o-mini"
@@ -57,30 +81,30 @@ impl BaseProvider for OpenAIProvider {
         let user_prompt = get_user_prompt(page_number);
         let image_url = format!("data:image/webp;base64,{}", webp_base64);
 
-        let payload = json!({
-            "model": model,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": SYSTEM_PROMPT
-                },
-                {
-                    "role": "user",
-                    "content": [
-                        { "type": "text", "text": user_prompt },
-                        { "type": "image_url", "image_url": { "url": image_url } }
-                    ]
-                }
-            ],
-            "temperature": 0.0
-        });
-
         let mut attempts = 0;
-        let max_attempts = 6;
-        let mut backoff_delay = Duration::from_millis(2500);
+        let max_attempts = 10;
+        let mut backoff_delay = Duration::from_millis(2000);
 
         loop {
             attempts += 1;
+
+            let payload = json!({
+                "model": model,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": SYSTEM_PROMPT
+                    },
+                    {
+                        "role": "user",
+                        "content": [
+                            { "type": "text", "text": user_prompt },
+                            { "type": "image_url", "image_url": { "url": image_url } }
+                        ]
+                    }
+                ],
+                "temperature": 0.0
+            });
 
             let res_result = self
                 .client
@@ -94,26 +118,26 @@ impl BaseProvider for OpenAIProvider {
                 Ok(res) => {
                     let status = res.status();
 
-                    // Handle 429 Rate Limit with automatic exponential backoff
                     if status.as_u16() == 429 || status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+                        let err_body = res.text().await.unwrap_or_default();
+
+                        // If gpt-4o hits strict TPM limits (e.g. 30k TPM in Tier 1), fallback to gpt-4o-mini (2M TPM) after 2 attempts
+                        if model == "gpt-4o" && attempts >= 2 {
+                            model = "gpt-4o-mini";
+                            tokio::time::sleep(Duration::from_millis(800)).await;
+                            continue;
+                        }
+
                         if attempts >= max_attempts {
-                            let err_body = res.text().await.unwrap_or_default();
                             return Err(format!("OpenAI Rate-Limit überschritten: {}", err_body));
                         }
 
-                        // Check Retry-After header or use backoff delay
-                        let sleep_duration = if let Some(retry_header) = res.headers().get("retry-after") {
-                            if let Ok(retry_str) = retry_header.to_str() {
-                                retry_str.parse::<f64>().map(|s| Duration::from_millis((s * 1000.0) as u64)).unwrap_or(backoff_delay)
-                            } else {
-                                backoff_delay
-                            }
-                        } else {
-                            backoff_delay
-                        };
+                        let wait_duration = parse_retry_duration(&err_body, backoff_delay);
+                        // Add jitter to prevent thundering herd
+                        let jitter = Duration::from_millis((rand::random::<u64>() % 1000) + 300);
+                        tokio::time::sleep(wait_duration + jitter).await;
 
-                        tokio::time::sleep(sleep_duration).await;
-                        backoff_delay = Duration::from_millis((backoff_delay.as_millis() as f64 * 1.8) as u64);
+                        backoff_delay = Duration::from_millis((backoff_delay.as_millis() as f64 * 1.5) as u64);
                         continue;
                     }
 
@@ -139,7 +163,7 @@ impl BaseProvider for OpenAIProvider {
                         return Err(format!("Netzwerkfehler bei Folie {}: {}", page_number, e));
                     }
                     tokio::time::sleep(backoff_delay).await;
-                    backoff_delay = Duration::from_millis((backoff_delay.as_millis() as f64 * 1.8) as u64);
+                    backoff_delay = Duration::from_millis((backoff_delay.as_millis() as f64 * 1.5) as u64);
                 }
             }
         }
