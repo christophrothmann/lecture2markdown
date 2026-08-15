@@ -1,5 +1,4 @@
 use base64::Engine;
-use image::DynamicImage;
 use sha2::{Digest, Sha256};
 use std::path::Path;
 use std::process::Command;
@@ -19,16 +18,7 @@ pub fn hash_bytes(data: &[u8]) -> String {
     result.iter().map(|b| format!("{:02x}", b)).collect()
 }
 
-/// Encodes a DynamicImage into a highly compressed WebP buffer (Quality: 80).
-pub fn encode_to_webp(img: &DynamicImage) -> Result<Vec<u8>, String> {
-    let mut buffer = Vec::new();
-    let mut cursor = std::io::Cursor::new(&mut buffer);
-    img.write_to(&mut cursor, image::ImageFormat::WebP)
-        .map_err(|e| format!("Fehler beim WebP-Encoding: {}", e))?;
-    Ok(buffer)
-}
-
-/// High-speed PDF rendering pipeline with PyMuPDF/Pdfium fallback producing In-Memory WebP.
+/// High-speed PDF rendering pipeline producing In-Memory WebP.
 pub fn render_pdf_slide_to_webp(
     pdf_path: &Path,
     page_index: usize,
