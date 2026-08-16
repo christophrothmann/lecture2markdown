@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { BookOpen, Settings, CheckCircle, Sparkles, FileText, Play, RefreshCw, ChevronDown } from 'lucide-react';
 import { save as saveFileDialog } from '@tauri-apps/plugin-dialog';
 import { writeTextFile } from '@tauri-apps/plugin-fs';
@@ -23,7 +23,7 @@ export function App() {
   });
   const [providerKeys, setProviderKeys] = useState<Record<string, string>>({});
   const [isKeyModalOpen, setIsKeyModalOpen] = useState<boolean>(false);
-  
+
   const [selectedFilePath, setSelectedFilePath] = useState<string>('');
   const [selectedFileName, setSelectedFileName] = useState<string>('');
   const [pageCount, setPageCount] = useState<number>(0);
@@ -34,7 +34,7 @@ export function App() {
     lastModel: '',
     usedModels: [],
   });
-  
+
   const [markdownResult, setMarkdownResult] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>(() => {
     try {
@@ -59,6 +59,8 @@ export function App() {
       });
   }, [activeProvider]);
 
+  const activeJobIdRef = useRef<string | null>(null);
+
   useEffect(() => {
     let unlistenFn: (() => void) | null = null;
 
@@ -68,6 +70,13 @@ export function App() {
         if (payload.type === 'start') {
           setProgress({ completed: 0, total: payload.total_pages, lastModel: '', usedModels: [] });
           setPageCount(payload.total_pages);
+          setHistory((prev) =>
+            prev.map((item) =>
+              item.id === activeJobIdRef.current
+                ? { ...item, totalPages: payload.total_pages, progressTotal: payload.total_pages }
+                : item
+            )
+          );
         } else if (payload.type === 'progress') {
           setProgress((prev) => ({
             completed: payload.completed,
@@ -75,6 +84,13 @@ export function App() {
             lastModel: payload.model_used,
             usedModels: payload.model_used ? [...prev.usedModels, payload.model_used] : prev.usedModels,
           }));
+          setHistory((prev) =>
+            prev.map((item) =>
+              item.id === activeJobIdRef.current
+                ? { ...item, progressCurrent: payload.completed, progressTotal: payload.total }
+                : item
+            )
+          );
         }
       } catch {
         // Ignore unformatted logs
@@ -126,8 +142,24 @@ export function App() {
 
   const handleStartConversion = async () => {
     if (!selectedFilePath || !currentActiveKey) return;
+    const jobId = Date.now().toString();
+    activeJobIdRef.current = jobId;
+
     setConverting(true);
     setMarkdownResult(null);
+
+    const inProgressItem: HistoryItem = {
+      id: jobId,
+      fileName: selectedFileName,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      content: '',
+      totalPages: pageCount || 0,
+      status: 'processing',
+      progressCurrent: 0,
+      progressTotal: pageCount || 0,
+    };
+
+    setHistory((prev) => [inProgressItem, ...prev.filter((h) => h.id !== jobId && h.status !== 'processing')]);
 
     try {
       const realGeneratedMarkdown = await invoke<string>('convert_lecture_native', {
@@ -140,22 +172,25 @@ export function App() {
       setMarkdownResult(realGeneratedMarkdown);
       setConverting(false);
 
-      const newItem: HistoryItem = {
-        id: Date.now().toString(),
-        fileName: selectedFileName,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        content: realGeneratedMarkdown,
-        totalPages: progress.total || pageCount || 1,
-      };
-
       setHistory((prev) => {
-        const updated = [newItem, ...prev.slice(0, 9)];
-        localStorage.setItem('conversion_history', JSON.stringify(updated));
+        const updated = prev.map((item) =>
+          item.id === jobId
+            ? {
+                ...item,
+                status: 'completed' as const,
+                content: realGeneratedMarkdown,
+                totalPages: progress.total || pageCount || item.totalPages || 1,
+              }
+            : item
+        );
+        const toPersist = updated.filter((h) => h.status === 'completed' || !h.status).slice(0, 10);
+        localStorage.setItem('conversion_history', JSON.stringify(toPersist));
         return updated;
       });
     } catch (error: any) {
       alert(`Fehler bei der Konvertierung:\n${error}`);
       setConverting(false);
+      setHistory((prev) => prev.filter((item) => item.id !== jobId));
     }
   };
 
@@ -197,7 +232,6 @@ export function App() {
             <h1 className="text-base font-bold text-slate-100 flex items-center gap-2">
               Lecture2Markdown
             </h1>
-            <p className="text-[11px] text-slate-400">PDF-Vorlesungen in halluzinationsfreies Markdown umwandeln</p>
           </div>
         </div>
 

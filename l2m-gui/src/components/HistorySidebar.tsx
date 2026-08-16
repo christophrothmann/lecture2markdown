@@ -1,5 +1,5 @@
 import React from 'react';
-import { History, Copy, Trash2 } from 'lucide-react';
+import { History, Copy, Trash2, Loader2 } from 'lucide-react';
 
 export interface HistoryItem {
   id: string;
@@ -7,6 +7,9 @@ export interface HistoryItem {
   timestamp: string;
   content: string;
   totalPages: number;
+  status?: 'processing' | 'completed' | 'error';
+  progressCurrent?: number;
+  progressTotal?: number;
 }
 
 interface HistorySidebarProps {
@@ -45,40 +48,67 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
             Noch keine Vorlesungen konvertiert.
           </p>
         ) : (
-          items.map((item) => (
-            <div
-              key={item.id}
-              onClick={() => onSelect(item)}
-              className="p-3 bg-card hover:bg-surface-hover border border-border/70 rounded-xl cursor-pointer transition group flex items-center justify-between"
-            >
-              <div className="space-y-1 min-w-0 pr-2">
-                <p className="text-xs font-semibold text-slate-200 truncate group-hover:text-accent transition">
-                  {item.fileName}
-                </p>
-                <div className="flex items-center space-x-2 text-[10px] text-slate-400">
-                  <span>{item.totalPages} Folien</span>
-                  <span>•</span>
-                  <span>{item.timestamp}</span>
-                </div>
-              </div>
+          items.map((item) => {
+            const isProcessing = item.status === 'processing';
 
-              <button
-                onClick={async (e) => {
-                  e.stopPropagation();
-                  try {
-                    await navigator.clipboard.writeText(item.content);
-                    alert('Markdown kopiert!');
-                  } catch {
-                    alert('Kopieren fehlgeschlagen.');
-                  }
-                }}
-                className="p-1.5 bg-background text-slate-400 hover:text-slate-100 rounded-lg border border-border transition"
-                title="Kopieren"
+            return (
+              <div
+                key={item.id}
+                onClick={() => !isProcessing && onSelect(item)}
+                className={`p-3 bg-card border rounded-xl transition group flex items-center justify-between ${
+                  isProcessing
+                    ? 'border-accent/40 bg-accent/5 cursor-default'
+                    : 'hover:bg-surface-hover border-border/70 cursor-pointer'
+                }`}
               >
-                <Copy className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          ))
+                <div className="space-y-1.5 min-w-0 pr-2 flex-1">
+                  <p
+                    className={`text-xs font-semibold truncate transition ${
+                      isProcessing ? 'text-accent' : 'text-slate-200 group-hover:text-accent'
+                    }`}
+                  >
+                    {item.fileName}
+                  </p>
+
+                  {isProcessing ? (
+                    <div className="inline-flex items-center space-x-1.5 px-2 py-0.5 bg-accent/15 border border-accent/30 rounded-md text-[10px] text-accent font-medium">
+                      <Loader2 className="w-3 h-3 animate-spin text-accent" />
+                      <span>
+                        Verarbeitung läuft...{' '}
+                        {item.progressTotal && item.progressTotal > 0
+                          ? `(${item.progressCurrent || 0}/${item.progressTotal})`
+                          : ''}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center space-x-2 text-[10px] text-slate-400">
+                      <span>{item.totalPages} Folien</span>
+                      <span>•</span>
+                      <span>{item.timestamp}</span>
+                    </div>
+                  )}
+                </div>
+
+                {!isProcessing && (
+                  <button
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      try {
+                        await navigator.clipboard.writeText(item.content);
+                        alert('Markdown kopiert!');
+                      } catch {
+                        alert('Kopieren fehlgeschlagen.');
+                      }
+                    }}
+                    className="p-1.5 bg-background text-slate-400 hover:text-slate-100 rounded-lg border border-border transition shrink-0"
+                    title="Kopieren"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            );
+          })
         )}
       </div>
     </div>
