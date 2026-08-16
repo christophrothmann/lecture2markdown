@@ -123,6 +123,18 @@ export function App() {
     localStorage.removeItem('conversion_history');
   };
 
+  const handleCancelConversion = async () => {
+    try {
+      await invoke('cancel_conversion_native');
+    } catch (e) {
+      console.error('Fehler beim Abbrechen:', e);
+    }
+    setConverting(false);
+    if (activeJobIdRef.current) {
+      setHistory((prev) => prev.filter((h) => h.id !== activeJobIdRef.current));
+    }
+  };
+
   const handleFileSelectedPath = (filePath: string, fileName: string) => {
     setSelectedFilePath(filePath);
     setSelectedFileName(fileName);
@@ -188,7 +200,11 @@ export function App() {
         return updated;
       });
     } catch (error: any) {
-      alert(`Fehler bei der Konvertierung:\n${error}`);
+      if (error && error.includes('abgebrochen')) {
+        // Silent cancel without alert
+      } else {
+        alert(`Fehler bei der Konvertierung:\n${error}`);
+      }
       setConverting(false);
       setHistory((prev) => prev.filter((item) => item.id !== jobId));
     }
@@ -306,6 +322,7 @@ export function App() {
               totalPages={progress.total}
               lastModelUsed={progress.lastModel || PROVIDER_NAMES[activeProvider]}
               usedModels={progress.usedModels}
+              onCancel={handleCancelConversion}
             />
           )}
 

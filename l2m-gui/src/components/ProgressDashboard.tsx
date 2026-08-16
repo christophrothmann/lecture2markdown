@@ -1,5 +1,5 @@
 import React from 'react';
-import { Loader2, Zap, Sparkles, Coins, CheckCircle2 } from 'lucide-react';
+import { Loader2, Zap, Sparkles, Coins, CheckCircle2, XCircle } from 'lucide-react';
 
 interface ProgressDashboardProps {
   fileName: string;
@@ -7,6 +7,7 @@ interface ProgressDashboardProps {
   totalPages: number;
   lastModelUsed: string;
   usedModels?: string[];
+  onCancel?: () => void;
 }
 
 // Exact cost rates in EUR per slide from LiteLLM model_prices_and_context_window.json
@@ -45,6 +46,7 @@ export const ProgressDashboard: React.FC<ProgressDashboardProps> = ({
   totalPages,
   lastModelUsed,
   usedModels = [],
+  onCancel,
 }) => {
   const percentage = totalPages > 0 ? Math.round((completedPages / totalPages) * 100) : 0;
   
@@ -83,7 +85,7 @@ export const ProgressDashboard: React.FC<ProgressDashboardProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center space-x-3">
           {lastModelUsed && (
             <span
               className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border ${
@@ -111,6 +113,17 @@ export const ProgressDashboard: React.FC<ProgressDashboardProps> = ({
                 </>
               )}
             </span>
+          )}
+
+          {onCancel && (
+            <button
+              onClick={onCancel}
+              className="inline-flex items-center space-x-1.5 px-3 py-1 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-full text-xs font-semibold transition"
+              title="Konvertierung abbrechen"
+            >
+              <XCircle className="w-3.5 h-3.5" />
+              <span>Abbrechen</span>
+            </button>
           )}
         </div>
       </div>

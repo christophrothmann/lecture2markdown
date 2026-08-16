@@ -7,13 +7,17 @@ mod providers;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use tauri::{Emitter, Manager};
 use tokio::sync::Semaphore;
 
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
+
+pub struct AppState {
+    pub cancel_requested: Arc<AtomicBool>,
+}
 
 fn get_secret_file_path(app: &tauri::AppHandle) -> PathBuf {
     let config_dir = app
@@ -72,6 +76,12 @@ fn find_python_binary() -> Option<PathBuf> {
         }
     }
     None
+}
+
+#[tauri::command]
+async fn cancel_conversion_native(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    state.cancel_requested.store(true, Ordering::SeqCst);
+    Ok(())
 }
 
 #[tauri::command]
@@ -151,7 +161,9 @@ async fn convert_lecture_native(
     api_key: String,
     window: tauri::Window,
     app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
 ) -> Result<String, String> {
+    state.cancel_requested.store(false, Ordering::SeqCst);
     let chosen_provider = provider.unwrap_or_else(|| "openai".to_string()).to_lowercase();
     let path = Path::new(&pdf_path);
     if !path.exists() {
@@ -182,7 +194,7 @@ async fn convert_lecture_native(
     
     // Provider-specific balanced concurrency to prevent hitting RPM/TPM tier caps:
     let concurrency = match chosen_provider.as_str() {
-        "google" => 3,
+        "google" => 2,
         "anthropic" => 4,
         "mistral" => 4,
         _ => 6,
@@ -200,10 +212,15 @@ async fn convert_lecture_native(
         let app_handle = app.clone();
         let win_clone = window.clone();
         let comp_clone = Arc::clone(&completed_counter);
+        let cancel_flag = Arc::clone(&state.cancel_requested);
         let total_pages_val = total_pages;
 
         let task = tokio::spawn(async move {
             let _permit = sem_clone.acquire().await.unwrap();
+
+            if cancel_flag.load(Ordering::SeqCst) {
+                return Err("Abgebrochen".to_string());
+            }
 
             // 1. Render slide to WebP and compute SHA-256 hash
             let rendered = pdf::render_pdf_slide_to_webp(
@@ -211,6 +228,10 @@ async fn convert_lecture_native(
                 idx,
                 py_bin_clone.as_deref(),
             )?;
+
+            if cancel_flag.load(Ordering::SeqCst) {
+                return Err("Abgebrochen".to_string());
+            }
 
             // 2. Check Slide Cache
             if let Some(cached_md) = cache::get_cached_slide(&app_handle, &rendered.hash) {
@@ -245,6 +266,10 @@ async fn convert_lecture_native(
                 )
                 .await?;
 
+            if cancel_flag.load(Ordering::SeqCst) {
+                return Err("Abgebrochen".to_string());
+            }
+
             // 4. Save to Cache
             cache::store_cached_slide(&app_handle, &rendered.hash, &markdown);
 
@@ -278,12 +303,22 @@ async fn convert_lecture_native(
                 sections[page_idx] = formatted_content;
             }
             Ok(Err(err)) => {
+                if state.cancel_requested.load(Ordering::SeqCst) || err == "Abgebrochen" {
+                    return Err("Konvertierung abgebrochen.".to_string());
+                }
                 return Err(format!("Verarbeitungsfehler: {}", err));
             }
             Err(e) => {
+                if state.cancel_requested.load(Ordering::SeqCst) {
+                    return Err("Konvertierung abgebrochen.".to_string());
+                }
                 return Err(format!("Task-Join-Fehler: {}", e));
             }
         }
+    }
+
+    if state.cancel_requested.load(Ordering::SeqCst) {
+        return Err("Konvertierung abgebrochen.".to_string());
     }
 
     let file_stem = path
@@ -312,13 +347,19 @@ async fn convert_lecture_native(
 }
 
 fn main() {
+    let app_state = AppState {
+        cancel_requested: Arc::new(AtomicBool::new(false)),
+    };
+
     tauri::Builder::default()
+        .manage(app_state)
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_notification::init())
         .invoke_handler(tauri::generate_handler![
             convert_lecture_native,
+            cancel_conversion_native,
             save_api_key_native,
             get_api_keys_native,
             get_api_key_native,
