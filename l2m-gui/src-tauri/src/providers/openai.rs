@@ -94,6 +94,7 @@ impl BaseProvider for OpenAIProvider {
 
         let user_prompt = get_user_prompt(page_number);
         let image_url = format!("data:image/webp;base64,{}", webp_base64);
+        let detail_level = if is_visual { "high" } else { "low" };
 
         let mut attempts = 0;
         let max_attempts = 30;
@@ -112,7 +113,13 @@ impl BaseProvider for OpenAIProvider {
                         "role": "user",
                         "content": [
                             { "type": "text", "text": user_prompt },
-                            { "type": "image_url", "image_url": { "url": image_url } }
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": image_url,
+                                    "detail": detail_level
+                                }
+                            }
                         ]
                     }
                 ],

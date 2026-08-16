@@ -180,8 +180,8 @@ async fn convert_lecture_native(
     let prov: Arc<Box<dyn providers::BaseProvider>> = Arc::new(providers::get_provider(&chosen_provider, &api_key));
     let mut sections: Vec<String> = vec![String::new(); total_pages];
     
-    // High-performance concurrency: 6 concurrent parallel workers
-    let semaphore = Arc::new(Semaphore::new(6));
+    // High-performance concurrency: 10 concurrent parallel workers
+    let semaphore = Arc::new(Semaphore::new(10));
     let completed_counter = Arc::new(AtomicUsize::new(0));
 
     let mut tasks: Vec<tokio::task::JoinHandle<Result<(usize, String, String), String>>> = Vec::new();
