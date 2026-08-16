@@ -180,8 +180,9 @@ async fn convert_lecture_native(
     let prov: Arc<Box<dyn providers::BaseProvider>> = Arc::new(providers::get_provider(&chosen_provider, &api_key));
     let mut sections: Vec<String> = vec![String::new(); total_pages];
     
-    // High-performance concurrency: 10 concurrent parallel workers
-    let semaphore = Arc::new(Semaphore::new(10));
+    // Provider-adaptive concurrency: 3 for Gemini Free-Tier (15 RPM cap), 8 for OpenAI/Claude/Mistral
+    let concurrency = if chosen_provider == "google" { 3 } else { 8 };
+    let semaphore = Arc::new(Semaphore::new(concurrency));
     let completed_counter = Arc::new(AtomicUsize::new(0));
 
     let mut tasks: Vec<tokio::task::JoinHandle<Result<(usize, String, String), String>>> = Vec::new();

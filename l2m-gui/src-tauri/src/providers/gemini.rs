@@ -12,7 +12,7 @@ pub struct GeminiProvider {
 impl GeminiProvider {
     pub fn new(api_key: &str) -> Self {
         let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(120))
+            .timeout(Duration::from_secs(60))
             .build()
             .unwrap_or_default();
         Self {
@@ -23,19 +23,18 @@ impl GeminiProvider {
 }
 
 fn parse_gemini_retry_duration(error_msg: &str) -> Duration {
-    if error_msg.contains("RESOURCE_EXHAUSTED") || error_msg.contains("quota") || error_msg.contains("TPM") {
-        return Duration::from_millis(3500);
-    }
-    if let Ok(re_sec) = Regex::new(r"try again in ([0-9]+(?:\.[0-9]+)?)s") {
+    if let Ok(re_sec) = Regex::new(r"retry in ([0-9]+(?:\.[0-9]+)?)s") {
         if let Some(caps) = re_sec.captures(error_msg) {
             if let Some(m) = caps.get(1) {
                 if let Ok(secs) = m.as_str().parse::<f64>() {
-                    return Duration::from_millis(((secs + 1.0) * 1000.0) as u64);
+                    // Cap retry wait to max 8 seconds to prevent endless UI freezing
+                    let wait_secs = secs.min(8.0);
+                    return Duration::from_millis(((wait_secs + 0.5) * 1000.0) as u64);
                 }
             }
         }
     }
-    Duration::from_millis(3000)
+    Duration::from_millis(2500)
 }
 
 #[async_trait]
@@ -65,19 +64,14 @@ impl BaseProvider for GeminiProvider {
         &self,
         webp_base64: &str,
         page_number: usize,
-        is_visual: bool,
-        hybrid: bool,
+        _is_visual: bool,
+        _hybrid: bool,
     ) -> Result<(String, String), String> {
-        let mut model = if !hybrid || is_visual {
-            "gemini-pro-latest"
-        } else {
-            "gemini-flash-latest"
-        };
-
+        let model = "gemini-flash-latest";
         let user_prompt = get_user_prompt(page_number);
 
         let mut attempts = 0;
-        let max_attempts = 30;
+        let max_attempts = 10;
 
         loop {
             attempts += 1;
@@ -124,21 +118,14 @@ impl BaseProvider for GeminiProvider {
                 Ok(res) => {
                     let status = res.status();
 
-                    // If model 404s, switch to standard gemini-flash-latest
-                    if status == reqwest::StatusCode::NOT_FOUND && model != "gemini-flash-latest" {
-                        model = "gemini-flash-latest";
-                        tokio::time::sleep(Duration::from_millis(500)).await;
-                        continue;
-                    }
-
-                    // Handle 429 Rate Limits / Quotas / Overload
+                    // Handle 429 Rate Limits / Free Tier Quota Exhaustion
                     if status.as_u16() == 429 || status == reqwest::StatusCode::TOO_MANY_REQUESTS || status.as_u16() == 503 {
                         let err_body = res.text().await.unwrap_or_default();
 
-                        if model != "gemini-flash-latest" {
-                            model = "gemini-flash-latest";
-                            tokio::time::sleep(Duration::from_millis(800)).await;
-                            continue;
+                        if err_body.contains("FreeTier") && err_body.contains("Quota exceeded") {
+                            if attempts >= 3 {
+                                return Err("Google Gemini Free-Tier Quota erreicht (15 Requests/Min). Bitte kurz warten oder in Google AI Studio ein Billing-Konto verknüpfen.".to_string());
+                            }
                         }
 
                         if attempts >= max_attempts {
@@ -146,7 +133,7 @@ impl BaseProvider for GeminiProvider {
                         }
 
                         let wait_duration = parse_gemini_retry_duration(&err_body);
-                        let jitter = Duration::from_millis((rand::random::<u64>() % 1500) + 500);
+                        let jitter = Duration::from_millis((rand::random::<u64>() % 1000) + 500);
                         tokio::time::sleep(wait_duration + jitter).await;
                         continue;
                     }
@@ -172,8 +159,8 @@ impl BaseProvider for GeminiProvider {
                     if attempts >= max_attempts {
                         return Err(format!("Netzwerkfehler bei Folie {}: {}", page_number, e));
                     }
-                    let jitter = Duration::from_millis((rand::random::<u64>() % 1500) + 1000);
-                    tokio::time::sleep(Duration::from_millis(2500) + jitter).await;
+                    let jitter = Duration::from_millis((rand::random::<u64>() % 1000) + 500);
+                    tokio::time::sleep(Duration::from_millis(1500) + jitter).await;
                 }
             }
         }
