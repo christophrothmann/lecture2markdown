@@ -12,7 +12,7 @@ pub struct OpenAIProvider {
 impl OpenAIProvider {
     pub fn new(api_key: &str) -> Self {
         let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(120))
+            .timeout(Duration::from_secs(60))
             .build()
             .unwrap_or_default();
         Self {
@@ -23,24 +23,12 @@ impl OpenAIProvider {
 }
 
 fn parse_retry_duration(error_msg: &str) -> Duration {
-    if error_msg.contains("tokens per min") || error_msg.contains("TPM") {
-        if let Ok(re_sec) = Regex::new(r"try again in ([0-9]+(?:\.[0-9]+)?)s") {
-            if let Some(caps) = re_sec.captures(error_msg) {
-                if let Some(m) = caps.get(1) {
-                    if let Ok(secs) = m.as_str().parse::<f64>() {
-                        return Duration::from_millis(((secs + 2.0) * 1000.0) as u64);
-                    }
-                }
-            }
-        }
-        return Duration::from_millis(3500);
-    }
-
     if let Ok(re_sec) = Regex::new(r"try again in ([0-9]+(?:\.[0-9]+)?)s") {
         if let Some(caps) = re_sec.captures(error_msg) {
             if let Some(m) = caps.get(1) {
                 if let Ok(secs) = m.as_str().parse::<f64>() {
-                    return Duration::from_millis(((secs + 1.0) * 1000.0) as u64);
+                    let wait_secs = secs.min(5.0);
+                    return Duration::from_millis(((wait_secs + 0.5) * 1000.0) as u64);
                 }
             }
         }
@@ -50,13 +38,13 @@ fn parse_retry_duration(error_msg: &str) -> Duration {
         if let Some(caps) = re_ms.captures(error_msg) {
             if let Some(m) = caps.get(1) {
                 if let Ok(ms) = m.as_str().parse::<u64>() {
-                    return Duration::from_millis(ms + 1500);
+                    return Duration::from_millis((ms + 500).min(4000));
                 }
             }
         }
     }
 
-    Duration::from_millis(3000)
+    Duration::from_millis(2000)
 }
 
 #[async_trait]
@@ -97,7 +85,7 @@ impl BaseProvider for OpenAIProvider {
         let detail_level = if is_visual { "high" } else { "low" };
 
         let mut attempts = 0;
-        let max_attempts = 30;
+        let max_attempts = 15;
 
         loop {
             attempts += 1;
@@ -138,32 +126,30 @@ impl BaseProvider for OpenAIProvider {
                 Ok(res) => {
                     let status = res.status();
 
-                    // If model 404s or is deprecated/inaccessible, fallback to gpt-4o-mini
+                    // If model 404s, fallback immediately
                     if status == reqwest::StatusCode::NOT_FOUND && model != "gpt-4o-mini" {
                         model = "gpt-4o-mini";
-                        tokio::time::sleep(Duration::from_millis(500)).await;
+                        tokio::time::sleep(Duration::from_millis(300)).await;
                         continue;
                     }
 
                     if status.as_u16() == 429 || status == reqwest::StatusCode::TOO_MANY_REQUESTS {
                         let err_body = res.text().await.unwrap_or_default();
 
-                        // Fast switch to gpt-4o-mini if gpt-4o is rate-limited
+                        // Immediate fast fallback to gpt-4o-mini on rate-limit
                         if model == "gpt-4o" {
                             model = "gpt-4o-mini";
-                            tokio::time::sleep(Duration::from_millis(1000)).await;
+                            tokio::time::sleep(Duration::from_millis(500)).await;
                             continue;
                         }
 
                         if attempts >= max_attempts {
-                            return Err(format!("OpenAI Rate-Limit überschritten: {}", err_body));
+                            return Err(format!("OpenAI Rate-Limit: {}", err_body));
                         }
 
                         let wait_duration = parse_retry_duration(&err_body);
-                        let jitter = Duration::from_millis((rand::random::<u64>() % 1500) + 500);
-                        let total_wait = wait_duration + jitter;
-
-                        tokio::time::sleep(total_wait).await;
+                        let jitter = Duration::from_millis((rand::random::<u64>() % 800) + 200);
+                        tokio::time::sleep(wait_duration + jitter).await;
                         continue;
                     }
 
@@ -188,8 +174,8 @@ impl BaseProvider for OpenAIProvider {
                     if attempts >= max_attempts {
                         return Err(format!("Netzwerkfehler bei Folie {}: {}", page_number, e));
                     }
-                    let jitter = Duration::from_millis((rand::random::<u64>() % 1500) + 1000);
-                    tokio::time::sleep(Duration::from_millis(2500) + jitter).await;
+                    let jitter = Duration::from_millis((rand::random::<u64>() % 800) + 500);
+                    tokio::time::sleep(Duration::from_millis(1500) + jitter).await;
                 }
             }
         }
