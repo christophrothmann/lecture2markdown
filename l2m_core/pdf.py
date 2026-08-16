@@ -49,6 +49,25 @@ def render_page_to_base64(page: fitz.Page, dpi: int = 200) -> str:
     return base64.b64encode(pixmap.tobytes("png")).decode("utf-8")
 
 def is_page_visual(page: fitz.Page) -> bool:
-    has_images = len(page.get_images()) > 0
-    has_drawings = len(page.get_drawings()) > 0
-    return has_images or has_drawings
+    rect = page.rect
+    page_area = max(rect.width * rect.height, 1.0)
+
+    # 1. Raster image coverage check (> 8% of slide area to filter out corner logos)
+    img_area = 0.0
+    for img_info in page.get_images():
+        xref = img_info[0]
+        for rect_inst in page.get_image_rects(xref):
+            img_area += rect_inst.width * rect_inst.height
+    has_significant_images = (img_area / page_area) > 0.08
+
+    # 2. Complex vector graphics (ignoring simple bounding boxes/underlines < 15 paths)
+    drawings = page.get_drawings()
+    has_complex_drawings = len(drawings) >= 15
+
+    # 3. Dense mathematical formula detection
+    text = page.get_text()
+    math_indicators = ['\\int', '\\sum', '\\partial', '∑', '∫', '∂', '√', '≈', '≠', '≤', '≥', '∈', '∀', '∃', 'λ', 'μ', 'σ', 'θ', 'ω', 'Δ', '∇']
+    math_count = sum(text.count(c) for c in math_indicators)
+    has_dense_math = math_count >= 4
+
+    return bool(has_significant_images or has_complex_drawings or has_dense_math)
