@@ -7,8 +7,8 @@ mod providers;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
 use tauri::{Emitter, Manager};
 use tokio::sync::Semaphore;
 
@@ -180,8 +180,9 @@ async fn convert_lecture_native(
     let prov: Arc<Box<dyn providers::BaseProvider>> = Arc::new(providers::get_provider(&chosen_provider, &api_key));
     let mut sections: Vec<String> = vec![String::new(); total_pages];
     
-    // Concurrency limit: 3 concurrent requests to prevent hitting strict 200k/30k TPM rate-limits
-    let semaphore = Arc::new(Semaphore::new(3));
+    // High-performance concurrency: 6 concurrent parallel workers
+    let semaphore = Arc::new(Semaphore::new(6));
+    let completed_counter = Arc::new(AtomicUsize::new(0));
 
     let mut tasks: Vec<tokio::task::JoinHandle<Result<(usize, String, String), String>>> = Vec::new();
 
@@ -191,6 +192,9 @@ async fn convert_lecture_native(
         let prov_clone = Arc::clone(&prov);
         let sem_clone = Arc::clone(&semaphore);
         let app_handle = app.clone();
+        let win_clone = window.clone();
+        let comp_clone = Arc::clone(&completed_counter);
+        let total_pages_val = total_pages;
 
         let task = tokio::spawn(async move {
             let _permit = sem_clone.acquire().await.unwrap();
@@ -204,6 +208,19 @@ async fn convert_lecture_native(
 
             // 2. Check Slide Cache
             if let Some(cached_md) = cache::get_cached_slide(&app_handle, &rendered.hash) {
+                let comp = comp_clone.fetch_add(1, Ordering::SeqCst) + 1;
+                let _ = win_clone.emit(
+                    "python-event",
+                    serde_json::json!({
+                        "type": "progress",
+                        "completed": comp,
+                        "total": total_pages_val,
+                        "page_number": rendered.page_number,
+                        "model_used": "cache-hit"
+                    })
+                    .to_string(),
+                );
+
                 return Ok((
                     idx,
                     format!("## [Folie {}]\n{}\n", rendered.page_number, cached_md),
@@ -225,8 +242,19 @@ async fn convert_lecture_native(
             // 4. Save to Cache
             cache::store_cached_slide(&app_handle, &rendered.hash, &markdown);
 
-            // Small breathing gap between slides
-            tokio::time::sleep(Duration::from_millis(150)).await;
+            // 5. Emit real-time progress INSTANTLY upon slide completion!
+            let comp = comp_clone.fetch_add(1, Ordering::SeqCst) + 1;
+            let _ = win_clone.emit(
+                "python-event",
+                serde_json::json!({
+                    "type": "progress",
+                    "completed": comp,
+                    "total": total_pages_val,
+                    "page_number": rendered.page_number,
+                    "model_used": model_used
+                })
+                .to_string(),
+            );
 
             Ok((
                 idx,
@@ -238,37 +266,12 @@ async fn convert_lecture_native(
         tasks.push(task);
     }
 
-    let mut completed_count = 0;
     for task in tasks {
         match task.await {
-            Ok(Ok((page_idx, formatted_content, model_used))) => {
+            Ok(Ok((page_idx, formatted_content, _model_used))) => {
                 sections[page_idx] = formatted_content;
-                completed_count += 1;
-                let _ = window.emit(
-                    "python-event",
-                    serde_json::json!({
-                        "type": "progress",
-                        "completed": completed_count,
-                        "total": total_pages,
-                        "page_number": page_idx + 1,
-                        "model_used": model_used
-                    })
-                    .to_string(),
-                );
             }
             Ok(Err(err)) => {
-                completed_count += 1;
-                let _ = window.emit(
-                    "python-event",
-                    serde_json::json!({
-                        "type": "progress",
-                        "completed": completed_count,
-                        "total": total_pages,
-                        "page_number": completed_count,
-                        "model_used": "error"
-                    })
-                    .to_string(),
-                );
                 return Err(format!("Verarbeitungsfehler: {}", err));
             }
             Err(e) => {

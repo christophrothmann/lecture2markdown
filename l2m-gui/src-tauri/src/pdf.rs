@@ -26,7 +26,7 @@ pub fn render_pdf_slide_to_webp(
 ) -> Result<RenderedSlide, String> {
     let page_number = page_index + 1;
 
-    // Use Python PyMuPDF script snippet to render to standard output as base64 webp directly in memory
+    // Fast In-Memory WebP Rendering & Lightweight Complexity Check
     let py_exec = py_bin.unwrap_or_else(|| Path::new("python3"));
     let script = format!(
         r#"
@@ -47,28 +47,19 @@ buf = io.BytesIO()
 img.save(buf, format="WEBP", quality=80)
 raw_bytes = buf.getvalue()
 
-# Smart Visual & Complexity Heuristic
-page_area = max(rect.width * rect.height, 1.0)
-
-# 1. Raster image coverage check (> 8% of slide area to filter out corner logos)
-img_area = 0.0
-for img_info in page.get_images():
-    xref = img_info[0]
-    for rect_inst in page.get_image_rects(xref):
-        img_area += rect_inst.width * rect_inst.height
-has_significant_images = (img_area / page_area) > 0.08
-
-# 2. Complex vector graphics (ignoring simple bounding boxes/underlines < 15 paths)
-drawings = page.get_drawings()
-has_complex_drawings = len(drawings) >= 15
-
-# 3. Dense mathematical formula detection
+# Ultra-fast heuristic (< 2ms):
+img_count = len(page.get_images())
 text = page.get_text()
-math_indicators = ['\\int', '\\sum', '\\partial', '∑', '∫', '∂', '√', '≈', '≠', '≤', '≥', '∈', '∀', '∃', 'λ', 'μ', 'σ', 'θ', 'ω', 'Δ', '∇']
-math_count = sum(text.count(c) for c in math_indicators)
-has_dense_math = math_count >= 4
+text_len = len(text.strip())
 
-is_vis = bool(has_significant_images or has_complex_drawings or has_dense_math)
+# Math & formula indicators
+math_chars = ['\\int', '\\sum', '\\partial', '∑', '∫', '∂', '√', '≈', '≠', '≤', '≥', '∈', '∀', '∃', 'λ', 'μ', 'σ', 'θ', 'ω', 'Δ', '∇']
+math_count = sum(text.count(c) for c in math_chars)
+
+# Classify as complex visual if:
+# 1. Slide has images AND sparse text (diagram/photo slide)
+# 2. Slide has dense mathematical notation (>= 4 formula symbols)
+is_vis = bool((img_count > 0 and text_len < 300) or math_count >= 4)
 doc.close()
 
 print(str(int(is_vis)) + ":::" + base64.b64encode(raw_bytes).decode('utf-8'))
