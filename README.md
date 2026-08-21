@@ -1,10 +1,21 @@
-# Lecture2Markdown 📚➡️📝
+<p align="center">
+  <img src="assets/icon.png" alt="Lecture2Markdown Icon" width="120" height="120" style="border-radius: 24px;" />
+</p>
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python Version](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
-[![Package Manager: uv](https://img.shields.io/badge/package%20manager-uv-de5b43.svg)](https://github.com/astral-sh/uv)
+<h1 align="center">Lecture2Markdown</h1>
 
-A high-performance Python tool designed to convert academic PDF lecture slides into clean, structured, and LLM-optimized Markdown using OpenAI's Multimodal Vision API (`gpt-4o` and `gpt-4o-mini`).
+<p align="center">
+  <strong>Convert academic PDF lecture slides into clean, structured, and LLM-optimized Markdown</strong>
+</p>
+
+<p align="center">
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
+  <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.10%2B-blue" alt="Python Version"></a>
+  <a href="https://github.com/astral-sh/uv"><img src="https://img.shields.io/badge/package%20manager-uv-de5b43.svg" alt="Package Manager: uv"></a>
+  <a href="https://tauri.app/"><img src="https://img.shields.io/badge/Desktop%20App-Tauri%20v2-24C8D8.svg?logo=tauri&logoColor=white" alt="Tauri v2"></a>
+</p>
+
+A high-performance tool designed to convert academic PDF lecture slides into clean, structured, and LLM-optimized Markdown using leading Multimodal Vision APIs (OpenAI, Gemini, Claude, Mistral).
 
 Specially engineered for students and researchers to upload lecture content into ChatGPT, Claude, Notion, or Obsidian with **zero hallucinations** and maximum context fidelity.
 
