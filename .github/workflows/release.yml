@@ -42,8 +42,20 @@ jobs:
         run: |
           uv run python -m py_compile lecture2md.py
 
+  rust-security-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: RustSec Security Audit
+        uses: rustsec/audit-check@v2.0.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          manifest-path: l2m-gui/src-tauri/Cargo.toml
+
   build-tauri-gui:
-    needs: python-security-checks
+    needs: [python-security-checks, rust-security-checks]
     strategy:
       fail-fast: false
       matrix:
