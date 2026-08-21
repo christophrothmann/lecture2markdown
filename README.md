@@ -23,11 +23,9 @@ Specially engineered for students and researchers to upload lecture content into
 
 ## 🎬 Demo
 
-https://github.com/user-attachments/assets/demo-l2m
-
 <p align="center">
-  <video src="https://github.com/christophrothmann/lecture2markdown/raw/main/assets/demo.mp4" controls="controls" width="100%">
-    <a href="https://github.com/christophrothmann/lecture2markdown/raw/main/assets/demo.mp4">▶️ Watch Demo Video (assets/demo.mp4)</a>
+  <video src="https://raw.githubusercontent.com/christophrothmann/lecture2markdown/main/assets/demo.mp4" controls width="100%">
+    <a href="https://raw.githubusercontent.com/christophrothmann/lecture2markdown/main/assets/demo.mp4">▶️ Demo Video ansehen (assets/demo.mp4)</a>
   </video>
 </p>
 
