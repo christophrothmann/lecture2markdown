@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.1] - 2026-08-21
+
+### Added
+- **RustSec Security Audit**: Integrated automated `cargo audit` security scanning for all Rust dependencies in the GitHub Actions CI/CD release workflow.
+- **Embedded Demo Video & Branding**: Added interactive native GitHub video player and centered app icon to README.
+- **Enhanced Visual Transcription Prompt**: Refined system prompt to prevent combinatorial Mermaid graph loops on dense attention maps and bipartite scientific diagrams.
+
 ## [1.2.0] - 2026-08-21 "pure-rust-core"
 
 ### Added
