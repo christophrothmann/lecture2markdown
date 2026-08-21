@@ -10,6 +10,18 @@ Specially engineered for students and researchers to upload lecture content into
 
 ---
 
+## 🎬 Demo
+
+https://github.com/user-attachments/assets/demo-l2m
+
+<p align="center">
+  <video src="https://github.com/christophrothmann/lecture2markdown/raw/main/assets/demo.mp4" controls="controls" width="100%">
+    <a href="https://github.com/christophrothmann/lecture2markdown/raw/main/assets/demo.mp4">▶️ Watch Demo Video (assets/demo.mp4)</a>
+  </video>
+</p>
+
+---
+
 ## ✨ Features
 
 - 🌐 **Multi-Provider Support**: Choose between 4 leading multimodal AI providers:
