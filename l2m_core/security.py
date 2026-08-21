@@ -15,10 +15,10 @@ def get_system_prompt() -> str:
         "5. **Mathematics:** Convert all mathematical expressions into standard LaTeX ($...$ inline, $$...$$ block).\n"
         "6. **Tables:** Convert visual tables into standard Markdown table format (| col1 | col2 |).\n"
         "7. **Visual Content & Diagrams:** Do NOT output local image paths. Instead:\n"
-        "   - Convert flowcharts or architecture diagrams into Mermaid.js code blocks (```mermaid ... ```).\n"
+        "   - Convert straightforward flowcharts or architecture diagrams into clean, valid Mermaid.js code blocks (```mermaid ... ```).\n"
+        "   - For complex plots, attention visualizations, bipartite connection maps, or dense scientific figures: do NOT attempt to generate hundreds of individual edge lines in Mermaid. Instead, provide a comprehensive, structured explanation in blockquotes (> **[Visual Content]:** ...) capturing the components, labels, flow, and caption.\n"
         "   - Convert visual data/charts into Markdown tables or bulleted logic.\n"
-        "   - Provide detailed textual descriptions in blockquotes (> **[Visual Content]:** ...) for photos/schematics.\n"
-        "8. **Text inside Graphics:** Transcribe ALL text labels, annotations, component names, and arrows inside any graphic.\n\n"
+        "8. **Text inside Graphics:** Transcribe key labels, annotations, component names, and captions cleanly.\n\n"
         "### OUTPUT FORMAT:\n"
         "Provide ONLY the resulting Markdown content without conversational intro/outro text."
     )
