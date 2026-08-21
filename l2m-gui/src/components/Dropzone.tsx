@@ -1,32 +1,46 @@
 import React, { useState } from 'react';
-import { UploadCloud, FileText, ShieldCheck } from 'lucide-react';
+import { UploadCloud, FileText, ShieldCheck, Layers } from 'lucide-react';
 import { open as openFileDialog } from '@tauri-apps/plugin-dialog';
 
+export interface SelectedFileInfo {
+  path: string;
+  name: string;
+}
+
 interface DropzoneProps {
-  onFileSelectedPath: (filePath: string, fileName: string) => void;
+  onFilesSelected: (files: SelectedFileInfo[]) => void;
   disabled?: boolean;
 }
 
-export const Dropzone: React.FC<DropzoneProps> = ({ onFileSelectedPath, disabled }) => {
+export const Dropzone: React.FC<DropzoneProps> = ({ onFilesSelected, disabled }) => {
   const [isDragging, setIsDragging] = useState(false);
 
   const handleClick = async () => {
     if (disabled) return;
 
     try {
-      // Native Tauri file picker returns absolute path
+      // Native Tauri file picker with multiple files support
       const selected = await openFileDialog({
-        multiple: false,
+        multiple: true,
         filters: [{ name: 'PDF Vorlesungen', extensions: ['pdf'] }],
       });
 
-      if (selected && typeof selected === 'string') {
-        const pathParts = selected.split(/[\/\\]/);
-        const fileName = pathParts[pathParts.length - 1] || 'Vorlesung.pdf';
-        onFileSelectedPath(selected, fileName);
+      if (selected) {
+        const filePaths = Array.isArray(selected) ? selected : [selected];
+        const files: SelectedFileInfo[] = filePaths
+          .filter((p): p is string => typeof p === 'string' && p.trim().length > 0)
+          .map((p) => {
+            const pathParts = p.split(/[\/\\]/);
+            const fileName = pathParts[pathParts.length - 1] || 'Vorlesung.pdf';
+            return { path: p, name: fileName };
+          });
+
+        if (files.length > 0) {
+          onFilesSelected(files);
+        }
       }
     } catch {
-      // Fallback
+      // User cancelled dialog
     }
   };
 
@@ -46,13 +60,22 @@ export const Dropzone: React.FC<DropzoneProps> = ({ onFileSelectedPath, disabled
     if (disabled) return;
 
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      const file = e.dataTransfer.files[0];
-      const filePath = (file as any).path;
-      if (!filePath) {
-        alert('Drag & Drop liefert keinen Dateipfad. Bitte klicke, um eine PDF auszuwählen.');
+      const droppedFiles = Array.from(e.dataTransfer.files);
+      const files: SelectedFileInfo[] = [];
+
+      for (const file of droppedFiles) {
+        const filePath = (file as any).path;
+        if (filePath && filePath.toLowerCase().endsWith('.pdf')) {
+          files.push({ path: filePath, name: file.name });
+        }
+      }
+
+      if (files.length === 0) {
+        alert('Bitte ziehe gültige .pdf-Vorlesungsdateien hierher.');
         return;
       }
-      onFileSelectedPath(filePath, file.name);
+
+      onFilesSelected(files);
     }
   };
 
@@ -75,22 +98,27 @@ export const Dropzone: React.FC<DropzoneProps> = ({ onFileSelectedPath, disabled
 
         <div>
           <h3 className="text-lg font-bold text-slate-100">
-            Ziehe deine Vorlesungs-PDF hierher
+            Ziehe deine Vorlesungs-PDF(s) hierher
           </h3>
           <p className="text-xs text-slate-400 mt-1">
-            Oder klicke hier, um eine PDF-Datei auf deinem Computer auszuwählen
+            Unterstützt einzelne PDFs oder mehrere Dokumente gleichzeitig für Batch-Verarbeitung
           </p>
         </div>
 
         <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
           <div className="flex items-center space-x-2 text-[11px] text-slate-400 bg-background/60 px-3 py-1.5 rounded-lg border border-border/50">
-            <FileText className="w-3.5 h-3.5 text-accent" />
-            <span>Automatische Folienextraktion & Hybrid-Routing</span>
+            <Layers className="w-3.5 h-3.5 text-accent" />
+            <span>Multi-File Batch Queue</span>
+          </div>
+
+          <div className="flex items-center space-x-2 text-[11px] text-slate-400 bg-background/60 px-3 py-1.5 rounded-lg border border-border/50">
+            <FileText className="w-3.5 h-3.5 text-blue-400" />
+            <span>Smart Hybrid-Routing</span>
           </div>
 
           <div className="flex items-center space-x-2 text-[11px] text-slate-400 bg-background/60 px-3 py-1.5 rounded-lg border border-border/50">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-            <span>End-to-End verschlüsselte API-Übertragung</span>
+            <span>End-to-End verschlüsselt</span>
           </div>
         </div>
       </div>

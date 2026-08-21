@@ -1,11 +1,21 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { BookOpen, Settings, CheckCircle, Sparkles, FileText, Play, RefreshCw, ChevronDown, SlidersHorizontal } from 'lucide-react';
+import {
+  BookOpen,
+  Settings,
+  FileText,
+  Play,
+  RefreshCw,
+  ChevronDown,
+  SlidersHorizontal,
+  Layers,
+} from 'lucide-react';
 import { save as saveFileDialog } from '@tauri-apps/plugin-dialog';
 import { writeTextFile } from '@tauri-apps/plugin-fs';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { ApiKeyModal, type ProviderType } from './components/ApiKeyModal';
-import { Dropzone } from './components/Dropzone';
+import { Dropzone, type SelectedFileInfo } from './components/Dropzone';
+import { BatchQueue, type BatchQueueItem } from './components/BatchQueue';
 import { ProgressDashboard } from './components/ProgressDashboard';
 import { MarkdownPreview } from './components/MarkdownPreview';
 import { HistorySidebar, type HistoryItem } from './components/HistorySidebar';
@@ -24,15 +34,13 @@ export function App() {
   const [providerKeys, setProviderKeys] = useState<Record<string, string>>({});
   const [isKeyModalOpen, setIsKeyModalOpen] = useState<boolean>(false);
 
-  const [selectedFilePath, setSelectedFilePath] = useState<string>('');
-  const [selectedFileName, setSelectedFileName] = useState<string>('');
-  const [pageCount, setPageCount] = useState<number>(0);
-  const [detectedTotalPages, setDetectedTotalPages] = useState<number>(0);
-  const [rangeMode, setRangeMode] = useState<'all' | 'custom'>('all');
-  const [startPage, setStartPage] = useState<number>(1);
-  const [endPage, setEndPage] = useState<number>(1);
+  // Batch Queue State
+  const [queue, setQueue] = useState<BatchQueueItem[]>([]);
+  const [isBatchRunning, setIsBatchRunning] = useState<boolean>(false);
+  const [activeQueueId, setActiveQueueId] = useState<string | null>(null);
 
-  const [converting, setConverting] = useState<boolean>(false);
+  // Single active conversion state for live progress & preview
+  const [activeConvertingFile, setActiveConvertingFile] = useState<string>('');
   const [progress, setProgress] = useState<{ completed: number; total: number; lastModel: string; usedModels: string[] }>({
     completed: 0,
     total: 0,
@@ -41,6 +49,8 @@ export function App() {
   });
 
   const [markdownResult, setMarkdownResult] = useState<string | null>(null);
+  const [previewFileName, setPreviewFileName] = useState<string>('');
+
   const [history, setHistory] = useState<HistoryItem[]>(() => {
     try {
       return JSON.parse(localStorage.getItem('conversion_history') || '[]');
@@ -49,6 +59,7 @@ export function App() {
     }
   });
 
+  const cancelBatchRef = useRef<boolean>(false);
   const activeJobIdRef = useRef<string | null>(null);
 
   // Load API Keys from Rust backend on startup
@@ -75,7 +86,6 @@ export function App() {
         const payload = JSON.parse(event.payload);
         if (payload.type === 'start') {
           setProgress({ completed: 0, total: payload.total_pages, lastModel: '', usedModels: [] });
-          setPageCount(payload.total_pages);
           if (activeJobIdRef.current) {
             setHistory((prev) =>
               prev.map((item) =>
@@ -97,6 +107,16 @@ export function App() {
               usedModels: nextUsed,
             };
           });
+
+          // Update active queue item progress
+          setQueue((prev) =>
+            prev.map((item) =>
+              item.id === activeQueueId
+                ? { ...item, progressCurrent: payload.completed, progressTotal: payload.total }
+                : item
+            )
+          );
+
           if (activeJobIdRef.current) {
             setHistory((prev) =>
               prev.map((item) =>
@@ -117,7 +137,7 @@ export function App() {
     return () => {
       if (unlistenFn) unlistenFn();
     };
-  }, []);
+  }, [activeQueueId]);
 
   const handleSaveProviderKey = async (provider: ProviderType, key: string) => {
     setProviderKeys((prev) => ({ ...prev, [provider]: key }));
@@ -138,123 +158,184 @@ export function App() {
     localStorage.removeItem('conversion_history');
   };
 
-  const handleCancelConversion = async () => {
+  // Add multiple files to the batch queue
+  const handleFilesSelected = async (selectedFiles: SelectedFileInfo[]) => {
+    setMarkdownResult(null);
+    const newItems: BatchQueueItem[] = [];
+
+    for (const file of selectedFiles) {
+      const id = `${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      let totalPages = 1;
+      try {
+        const count = await invoke<number>('get_pdf_page_count_native', { pdfPath: file.path });
+        if (count && count > 0) totalPages = count;
+      } catch (e) {
+        console.error('Seitenzahl-Ermittlung fehlgeschlagen für:', file.name, e);
+      }
+
+      newItems.push({
+        id,
+        filePath: file.path,
+        fileName: file.name,
+        totalPages,
+        startPage: 1,
+        endPage: totalPages,
+        rangeMode: 'all',
+        status: 'pending',
+      });
+    }
+
+    setQueue((prev) => [...prev, ...newItems]);
+  };
+
+  const handleUpdateItemRange = (id: string, start: number, end: number, mode: 'all' | 'custom') => {
+    setQueue((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, startPage: start, endPage: end, rangeMode: mode } : item))
+    );
+  };
+
+  const handleRemoveQueueItem = (id: string) => {
+    setQueue((prev) => prev.filter((item) => item.id !== id));
+  };
+
+  const handleClearQueue = () => {
+    setQueue([]);
+  };
+
+  const handleCancelBatch = async () => {
+    cancelBatchRef.current = true;
     try {
       await invoke('cancel_conversion_native');
     } catch (e) {
       console.error('Fehler beim Abbrechen:', e);
     }
-    setConverting(false);
+    setIsBatchRunning(false);
+    setActiveQueueId(null);
     if (activeJobIdRef.current) {
       setHistory((prev) => prev.filter((h) => h.id !== activeJobIdRef.current));
     }
   };
 
-  const handleFileSelectedPath = async (filePath: string, fileName: string) => {
-    setSelectedFilePath(filePath);
-    setSelectedFileName(fileName);
-    setMarkdownResult(null);
-    setPageCount(0);
-    setDetectedTotalPages(0);
-    setRangeMode('all');
-
-    try {
-      const total = await invoke<number>('get_pdf_page_count_native', { pdfPath: filePath });
-      if (total && total > 0) {
-        setDetectedTotalPages(total);
-        setPageCount(total);
-        setStartPage(1);
-        setEndPage(total);
-      }
-    } catch (e) {
-      console.error('Fehler beim Ermitteln der Seitenzahl:', e);
-    }
-  };
-
-  const handleResetSelectedFile = () => {
-    setSelectedFilePath('');
-    setSelectedFileName('');
-    setPageCount(0);
-    setDetectedTotalPages(0);
-    setRangeMode('all');
-    setMarkdownResult(null);
-    setConverting(false);
-  };
-
   const currentActiveKey = providerKeys[activeProvider] || '';
 
-  const handleStartConversion = async () => {
-    if (!selectedFilePath || !currentActiveKey) return;
-    const jobId = Date.now().toString();
-    activeJobIdRef.current = jobId;
+  // Sequentially execute batch queue
+  const handleStartBatch = async () => {
+    if (queue.length === 0 || !currentActiveKey) return;
+    setIsBatchRunning(true);
+    cancelBatchRef.current = false;
 
-    const targetStart = rangeMode === 'custom' ? startPage : 1;
-    const targetEnd = rangeMode === 'custom' ? endPage : detectedTotalPages || 1;
-    const targetCount = Math.max(1, targetEnd - targetStart + 1);
+    for (const item of queue) {
+      if (cancelBatchRef.current) break;
+      if (item.status === 'completed') continue;
 
-    setConverting(true);
-    setMarkdownResult(null);
+      setActiveQueueId(item.id);
+      setActiveConvertingFile(item.fileName);
 
-    const inProgressItem: HistoryItem = {
-      id: jobId,
-      fileName: selectedFileName,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      content: '',
-      totalPages: targetCount,
-      status: 'processing',
-      progressCurrent: 0,
-      progressTotal: targetCount,
-    };
+      const targetStart = item.rangeMode === 'custom' ? item.startPage : 1;
+      const targetEnd = item.rangeMode === 'custom' ? item.endPage : item.totalPages;
+      const targetCount = Math.max(1, targetEnd - targetStart + 1);
 
-    setHistory((prev) => [inProgressItem, ...prev.filter((h) => h.id !== jobId && h.status !== 'processing')]);
+      // Update queue item status to processing
+      setQueue((prev) =>
+        prev.map((q) =>
+          q.id === item.id
+            ? { ...q, status: 'processing', progressCurrent: 0, progressTotal: targetCount }
+            : q
+        )
+      );
 
-    try {
-      const realGeneratedMarkdown = await invoke<string>('convert_lecture_native', {
-        pdfPath: selectedFilePath,
-        outputPath: '',
-        provider: activeProvider,
-        apiKey: currentActiveKey,
-        startPage: rangeMode === 'custom' ? targetStart : undefined,
-        endPage: rangeMode === 'custom' ? targetEnd : undefined,
-      });
+      const jobId = Date.now().toString();
+      activeJobIdRef.current = jobId;
 
-      setMarkdownResult(realGeneratedMarkdown);
-      setConverting(false);
+      const inProgressItem: HistoryItem = {
+        id: jobId,
+        fileName: item.fileName,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        content: '',
+        totalPages: targetCount,
+        status: 'processing',
+        progressCurrent: 0,
+        progressTotal: targetCount,
+      };
 
-      setHistory((prev) => {
-        const updated = prev.map((item) =>
-          item.id === jobId
-            ? {
-                ...item,
-                status: 'completed' as const,
-                content: realGeneratedMarkdown,
-                totalPages: progress.total || targetCount || item.totalPages || 1,
-              }
-            : item
+      setHistory((prev) => [inProgressItem, ...prev.filter((h) => h.id !== jobId && h.status !== 'processing')]);
+
+      try {
+        const markdown = await invoke<string>('convert_lecture_native', {
+          pdfPath: item.filePath,
+          outputPath: '',
+          provider: activeProvider,
+          apiKey: currentActiveKey,
+          startPage: item.rangeMode === 'custom' ? targetStart : undefined,
+          endPage: item.rangeMode === 'custom' ? targetEnd : undefined,
+        });
+
+        // Automatically save Markdown file next to PDF!
+        const autoSavePath = item.filePath.replace(/\.pdf$/i, '.md');
+        try {
+          await writeTextFile(autoSavePath, markdown);
+        } catch (saveErr) {
+          console.warn('Auto-Save fehlgeschlagen:', saveErr);
+        }
+
+        // Update queue item
+        setQueue((prev) =>
+          prev.map((q) =>
+            q.id === item.id
+              ? { ...q, status: 'completed', markdownResult: markdown }
+              : q
+          )
         );
-        const toPersist = updated.filter((h) => h.status === 'completed' || !h.status).slice(0, 10);
-        localStorage.setItem('conversion_history', JSON.stringify(toPersist));
-        return updated;
-      });
-    } catch (error: any) {
-      if (error && error.includes('abgebrochen')) {
-        // Silent cancel without alert
-      } else {
-        alert(`Fehler bei der Konvertierung:\n${error}`);
+
+        // Update history
+        setHistory((prev) => {
+          const updated = prev.map((h) =>
+            h.id === jobId
+              ? {
+                  ...h,
+                  status: 'completed' as const,
+                  content: markdown,
+                  totalPages: targetCount,
+                }
+              : h
+          );
+          const toPersist = updated.filter((h) => h.status === 'completed' || !h.status).slice(0, 10);
+          localStorage.setItem('conversion_history', JSON.stringify(toPersist));
+          return updated;
+        });
+
+        // Set last result for optional live preview
+        setMarkdownResult(markdown);
+        setPreviewFileName(item.fileName.replace('.pdf', '.md'));
+      } catch (err: any) {
+        if (cancelBatchRef.current || (err && err.includes('abgebrochen'))) {
+          setQueue((prev) =>
+            prev.map((q) => (q.id === item.id ? { ...q, status: 'pending' } : q))
+          );
+          break;
+        } else {
+          setQueue((prev) =>
+            prev.map((q) =>
+              q.id === item.id
+                ? { ...q, status: 'error', error: String(err) }
+                : q
+            )
+          );
+          alert(`Fehler bei "${item.fileName}":\n${err}`);
+        }
       }
-      setConverting(false);
-      setHistory((prev) => prev.filter((item) => item.id !== jobId));
     }
+
+    setIsBatchRunning(false);
+    setActiveQueueId(null);
   };
 
   const handleSaveFileLocally = async () => {
-    if (!markdownResult || !selectedFileName) return;
-
-    const defaultName = `${selectedFileName.replace('.pdf', '')}.md`;
+    if (!markdownResult || !previewFileName) return;
 
     try {
       const filePath = await saveFileDialog({
-        defaultPath: defaultName,
+        defaultPath: previewFileName,
         filters: [{ name: 'Markdown Datei', extensions: ['md'] }],
       });
 
@@ -267,9 +348,35 @@ export function App() {
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = defaultName;
+      link.download = previewFileName;
       link.click();
       URL.revokeObjectURL(url);
+    }
+  };
+
+  const handleAddMoreFilesDialog = async () => {
+    try {
+      const selected = await openFileDialog({
+        multiple: true,
+        filters: [{ name: 'PDF Vorlesungen', extensions: ['pdf'] }],
+      });
+
+      if (selected) {
+        const filePaths = Array.isArray(selected) ? selected : [selected];
+        const files: SelectedFileInfo[] = filePaths
+          .filter((p): p is string => typeof p === 'string' && p.trim().length > 0)
+          .map((p) => {
+            const pathParts = p.split(/[\/\\]/);
+            const fileName = pathParts[pathParts.length - 1] || 'Vorlesung.pdf';
+            return { path: p, name: fileName };
+          });
+
+        if (files.length > 0) {
+          await handleFilesSelected(files);
+        }
+      }
+    } catch (e) {
+      console.error('Dateidialog Fehler:', e);
     }
   };
 
@@ -314,147 +421,37 @@ export function App() {
       <main className="flex-1 p-6 grid grid-cols-1 lg:grid-cols-4 gap-6 max-w-7xl mx-auto w-full">
         {/* Left Column: Dropzone & Active Progress / Preview */}
         <div className="lg:col-span-3 space-y-6 flex flex-col">
-          {/* State 1: Dropzone (No File selected) */}
-          {!selectedFilePath && !converting && !markdownResult && (
-            <Dropzone onFileSelectedPath={handleFileSelectedPath} disabled={!currentActiveKey} />
+          {/* State 1: Dropzone (No files in queue and no preview) */}
+          {queue.length === 0 && !markdownResult && (
+            <Dropzone onFilesSelected={handleFilesSelected} disabled={!currentActiveKey} />
           )}
 
-          {/* State 2: Selected File Card */}
-          {selectedFilePath && !converting && !markdownResult && (
-            <div className="glass-card rounded-2xl p-8 space-y-6 text-center">
-              <div className="p-4 bg-card border border-border rounded-2xl w-16 h-16 mx-auto flex items-center justify-center text-accent">
-                <FileText className="w-8 h-8" />
-              </div>
-
-              <div>
-                <h3 className="text-lg font-bold text-slate-100">{selectedFileName}</h3>
-                <p className="text-xs text-slate-400 mt-1">
-                  Bereit zur Konvertierung via <strong className="text-slate-200">{PROVIDER_NAMES[activeProvider]}</strong>
-                  {detectedTotalPages > 0 && <span> • <strong>{detectedTotalPages} Folien erkannt</strong></span>}
-                </p>
-              </div>
-
-              {/* Page Range Filter Card */}
-              {detectedTotalPages > 0 && (
-                <div className="bg-surface/80 border border-border rounded-xl p-4 max-w-sm mx-auto space-y-3 text-left">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
-                      <SlidersHorizontal className="w-3.5 h-3.5 text-accent" />
-                      Seitenbereich
-                    </span>
-                    <div className="flex bg-card rounded-lg p-0.5 border border-border text-[11px]">
-                      <button
-                        onClick={() => {
-                          setRangeMode('all');
-                          setStartPage(1);
-                          setEndPage(detectedTotalPages);
-                        }}
-                        className={`px-2.5 py-1 rounded-md transition font-medium cursor-pointer ${
-                          rangeMode === 'all'
-                            ? 'bg-accent text-white font-bold'
-                            : 'text-slate-400 hover:text-slate-200'
-                        }`}
-                      >
-                        Alle ({detectedTotalPages})
-                      </button>
-                      <button
-                        onClick={() => setRangeMode('custom')}
-                        className={`px-2.5 py-1 rounded-md transition font-medium cursor-pointer ${
-                          rangeMode === 'custom'
-                            ? 'bg-accent text-white font-bold'
-                            : 'text-slate-400 hover:text-slate-200'
-                        }`}
-                      >
-                        Benutzerdefiniert
-                      </button>
-                    </div>
-                  </div>
-
-                  {rangeMode === 'custom' && (
-                    <div className="pt-1 space-y-2">
-                      <div className="flex items-center justify-center space-x-3 text-xs">
-                        <div className="flex items-center space-x-1.5">
-                          <span className="text-slate-400">Von:</span>
-                          <input
-                            type="number"
-                            min={1}
-                            max={endPage}
-                            value={startPage}
-                            onChange={(e) => {
-                              const val = parseInt(e.target.value) || 1;
-                              setStartPage(Math.max(1, Math.min(val, endPage)));
-                            }}
-                            className="w-16 bg-card border border-border rounded-lg px-2 py-1 text-center font-mono font-bold text-slate-100 focus:outline-none focus:border-accent"
-                          />
-                        </div>
-                        <span className="text-slate-500 font-bold">bis</span>
-                        <div className="flex items-center space-x-1.5">
-                          <span className="text-slate-400">Bis:</span>
-                          <input
-                            type="number"
-                            min={startPage}
-                            max={detectedTotalPages}
-                            value={endPage}
-                            onChange={(e) => {
-                              const val = parseInt(e.target.value) || startPage;
-                              setEndPage(Math.max(startPage, Math.min(val, detectedTotalPages)));
-                            }}
-                            className="w-16 bg-card border border-border rounded-lg px-2 py-1 text-center font-mono font-bold text-slate-100 focus:outline-none focus:border-accent"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="text-center text-[11px] text-emerald-400 font-medium">
-                        {endPage - startPage + 1} von {detectedTotalPages} Folien ausgewählt
-                        {endPage - startPage + 1 < detectedTotalPages && (
-                          <span className="text-slate-400">
-                            {' '}
-                            (spart ~{Math.round((1 - (endPage - startPage + 1) / detectedTotalPages) * 100)}% Kosten & Zeit)
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <div className="flex justify-center space-x-4 pt-2">
-                <button
-                  onClick={handleResetSelectedFile}
-                  className="px-5 py-3 bg-surface hover:bg-surface-hover border border-border text-slate-300 rounded-xl text-xs font-semibold flex items-center gap-2 transition cursor-pointer"
-                >
-                  <RefreshCw className="w-4 h-4 text-slate-400" /> Andere Datei auswählen
-                </button>
-
-                <button
-                  onClick={handleStartConversion}
-                  className="px-6 py-3 bg-accent hover:bg-accent-hover text-white rounded-xl text-xs font-bold flex items-center gap-2 transition cursor-pointer shadow-lg shadow-accent/20"
-                >
-                  <Play className="w-4 h-4 fill-white" /> Konvertierung starten
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* State 3: Active Conversion Dashboard */}
-          {converting && selectedFileName && (
-            <ProgressDashboard
-              fileName={selectedFileName}
-              completedPages={progress.completed}
-              totalPages={progress.total}
-              lastModelUsed={progress.lastModel || PROVIDER_NAMES[activeProvider]}
-              usedModels={progress.usedModels}
-              onCancel={handleCancelConversion}
+          {/* State 2: Batch Queue Dashboard */}
+          {queue.length > 0 && !markdownResult && (
+            <BatchQueue
+              items={queue}
+              isConverting={isBatchRunning}
+              activeProviderName={PROVIDER_NAMES[activeProvider]}
+              onUpdateItemRange={handleUpdateItemRange}
+              onRemoveItem={handleRemoveQueueItem}
+              onAddMoreFiles={handleAddMoreFilesDialog}
+              onClearQueue={handleClearQueue}
+              onStartBatch={handleStartBatch}
+              onCancelBatch={handleCancelBatch}
             />
           )}
 
-          {/* State 4: Finished Markdown Preview */}
-          {markdownResult && selectedFileName && (
+          {/* State 3: Finished Markdown Preview */}
+          {markdownResult && previewFileName && (
             <MarkdownPreview
               content={markdownResult}
-              fileName={selectedFileName.replace('.pdf', '.md')}
+              fileName={previewFileName}
               onSaveFile={handleSaveFileLocally}
-              onNewConversion={handleResetSelectedFile}
+              onNewConversion={() => {
+                setMarkdownResult(null);
+                setPreviewFileName('');
+                setQueue([]);
+              }}
             />
           )}
         </div>
@@ -464,8 +461,7 @@ export function App() {
           <HistorySidebar
             items={history}
             onSelect={(item) => {
-              setSelectedFileName(item.fileName);
-              setSelectedFilePath(item.fileName);
+              setPreviewFileName(item.fileName.replace('.pdf', '.md'));
               setMarkdownResult(item.content);
             }}
             onClear={handleClearHistory}

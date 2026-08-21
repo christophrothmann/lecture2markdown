@@ -148,3 +148,37 @@ def execute_conversion(
     else:
         minutes, seconds = divmod(elapsed_time, 60)
         print(f"\nDone! Processing {selected_count} slides took {int(minutes)}m {seconds:.1f}s. Saved to: '{output_path}'")
+
+def execute_batch_conversion(
+    batch_dir: Path,
+    output_dir: Path,
+    provider: BaseProvider,
+    workers: int = 3,
+    hybrid: bool = True,
+    json_stream: bool = False,
+    dpi: int = 200
+) -> None:
+    pdf_files = sorted(list(batch_dir.glob("*.pdf")) + list(batch_dir.glob("*.PDF")))
+    if not pdf_files:
+        print(f"No PDF files found in directory: '{batch_dir}'")
+        return
+
+    print(f"\n=== Found {len(pdf_files)} PDF files in '{batch_dir}' ===")
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    for i, pdf_path in enumerate(pdf_files, 1):
+        output_file = output_dir / f"{pdf_path.stem}.md"
+        print(f"\n[{i}/{len(pdf_files)}] Converting: {pdf_path.name} -> {output_file.name}")
+        try:
+            execute_conversion(
+                pdf_path=pdf_path,
+                output_path=output_file,
+                provider=provider,
+                workers=workers,
+                hybrid=hybrid,
+                json_stream=json_stream,
+                dpi=dpi
+            )
+        except Exception as e:
+            print(f"Error converting '{pdf_path.name}': {e}")
+

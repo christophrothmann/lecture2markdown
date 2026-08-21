@@ -10,7 +10,7 @@ from l2m_core.config import (
     PROVIDER_ENV_KEYS,
 )
 from l2m_core.providers import get_provider
-from l2m_core.converter import execute_conversion, emit_event
+from l2m_core.converter import execute_conversion, execute_batch_conversion, emit_event
 
 def main():
     args = parse_cli_arguments()
@@ -23,24 +23,40 @@ def main():
             emit_event("error", {"message": err_msg})
         sys.exit(f"Error: {err_msg}")
 
-    if args.pdf:
-        input_pdf_path = Path(args.pdf)
-    else:
-        input_pdf_path = Path(DEFAULT_LECTURES_DIR) / DEFAULT_INPUT_FILE
-
-    if args.output:
-        output_md_path = Path(args.output)
-    else:
-        output_md_path = Path(DEFAULT_OUTPUT_DIR) / DEFAULT_OUTPUT_FILE
-
-    if not input_pdf_path.exists():
-        err_msg = f"Input file '{input_pdf_path}' not found."
-        if args.json_stream:
-            emit_event("error", {"message": err_msg})
-        sys.exit(f"Error: {err_msg}")
-
     try:
         provider = get_provider(args.provider, api_key)
+
+        if args.batch_dir:
+            batch_path = Path(args.batch_dir)
+            out_path = Path(args.output) if args.output else Path(DEFAULT_OUTPUT_DIR)
+            if not batch_path.is_dir():
+                sys.exit(f"Error: Directory '{batch_path}' does not exist.")
+            execute_batch_conversion(
+                batch_dir=batch_path,
+                output_dir=out_path,
+                provider=provider,
+                workers=args.workers,
+                hybrid=args.hybrid,
+                json_stream=args.json_stream
+            )
+            return
+
+        if args.pdf:
+            input_pdf_path = Path(args.pdf)
+        else:
+            input_pdf_path = Path(DEFAULT_LECTURES_DIR) / DEFAULT_INPUT_FILE
+
+        if args.output:
+            output_md_path = Path(args.output)
+        else:
+            output_md_path = Path(DEFAULT_OUTPUT_DIR) / DEFAULT_OUTPUT_FILE
+
+        if not input_pdf_path.exists():
+            err_msg = f"Input file '{input_pdf_path}' not found."
+            if args.json_stream:
+                emit_event("error", {"message": err_msg})
+            sys.exit(f"Error: {err_msg}")
+
         execute_conversion(
             pdf_path=input_pdf_path,
             output_path=output_md_path,
