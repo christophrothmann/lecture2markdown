@@ -12,7 +12,7 @@ pub struct OpenAIProvider {
 impl OpenAIProvider {
     pub fn new(api_key: &str) -> Self {
         let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(60))
+            .timeout(Duration::from_secs(120))
             .build()
             .unwrap_or_default();
         Self {
@@ -82,7 +82,7 @@ impl BaseProvider for OpenAIProvider {
 
         let user_prompt = get_user_prompt(page_number);
         let image_url = format!("data:image/webp;base64,{}", webp_base64);
-        let detail_level = if is_visual { "high" } else { "low" };
+        let mut detail_level = if is_visual { "high" } else { "low" };
 
         let mut attempts = 0;
         let max_attempts = 15;
@@ -92,6 +92,7 @@ impl BaseProvider for OpenAIProvider {
 
             let payload = json!({
                 "model": model,
+                "max_completion_tokens": 3000,
                 "messages": [
                     {
                         "role": "system",
@@ -129,6 +130,7 @@ impl BaseProvider for OpenAIProvider {
                     // If model 404s, fallback immediately
                     if status == reqwest::StatusCode::NOT_FOUND && model != "gpt-4o-mini" {
                         model = "gpt-4o-mini";
+                        detail_level = "low";
                         tokio::time::sleep(Duration::from_millis(300)).await;
                         continue;
                     }
@@ -139,6 +141,7 @@ impl BaseProvider for OpenAIProvider {
                         // Immediate fast fallback to gpt-4o-mini on rate-limit
                         if model == "gpt-4o" {
                             model = "gpt-4o-mini";
+                            detail_level = "low";
                             tokio::time::sleep(Duration::from_millis(500)).await;
                             continue;
                         }
@@ -171,6 +174,12 @@ impl BaseProvider for OpenAIProvider {
                     return Ok((sanitized, model.to_string()));
                 }
                 Err(e) => {
+                    // If high-detail request times out, gracefully switch to fast mini
+                    if model == "gpt-4o" {
+                        model = "gpt-4o-mini";
+                        detail_level = "low";
+                    }
+
                     if attempts >= max_attempts {
                         return Err(format!("Netzwerkfehler bei Folie {}: {}", page_number, e));
                     }
