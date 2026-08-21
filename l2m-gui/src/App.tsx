@@ -27,6 +27,11 @@ export function App() {
   const [selectedFilePath, setSelectedFilePath] = useState<string>('');
   const [selectedFileName, setSelectedFileName] = useState<string>('');
   const [pageCount, setPageCount] = useState<number>(0);
+  const [detectedTotalPages, setDetectedTotalPages] = useState<number>(0);
+  const [rangeMode, setRangeMode] = useState<'all' | 'custom'>('all');
+  const [startPage, setStartPage] = useState<number>(1);
+  const [endPage, setEndPage] = useState<number>(1);
+
   const [converting, setConverting] = useState<boolean>(false);
   const [progress, setProgress] = useState<{ completed: number; total: number; lastModel: string; usedModels: string[] }>({
     completed: 0,
@@ -44,7 +49,9 @@ export function App() {
     }
   });
 
-  // Load API Keys securely from Rust backend on startup
+  const activeJobIdRef = useRef<string | null>(null);
+
+  // Load API Keys from Rust backend on startup
   useEffect(() => {
     invoke<Record<string, string>>('get_api_keys_native')
       .then((keys) => {
@@ -59,8 +66,7 @@ export function App() {
       });
   }, [activeProvider]);
 
-  const activeJobIdRef = useRef<string | null>(null);
-
+  // Listen to Tauri events from Pure-Rust backend
   useEffect(() => {
     let unlistenFn: (() => void) | null = null;
 
@@ -70,30 +76,39 @@ export function App() {
         if (payload.type === 'start') {
           setProgress({ completed: 0, total: payload.total_pages, lastModel: '', usedModels: [] });
           setPageCount(payload.total_pages);
-          setHistory((prev) =>
-            prev.map((item) =>
-              item.id === activeJobIdRef.current
-                ? { ...item, totalPages: payload.total_pages, progressTotal: payload.total_pages }
-                : item
-            )
-          );
+          if (activeJobIdRef.current) {
+            setHistory((prev) =>
+              prev.map((item) =>
+                item.id === activeJobIdRef.current
+                  ? { ...item, totalPages: payload.total_pages, progressTotal: payload.total_pages }
+                  : item
+              )
+            );
+          }
         } else if (payload.type === 'progress') {
-          setProgress((prev) => ({
-            completed: payload.completed,
-            total: payload.total,
-            lastModel: payload.model_used,
-            usedModels: payload.model_used ? [...prev.usedModels, payload.model_used] : prev.usedModels,
-          }));
-          setHistory((prev) =>
-            prev.map((item) =>
-              item.id === activeJobIdRef.current
-                ? { ...item, progressCurrent: payload.completed, progressTotal: payload.total }
-                : item
-            )
-          );
+          setProgress((prev) => {
+            const nextUsed = payload.model_used && payload.model_used !== 'cache-hit'
+              ? [...prev.usedModels, payload.model_used]
+              : prev.usedModels;
+            return {
+              completed: payload.completed,
+              total: payload.total,
+              lastModel: payload.model_used || prev.lastModel,
+              usedModels: nextUsed,
+            };
+          });
+          if (activeJobIdRef.current) {
+            setHistory((prev) =>
+              prev.map((item) =>
+                item.id === activeJobIdRef.current
+                  ? { ...item, progressCurrent: payload.completed, progressTotal: payload.total }
+                  : item
+              )
+            );
+          }
         }
       } catch {
-        // Ignore unformatted logs
+        // Ignore parsing error
       }
     }).then((unlisten) => {
       unlistenFn = unlisten;
@@ -115,6 +130,7 @@ export function App() {
 
   const handleSelectProvider = (provider: ProviderType) => {
     setActiveProvider(provider);
+    localStorage.setItem('l2m_active_provider', provider);
   };
 
   const handleClearHistory = () => {
@@ -139,12 +155,17 @@ export function App() {
     setSelectedFileName(fileName);
     setMarkdownResult(null);
     setPageCount(0);
+    setDetectedTotalPages(0);
+    setRangeMode('all');
+
     try {
       const total = await invoke<number>('get_pdf_page_count_native', { pdfPath: filePath });
-      setDetectedTotalPages(total);
-      setStartPage(1);
-      setEndPage(total);
-      setRangeMode('all');
+      if (total && total > 0) {
+        setDetectedTotalPages(total);
+        setPageCount(total);
+        setStartPage(1);
+        setEndPage(total);
+      }
     } catch (e) {
       console.error('Fehler beim Ermitteln der Seitenzahl:', e);
     }
