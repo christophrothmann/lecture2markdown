@@ -47,6 +47,7 @@ def main():
             provider=provider,
             workers=args.workers,
             hybrid=args.hybrid,
+            pages=args.pages,
             json_stream=args.json_stream
         )
     except Exception as e:

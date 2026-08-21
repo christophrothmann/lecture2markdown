@@ -54,6 +54,7 @@ def parse_cli_arguments():
     parser.add_argument("--provider", type=str, default=DEFAULT_PROVIDER, choices=[PROVIDER_OPENAI, PROVIDER_GOOGLE, PROVIDER_ANTHROPIC, PROVIDER_MISTRAL], help="AI Provider to use")
     parser.add_argument("--api-key", type=str, default=None, help="API Key for the chosen provider")
     parser.add_argument("--workers", type=int, default=DEFAULT_WORKERS, help="Parallel worker threads")
+    parser.add_argument("--pages", type=str, default=None, help="Page range to convert (e.g. '10-25', '5', '1-10')")
     parser.add_argument("--hybrid", action="store_true", default=True, help="Enable automatic hybrid model routing")
     parser.add_argument("--json-stream", action="store_true", default=False, help="Stream JSON events for GUI/IPC")
     return parser.parse_args()

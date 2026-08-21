@@ -154,11 +154,23 @@ async fn get_slide_cache_stats_native(app: tauri::AppHandle) -> Result<serde_jso
 }
 
 #[tauri::command]
+async fn get_pdf_page_count_native(pdf_path: String) -> Result<usize, String> {
+    let path = Path::new(&pdf_path);
+    if !path.exists() {
+        return Err(format!("PDF-Datei nicht gefunden: {}", pdf_path));
+    }
+    let py_bin = find_python_binary();
+    pdf::get_pdf_page_count(path, py_bin.as_deref())
+}
+
+#[tauri::command]
 async fn convert_lecture_native(
     pdf_path: String,
     _output_path: String,
     provider: Option<String>,
     api_key: String,
+    start_page: Option<usize>,
+    end_page: Option<usize>,
     window: tauri::Window,
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
@@ -171,26 +183,32 @@ async fn convert_lecture_native(
     }
 
     let py_bin = find_python_binary();
-    let total_pages = pdf::get_pdf_page_count(path, py_bin.as_deref())?;
+    let total_doc_pages = pdf::get_pdf_page_count(path, py_bin.as_deref())?;
+
+    // Determine target slide range (1-indexed input converted to 0-indexed indices)
+    let s_page = start_page.unwrap_or(1).clamp(1, total_doc_pages);
+    let e_page = end_page.unwrap_or(total_doc_pages).clamp(s_page, total_doc_pages);
+    let selected_indices: Vec<usize> = ((s_page - 1)..e_page).collect();
+    let total_selected_pages = selected_indices.len();
 
     let file_name = path
         .file_name()
         .map(|f| f.to_string_lossy().to_string())
         .unwrap_or_else(|| "Vorlesung.pdf".to_string());
 
-    // Emit start event
+    // Emit start event with total selected pages
     let _ = window.emit(
         "python-event",
         serde_json::json!({
             "type": "start",
-            "total_pages": total_pages,
+            "total_pages": total_selected_pages,
             "pdf_name": file_name
         })
         .to_string(),
     );
 
     let prov: Arc<Box<dyn providers::BaseProvider>> = Arc::new(providers::get_provider(&chosen_provider, &api_key));
-    let mut sections: Vec<String> = vec![String::new(); total_pages];
+    let mut sections: Vec<(usize, String)> = Vec::new();
     
     // Provider-specific balanced concurrency to prevent hitting RPM/TPM tier caps:
     let concurrency = match chosen_provider.as_str() {
@@ -204,7 +222,7 @@ async fn convert_lecture_native(
 
     let mut tasks: Vec<tokio::task::JoinHandle<Result<(usize, String, String), String>>> = Vec::new();
 
-    for idx in 0..total_pages {
+    for idx in selected_indices {
         let path_buf = path.to_path_buf();
         let py_bin_clone = py_bin.clone();
         let prov_clone = Arc::clone(&prov);
@@ -213,7 +231,7 @@ async fn convert_lecture_native(
         let win_clone = window.clone();
         let comp_clone = Arc::clone(&completed_counter);
         let cancel_flag = Arc::clone(&state.cancel_requested);
-        let total_pages_val = total_pages;
+        let total_pages_val = total_selected_pages;
 
         let task = tokio::spawn(async move {
             let _permit = sem_clone.acquire().await.unwrap();
@@ -300,7 +318,7 @@ async fn convert_lecture_native(
     for task in tasks {
         match task.await {
             Ok(Ok((page_idx, formatted_content, _model_used))) => {
-                sections[page_idx] = formatted_content;
+                sections.push((page_idx, formatted_content));
             }
             Ok(Err(err)) => {
                 if state.cancel_requested.load(Ordering::SeqCst) || err == "Abgebrochen" {
@@ -321,23 +339,34 @@ async fn convert_lecture_native(
         return Err("Konvertierung abgebrochen.".to_string());
     }
 
+    // Sort sections by original page index
+    sections.sort_by_key(|k| k.0);
+    let joined_sections: Vec<String> = sections.into_iter().map(|(_, s)| s).collect();
+
     let file_stem = path
         .file_stem()
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_else(|| "Lecture".to_string());
 
-    let header = format!(
-        "# Lecture: {}\n**Source:** {}\n\n",
-        file_stem, file_name
-    );
+    let header = if s_page == 1 && e_page == total_doc_pages {
+        format!(
+            "# Lecture: {}\n**Source:** {} ({} Folien)\n\n",
+            file_stem, file_name, total_doc_pages
+        )
+    } else {
+        format!(
+            "# Lecture: {}\n**Source:** {} (Folien {} bis {} von {})\n\n",
+            file_stem, file_name, s_page, e_page, total_doc_pages
+        )
+    };
 
-    let full_markdown = format!("{}{}", header, sections.join("\n---\n\n"));
+    let full_markdown = format!("{}{}", header, joined_sections.join("\n---\n\n"));
 
     let _ = window.emit(
         "python-event",
         serde_json::json!({
             "type": "complete",
-            "total_pages": total_pages,
+            "total_pages": total_selected_pages,
             "content": full_markdown
         })
         .to_string(),
@@ -358,6 +387,7 @@ fn main() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_notification::init())
         .invoke_handler(tauri::generate_handler![
+            get_pdf_page_count_native,
             convert_lecture_native,
             cancel_conversion_native,
             save_api_key_native,

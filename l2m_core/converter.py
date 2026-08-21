@@ -19,6 +19,27 @@ def emit_event(event_type: str, data: dict) -> None:
     message = {"type": event_type, **data}
     print(json.dumps(message), flush=True)
 
+def parse_page_range(pages_str: str | None, total_pages: int) -> list[int]:
+    if not pages_str:
+        return list(range(total_pages))
+    
+    selected = []
+    parts = pages_str.split(",")
+    for part in parts:
+        part = part.strip()
+        if "-" in part:
+            s_str, e_str = part.split("-", 1)
+            start = max(1, int(s_str.strip()))
+            end = min(total_pages, int(e_str.strip()))
+            selected.extend(range(start - 1, end))
+        else:
+            p = int(part)
+            if 1 <= p <= total_pages:
+                selected.append(p - 1)
+    
+    unique_sorted = sorted(list(set(selected)))
+    return unique_sorted if unique_sorted else list(range(total_pages))
+
 def process_page_worker(
     pdf_path: Path,
     page_index: int,
@@ -51,6 +72,7 @@ def execute_conversion(
     provider: BaseProvider,
     workers: int = 3,
     hybrid: bool = True,
+    pages: str | None = None,
     json_stream: bool = False,
     dpi: int = 200
 ) -> None:
@@ -62,47 +84,55 @@ def execute_conversion(
     total_pages = len(doc)
     doc.close()
 
-    if json_stream:
-        emit_event("start", {"total_pages": total_pages, "pdf_name": pdf_path.name})
-    else:
-        print(f"Starting processing of {total_pages} slides (Hybrid: {hybrid}) with {workers} threads...")
+    target_indices = parse_page_range(pages, total_pages)
+    selected_count = len(target_indices)
 
-    sections = [""] * total_pages
+    if json_stream:
+        emit_event("start", {"total_pages": selected_count, "pdf_name": pdf_path.name})
+    else:
+        print(f"Starting processing of {selected_count} slides (of {total_pages}) with {workers} threads...")
+
+    sections = []
     completed_count = 0
 
     with ThreadPoolExecutor(max_workers=workers) as executor:
-        futures = [
-            executor.submit(process_page_worker, pdf_path, idx, provider, hybrid, dpi)
-            for idx in range(total_pages)
-        ]
+        futures = {
+            executor.submit(process_page_worker, pdf_path, idx, provider, hybrid, dpi): idx
+            for idx in target_indices
+        }
 
         if json_stream:
             for future in as_completed(futures):
+                idx = futures[future]
                 try:
                     page_index, page_content, used_model = future.result(timeout=SLIDE_TIMEOUT_SECONDS)
                 except Exception as err:
-                    page_index = 0
+                    page_index = idx
                     page_content = f"*(Fehler bei Folienverarbeitung: {err})*"
                     used_model = "error"
 
-                sections[page_index] = page_content
+                sections.append((page_index, page_content))
                 completed_count += 1
                 emit_event("progress", {
                     "completed": completed_count,
-                    "total": total_pages,
+                    "total": selected_count,
                     "page_number": page_index + 1,
                     "model_used": used_model
                 })
         else:
-            for future in tqdm(as_completed(futures), total=total_pages, desc="Processing slides"):
+            for future in tqdm(as_completed(futures), total=selected_count, desc="Processing slides"):
+                idx = futures[future]
                 try:
                     page_index, page_content, _ = future.result(timeout=SLIDE_TIMEOUT_SECONDS)
                 except Exception as err:
-                    page_index = 0
+                    page_index = idx
                     page_content = f"*(Fehler bei Folienverarbeitung: {err})*"
-                sections[page_index] = page_content
+                sections.append((page_index, page_content))
 
-    final_content = header + "\n---\n\n".join(sections)
+    sections.sort(key=lambda x: x[0])
+    ordered_contents = [content for _, content in sections]
+    final_content = header + "\n---\n\n".join(ordered_contents)
+
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w", encoding="utf-8") as file:
         file.write(final_content)
@@ -111,10 +141,10 @@ def execute_conversion(
     if json_stream:
         emit_event("complete", {
             "output_path": str(output_path),
-            "total_pages": total_pages,
+            "total_pages": selected_count,
             "elapsed_seconds": round(elapsed_time, 1),
             "content": final_content
         })
     else:
         minutes, seconds = divmod(elapsed_time, 60)
-        print(f"\nDone! Processing {total_pages} slides took {int(minutes)}m {seconds:.1f}s. Saved to: '{output_path}'")
+        print(f"\nDone! Processing {selected_count} slides took {int(minutes)}m {seconds:.1f}s. Saved to: '{output_path}'")

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { BookOpen, Settings, CheckCircle, Sparkles, FileText, Play, RefreshCw, ChevronDown } from 'lucide-react';
+import { BookOpen, Settings, CheckCircle, Sparkles, FileText, Play, RefreshCw, ChevronDown, SlidersHorizontal } from 'lucide-react';
 import { save as saveFileDialog } from '@tauri-apps/plugin-dialog';
 import { writeTextFile } from '@tauri-apps/plugin-fs';
 import { invoke } from '@tauri-apps/api/core';
@@ -115,7 +115,6 @@ export function App() {
 
   const handleSelectProvider = (provider: ProviderType) => {
     setActiveProvider(provider);
-    localStorage.setItem('l2m_active_provider', provider);
   };
 
   const handleClearHistory = () => {
@@ -135,17 +134,28 @@ export function App() {
     }
   };
 
-  const handleFileSelectedPath = (filePath: string, fileName: string) => {
+  const handleFileSelectedPath = async (filePath: string, fileName: string) => {
     setSelectedFilePath(filePath);
     setSelectedFileName(fileName);
     setMarkdownResult(null);
     setPageCount(0);
+    try {
+      const total = await invoke<number>('get_pdf_page_count_native', { pdfPath: filePath });
+      setDetectedTotalPages(total);
+      setStartPage(1);
+      setEndPage(total);
+      setRangeMode('all');
+    } catch (e) {
+      console.error('Fehler beim Ermitteln der Seitenzahl:', e);
+    }
   };
 
   const handleResetSelectedFile = () => {
     setSelectedFilePath('');
     setSelectedFileName('');
     setPageCount(0);
+    setDetectedTotalPages(0);
+    setRangeMode('all');
     setMarkdownResult(null);
     setConverting(false);
   };
@@ -157,6 +167,10 @@ export function App() {
     const jobId = Date.now().toString();
     activeJobIdRef.current = jobId;
 
+    const targetStart = rangeMode === 'custom' ? startPage : 1;
+    const targetEnd = rangeMode === 'custom' ? endPage : detectedTotalPages || 1;
+    const targetCount = Math.max(1, targetEnd - targetStart + 1);
+
     setConverting(true);
     setMarkdownResult(null);
 
@@ -165,10 +179,10 @@ export function App() {
       fileName: selectedFileName,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       content: '',
-      totalPages: pageCount || 0,
+      totalPages: targetCount,
       status: 'processing',
       progressCurrent: 0,
-      progressTotal: pageCount || 0,
+      progressTotal: targetCount,
     };
 
     setHistory((prev) => [inProgressItem, ...prev.filter((h) => h.id !== jobId && h.status !== 'processing')]);
@@ -179,6 +193,8 @@ export function App() {
         outputPath: '',
         provider: activeProvider,
         apiKey: currentActiveKey,
+        startPage: rangeMode === 'custom' ? targetStart : undefined,
+        endPage: rangeMode === 'custom' ? targetEnd : undefined,
       });
 
       setMarkdownResult(realGeneratedMarkdown);
@@ -191,7 +207,7 @@ export function App() {
                 ...item,
                 status: 'completed' as const,
                 content: realGeneratedMarkdown,
-                totalPages: progress.total || pageCount || item.totalPages || 1,
+                totalPages: progress.total || targetCount || item.totalPages || 1,
               }
             : item
         );
@@ -292,9 +308,94 @@ export function App() {
               <div>
                 <h3 className="text-lg font-bold text-slate-100">{selectedFileName}</h3>
                 <p className="text-xs text-slate-400 mt-1">
-                  Bereit zur Konvertierung via <strong className="text-slate-200">{PROVIDER_NAMES[activeProvider]}</strong> ({selectedFilePath})
+                  Bereit zur Konvertierung via <strong className="text-slate-200">{PROVIDER_NAMES[activeProvider]}</strong>
+                  {detectedTotalPages > 0 && <span> • <strong>{detectedTotalPages} Folien erkannt</strong></span>}
                 </p>
               </div>
+
+              {/* Page Range Filter Card */}
+              {detectedTotalPages > 0 && (
+                <div className="bg-surface/80 border border-border rounded-xl p-4 max-w-sm mx-auto space-y-3 text-left">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                      <SlidersHorizontal className="w-3.5 h-3.5 text-accent" />
+                      Seitenbereich
+                    </span>
+                    <div className="flex bg-card rounded-lg p-0.5 border border-border text-[11px]">
+                      <button
+                        onClick={() => {
+                          setRangeMode('all');
+                          setStartPage(1);
+                          setEndPage(detectedTotalPages);
+                        }}
+                        className={`px-2.5 py-1 rounded-md transition font-medium cursor-pointer ${
+                          rangeMode === 'all'
+                            ? 'bg-accent text-white font-bold'
+                            : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        Alle ({detectedTotalPages})
+                      </button>
+                      <button
+                        onClick={() => setRangeMode('custom')}
+                        className={`px-2.5 py-1 rounded-md transition font-medium cursor-pointer ${
+                          rangeMode === 'custom'
+                            ? 'bg-accent text-white font-bold'
+                            : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        Benutzerdefiniert
+                      </button>
+                    </div>
+                  </div>
+
+                  {rangeMode === 'custom' && (
+                    <div className="pt-1 space-y-2">
+                      <div className="flex items-center justify-center space-x-3 text-xs">
+                        <div className="flex items-center space-x-1.5">
+                          <span className="text-slate-400">Von:</span>
+                          <input
+                            type="number"
+                            min={1}
+                            max={endPage}
+                            value={startPage}
+                            onChange={(e) => {
+                              const val = parseInt(e.target.value) || 1;
+                              setStartPage(Math.max(1, Math.min(val, endPage)));
+                            }}
+                            className="w-16 bg-card border border-border rounded-lg px-2 py-1 text-center font-mono font-bold text-slate-100 focus:outline-none focus:border-accent"
+                          />
+                        </div>
+                        <span className="text-slate-500 font-bold">bis</span>
+                        <div className="flex items-center space-x-1.5">
+                          <span className="text-slate-400">Bis:</span>
+                          <input
+                            type="number"
+                            min={startPage}
+                            max={detectedTotalPages}
+                            value={endPage}
+                            onChange={(e) => {
+                              const val = parseInt(e.target.value) || startPage;
+                              setEndPage(Math.max(startPage, Math.min(val, detectedTotalPages)));
+                            }}
+                            className="w-16 bg-card border border-border rounded-lg px-2 py-1 text-center font-mono font-bold text-slate-100 focus:outline-none focus:border-accent"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="text-center text-[11px] text-emerald-400 font-medium">
+                        {endPage - startPage + 1} von {detectedTotalPages} Folien ausgewählt
+                        {endPage - startPage + 1 < detectedTotalPages && (
+                          <span className="text-slate-400">
+                            {' '}
+                            (spart ~{Math.round((1 - (endPage - startPage + 1) / detectedTotalPages) * 100)}% Kosten & Zeit)
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="flex justify-center space-x-4 pt-2">
                 <button
