@@ -23,11 +23,7 @@ Specially engineered for students and researchers to upload lecture content into
 
 ## 🎬 Demo
 
-<p align="center">
-  <video src="https://raw.githubusercontent.com/christophrothmann/lecture2markdown/main/assets/demo.mp4" controls width="100%">
-    <a href="https://raw.githubusercontent.com/christophrothmann/lecture2markdown/main/assets/demo.mp4">▶️ Demo Video ansehen (assets/demo.mp4)</a>
-  </video>
-</p>
+https://github.com/user-attachments/assets/5054e824-ed83-4a9d-9486-140a4f571a28
 
 ---
 
