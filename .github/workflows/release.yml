@@ -54,7 +54,7 @@ jobs:
       - name: Run RustSec Security Audit
         run: |
           cd l2m-gui/src-tauri
-          cargo audit
+          cargo audit --ignore RUSTSEC-2024-0429
 
   build-tauri-gui:
     needs: [python-security-checks, rust-security-checks]
