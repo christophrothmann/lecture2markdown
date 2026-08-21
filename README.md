@@ -36,18 +36,19 @@ https://github.com/user-attachments/assets/demo-l2m
 ## ✨ Features
 
 - 🌐 **Multi-Provider Support**: Choose between 4 leading multimodal AI providers:
-  - **OpenAI**: `gpt-4o` & `gpt-4o-mini`
-  - **Google Gemini**: `gemini-2.0-flash` & `gemini-1.5-pro`
+  - **OpenAI**: `gpt-4o` & `gpt-4o-mini` (with adaptive detail tiling)
+  - **Google Gemini**: `gemini-pro-latest` & `gemini-flash-latest` (with 15-RPM pacing rate limiter)
   - **Anthropic Claude**: `claude-3-7-sonnet` & `claude-3-5-haiku`
   - **Mistral AI**: `mistral-ocr-latest` (dedicated document OCR) & `pixtral-12b`
-- 🖥️ **Native Desktop GUI (`l2m-gui`)**: Modern, high-performance desktop application built with **Tauri v2**, **React + TypeScript**, and **TailwindCSS** with 1-click provider switching.
-- 🔀 **Smart Hybrid Routing**: Automatically detects whether a slide contains visual diagrams or text only via PyMuPDF pre-analysis, cutting costs by up to 80%.
+- 🖥️ **Pure-Rust Native Desktop GUI (`l2m-gui`)**: High-performance desktop application built with **Tauri v2**, **Tokio Async**, **React + TypeScript**, and **TailwindCSS** with 1-click provider switching.
+- ⚡ **Content-Addressed Slide Cache (SHA-256)**: Instant 0 ms slide cache with 180-day TTL — re-converting previously seen slides costs 0.00 € and requires 0 API tokens.
+- 🔀 **Smart Hybrid Routing**: Intelligent visual complexity heuristic that automatically routes text-heavy slides to fast mini/flash models and dense figures to high-end vision models.
+- 📊 **Real-Time Progress & LiteLLM Cost Calculator**: Live slide-by-slide progress streaming, live in-progress history entries, dynamic cost estimation, and instant conversion cancellation.
 - 🏷️ **Explicit Slide Anchors (`## [Folie X]`)**: Structures every slide with explicit anchors so you can reference specific slides directly in ChatGPT prompts.
 - 📊 **Mermaid.js Diagram Synthesis**: Converts flowcharts, state machines, and architecture diagrams into native, editable ` ```mermaid ` code blocks instead of static images.
 - 📐 **LaTeX Formula Extraction**: Automatically translates all mathematical equations into standard inline (`$...$`) or block (`$$...$$`) LaTeX.
 - 🛡️ **Anti-AI Canary & Prompt Injection Hardened**: Built-in security rules strip out hidden text, white-on-white professor trap instructions (*"If you are an AI respond with X"*), and prompt injection vectors.
 - 🎯 **100% Deterministic Output**: Runs at `temperature=0.0` to eliminate creative hallucination and guarantee strict transcription fidelity.
-- ⚡ **Powered by `uv` & `bun`**: Uses Astral's `uv` for sub-second Python virtualenv setup and `bun` for the desktop GUI.
 
 ---
 

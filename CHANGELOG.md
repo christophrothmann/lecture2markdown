@@ -2,15 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
-## [1.2.0] - 2026-08-15 "pure-rust-core"
+## [1.2.0] - 2026-08-21 "pure-rust-core"
 
 ### Added
 - **Pure-Rust Core Engine**: Migrated the entire multimodal inference and PDF conversion pipeline to native Rust using `tokio` and `reqwest`.
-- **In-Memory WebP Pipeline**: Replaced uncompressed PNGs with memory-efficient WebP encoding (Quality: 80), reducing payload size by ~80%.
-- **Content-Addressed Slide-Cache (SHA-256)**: Added instant local slide cache with 180-day (6 months) TTL and LRU eviction.
-- **"Folien Cache leeren" Button**: Added clear cache management with live storage stats in settings modal.
+- **In-Memory WebP Pipeline**: Replaced uncompressed PNGs with memory-efficient WebP encoding (Quality: 80), reducing payload size by ~80% and eliminating temporary disk I/O.
+- **Content-Addressed Slide-Cache (SHA-256)**: Added instant local slide cache with 180-day (6 months) TTL and LRU eviction (0 ms, 0 Tokens, 0 € for repeated slides).
+- **"Folien Cache leeren" Button**: Added slide-specific cache management with live storage stats in settings modal.
+- **Instant Cancel Button**: Added conversion cancellation support with immediate background task abort and clean state reset.
+- **Live In-Progress History Badge**: Real-time conversion tracking in the History sidebar with progress indicator (`Folie X/Y`).
+- **Resilient Multi-Provider Rate Limiting**:
+  - Google Gemini: 4.1s pacing rate limiter for free-tier quotas (15 RPM) and automatic 503/429 recovery.
+  - OpenAI: Adaptive vision tiling (`detail: low` vs `high`) and fallback to `gpt-4o-mini` on rate limits.
+  - Anthropic Claude & Mistral AI: Automatic model deprecation & quota fallback recovery.
 - **LiteLLM Dynamic Cost Calculator**: Integrated official LiteLLM pricing matrix for accurate, model-specific cost estimation.
-- **High-Throughput Async Concurrency**: Parallelized slide processing up to 12 concurrent async tasks.
+- **Scientific Visualization Optimization**: Streamlined system prompt for complex attention plots and bipartite figures.
 
 ## [1.1.2] - 2026-08-15
 
