@@ -48,11 +48,13 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: RustSec Security Audit
-        uses: rustsec/audit-check@v2.0.0
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          manifest-path: l2m-gui/src-tauri/Cargo.toml
+      - name: Install cargo-audit binary
+        uses: taiki-e/install-action@cargo-audit
+
+      - name: Run RustSec Security Audit
+        run: |
+          cd l2m-gui/src-tauri
+          cargo audit
 
   build-tauri-gui:
     needs: [python-security-checks, rust-security-checks]
