@@ -1,22 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
-import {
-  BookOpen,
-  Settings,
-  FileText,
-  Play,
-  RefreshCw,
-  ChevronDown,
-  SlidersHorizontal,
-  Layers,
-} from 'lucide-react';
+import { BookOpen, Settings, ChevronDown } from 'lucide-react';
 import { save as saveFileDialog } from '@tauri-apps/plugin-dialog';
+import { open as openFileDialog } from '@tauri-apps/plugin-dialog';
 import { writeTextFile } from '@tauri-apps/plugin-fs';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { ApiKeyModal, type ProviderType } from './components/ApiKeyModal';
 import { Dropzone, type SelectedFileInfo } from './components/Dropzone';
 import { BatchQueue, type BatchQueueItem } from './components/BatchQueue';
-import { ProgressDashboard } from './components/ProgressDashboard';
 import { MarkdownPreview } from './components/MarkdownPreview';
 import { HistorySidebar, type HistoryItem } from './components/HistorySidebar';
 

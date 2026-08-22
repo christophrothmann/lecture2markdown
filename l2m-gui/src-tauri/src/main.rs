@@ -40,42 +40,46 @@ fn read_keys_map(app: &tauri::AppHandle) -> HashMap<String, String> {
     HashMap::new()
 }
 
-/// Dynamically locates the Python binary (optional for PDF render helpers).
+static PYTHON_BIN_CACHE: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
+
+/// Dynamically locates the Python binary (cached for high performance across slides and batch runs).
 fn find_python_binary() -> Option<PathBuf> {
-    let mut search_dirs = Vec::new();
-    if let Ok(cwd) = std::env::current_dir() {
-        search_dirs.push(cwd);
-    }
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(parent) = exe.parent() {
-            search_dirs.push(parent.to_path_buf());
+    PYTHON_BIN_CACHE.get_or_init(|| {
+        let mut search_dirs = Vec::new();
+        if let Ok(cwd) = std::env::current_dir() {
+            search_dirs.push(cwd);
         }
-    }
-
-    for start_dir in search_dirs {
-        let mut curr = Some(start_dir.as_path());
-        while let Some(dir) = curr {
-            let venv_candidate = dir.join(".venv");
-            if venv_candidate.exists() {
-                #[cfg(unix)]
-                let py_bin = venv_candidate.join("bin").join("python3");
-                #[cfg(unix)]
-                let py_bin_alt = venv_candidate.join("bin").join("python");
-                #[cfg(windows)]
-                let py_bin = venv_candidate.join("Scripts").join("python.exe");
-                #[cfg(windows)]
-                let py_bin_alt = venv_candidate.join("Scripts").join("python.exe");
-
-                if py_bin.exists() {
-                    return Some(py_bin);
-                } else if py_bin_alt.exists() {
-                    return Some(py_bin_alt);
-                }
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(parent) = exe.parent() {
+                search_dirs.push(parent.to_path_buf());
             }
-            curr = dir.parent();
         }
-    }
-    None
+
+        for start_dir in search_dirs {
+            let mut curr = Some(start_dir.as_path());
+            while let Some(dir) = curr {
+                let venv_candidate = dir.join(".venv");
+                if venv_candidate.exists() {
+                    #[cfg(unix)]
+                    let py_bin = venv_candidate.join("bin").join("python3");
+                    #[cfg(unix)]
+                    let py_bin_alt = venv_candidate.join("bin").join("python");
+                    #[cfg(windows)]
+                    let py_bin = venv_candidate.join("Scripts").join("python.exe");
+                    #[cfg(windows)]
+                    let py_bin_alt = venv_candidate.join("Scripts").join("python.exe");
+
+                    if py_bin.exists() {
+                        return Some(py_bin);
+                    } else if py_bin_alt.exists() {
+                        return Some(py_bin_alt);
+                    }
+                }
+                curr = dir.parent();
+            }
+        }
+        None
+    }).clone()
 }
 
 #[tauri::command]

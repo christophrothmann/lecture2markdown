@@ -12,7 +12,7 @@ pub struct ClaudeProvider {
 impl ClaudeProvider {
     pub fn new(api_key: &str) -> Self {
         let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(60))
+            .timeout(Duration::from_secs(90))
             .build()
             .unwrap_or_default();
         Self {
