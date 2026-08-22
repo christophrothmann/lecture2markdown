@@ -2,9 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
-## [1.3.2] - 2026-08-22 "batch-and-ranges"
+## [1.3.3] - 2026-08-22 "batch-and-updater"
 
 ### Added
+- **In-App Auto-Updater (`@tauri-apps/plugin-updater`)**:
+  - Non-blocking, asynchronous background release check on app startup (0 ms UI delay).
+  - Unobtrusive header notification button (`[✨ Update verfügbar!]`) next to the provider selector when a new version is released.
+  - 1-click background download, signature verification (`minisign`), and automatic application restart (`relaunch()`).
+  - Automated release artifact signing and `latest.json` manifest generation in GitHub Actions CI/CD.
 - **Multi-File Batch Processing & Queue Dashboard**:
   - Drag & drop multiple PDF files or entire directories simultaneously into the Dropzone.
   - Interactive **Batch Queue Dashboard** with live slide count, per-document status badges (`⏳ Wartend`, `🔄 In Arbeit`, `✅ Gespeichert`, `❌ Fehler`), and clear/add actions.
