@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { BookOpen, Settings, ChevronDown } from 'lucide-react';
+import { BookOpen, Settings, ChevronDown, Sparkles } from 'lucide-react';
 import { save as saveFileDialog } from '@tauri-apps/plugin-dialog';
 import { open as openFileDialog } from '@tauri-apps/plugin-dialog';
 import { writeTextFile } from '@tauri-apps/plugin-fs';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { check } from '@tauri-apps/plugin-updater';
+import { relaunch } from '@tauri-apps/plugin-process';
 import { ApiKeyModal, type ProviderType } from './components/ApiKeyModal';
 import { Dropzone, type SelectedFileInfo } from './components/Dropzone';
 import { BatchQueue, type BatchQueueItem } from './components/BatchQueue';
@@ -24,6 +26,10 @@ export function App() {
   });
   const [providerKeys, setProviderKeys] = useState<Record<string, string>>({});
   const [isKeyModalOpen, setIsKeyModalOpen] = useState<boolean>(false);
+
+  // Background Auto-Update State
+  const [updateAvailable, setUpdateAvailable] = useState<boolean>(false);
+  const [isUpdating, setIsUpdating] = useState<boolean>(false);
 
   // Batch Queue State
   const [queue, setQueue] = useState<BatchQueueItem[]>([]);
@@ -60,6 +66,36 @@ export function App() {
         setIsKeyModalOpen(true);
       });
   }, [activeProvider]);
+
+  // Non-blocking asynchronous update check (0ms delay for app startup)
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      try {
+        const update = await check();
+        if (update && update.available) {
+          setUpdateAvailable(true);
+        }
+      } catch {
+        // Silently catch network errors or missing update endpoints
+      }
+    }, 2500);
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  const handleApplyUpdate = async () => {
+    setIsUpdating(true);
+    try {
+      const update = await check();
+      if (update && update.available) {
+        await update.downloadAndInstall();
+        await relaunch();
+      }
+    } catch (e) {
+      alert(`Update konnte nicht installiert werden:\n${e}`);
+      setIsUpdating(false);
+    }
+  };
 
   // Listen to Tauri events from Pure-Rust backend
   useEffect(() => {
@@ -383,6 +419,19 @@ export function App() {
         </div>
 
         <div className="flex items-center space-x-3">
+          {/* Update Available Badge / Action */}
+          {updateAvailable && (
+            <button
+              onClick={handleApplyUpdate}
+              disabled={isUpdating}
+              className="flex items-center space-x-1.5 px-3 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 rounded-xl text-xs font-bold transition animate-pulse cursor-pointer shadow-lg"
+              title="Neues Update herunterladen und App neustarten"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+              <span>{isUpdating ? 'Lade Update...' : 'Update verfügbar!'}</span>
+            </button>
+          )}
+
           {/* Active Provider Selector Badge */}
           <button
             onClick={() => setIsKeyModalOpen(true)}
