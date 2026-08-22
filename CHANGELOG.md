@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [1.3.0] - 2026-08-22 "batch-and-ranges"
+## [1.3.2] - 2026-08-22 "batch-and-ranges"
 
 ### Added
 - **Multi-File Batch Processing & Queue Dashboard**:
@@ -17,8 +17,13 @@ All notable changes to this project will be documented in this file.
 - **Dynamic Estimated Time Remaining (ETA)**:
   - Real-time rolling average ETA calculation displayed directly in the progress bar (`Folie 12 von 45 • ⏱️ ~38s verbleibend`).
   - Global batch ETA in the queue header (`Dokument 2 von 5 • ⏱️ ~2m 15s verbleibend`).
+- **Enhanced History Management & Single-Item Deletion**:
+  - Dedicated trash button in the Markdown detail view toolbar to delete individual history entries.
+  - Seamless vertical scrolling for long conversion histories (persisting up to 100 recent lectures).
+  - Selected item highlighting and clean state reset.
 
 ### Changed & Optimized
+- **Symmetric Layout Heights**: Synchronized vertical container heights between the left detail/dashboard view and the right history sidebar (`items-stretch h-[calc(100vh-80px)]`).
 - **C-Speed In-Memory Hashing**: Optimized WebP slide hashing using `hashlib.sha256` directly during image compression, eliminating redundant base64 decoding and memory allocations.
 - **Cached Runtime Binary Resolution**: Wrapped Python environment lookup in `std::sync::OnceLock` for instant 0 ms execution on subsequent slide and batch conversions.
 - **Resilient 90s Client Timeouts**: Extended provider HTTP client timeouts to 90s for dense mathematical slides.
