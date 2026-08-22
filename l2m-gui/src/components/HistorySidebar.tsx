@@ -26,7 +26,7 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
   onClear,
 }) => {
   return (
-    <div className="glass-card rounded-2xl p-5 space-y-4 flex flex-col h-[calc(100vh-120px)] sticky top-6">
+    <div className="glass-card rounded-2xl p-5 space-y-4 flex flex-col h-full">
       <div className="flex items-center justify-between border-b border-border pb-3 shrink-0">
         <div className="flex items-center space-x-2 text-slate-200">
           <History className="w-4 h-4 text-accent" />

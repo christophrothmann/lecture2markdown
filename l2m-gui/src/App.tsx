@@ -405,9 +405,9 @@ export function App() {
       </header>
 
       {/* Main Content Layout */}
-      <main className="flex-1 p-6 grid grid-cols-1 lg:grid-cols-4 gap-6 max-w-7xl mx-auto w-full">
+      <main className="flex-1 p-6 grid grid-cols-1 lg:grid-cols-4 gap-6 max-w-7xl mx-auto w-full items-stretch h-[calc(100vh-80px)]">
         {/* Left Column: Dropzone & Active Progress / Preview */}
-        <div className="lg:col-span-3 space-y-6 flex flex-col">
+        <div className="lg:col-span-3 flex flex-col h-full min-h-0 space-y-6">
           {/* State 1: Dropzone (No files in queue and no preview) */}
           {queue.length === 0 && !markdownResult && (
             <Dropzone onFilesSelected={handleFilesSelected} disabled={!currentActiveKey} />
@@ -446,7 +446,7 @@ export function App() {
         </div>
 
         {/* Right Column: History Sidebar */}
-        <div className="lg:col-span-1">
+        <div className="lg:col-span-1 flex flex-col h-full min-h-0">
           <HistorySidebar
             items={history}
             selectedItemId={selectedHistoryId}

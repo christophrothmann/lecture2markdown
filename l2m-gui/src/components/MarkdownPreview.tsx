@@ -33,7 +33,7 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
 
   return (
     <div className="glass-card rounded-2xl p-6 space-y-4 flex flex-col h-full">
-      <div className="flex flex-wrap items-center justify-between border-b border-border pb-4 gap-3">
+      <div className="flex flex-wrap items-center justify-between border-b border-border pb-4 gap-3 shrink-0">
         <div className="flex items-center space-x-2">
           <div className="p-2 bg-surface border border-border rounded-xl text-accent">
             <FileText className="w-5 h-5" />
@@ -99,7 +99,7 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto max-h-[460px] bg-background/80 p-4 rounded-xl border border-border/50 text-xs font-mono text-slate-300 whitespace-pre-wrap leading-relaxed">
+      <div className="flex-1 overflow-y-auto min-h-0 bg-background/80 p-4 rounded-xl border border-border/50 text-xs font-mono text-slate-300 whitespace-pre-wrap leading-relaxed">
         {content}
       </div>
     </div>
