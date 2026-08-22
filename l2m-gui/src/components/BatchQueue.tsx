@@ -53,13 +53,47 @@ export const BatchQueue: React.FC<BatchQueueProps> = ({
   onStartBatch,
   onCancelBatch,
 }) => {
+  const batchStartTimeRef = React.useRef<number>(Date.now());
+
+  React.useEffect(() => {
+    if (isConverting) {
+      batchStartTimeRef.current = Date.now();
+    }
+  }, [isConverting]);
+
   const totalSlides = items.reduce((acc, item) => {
     const count = item.rangeMode === 'custom' ? item.endPage - item.startPage + 1 : item.totalPages;
     return acc + Math.max(1, count);
   }, 0);
 
+  const completedSlides = items.reduce((acc, item) => {
+    if (item.status === 'completed') {
+      return acc + (item.rangeMode === 'custom' ? item.endPage - item.startPage + 1 : item.totalPages);
+    }
+    if (item.status === 'processing') {
+      return acc + (item.progressCurrent || 0);
+    }
+    return acc;
+  }, 0);
+
   const completedItems = items.filter((i) => i.status === 'completed').length;
   const processingItem = items.find((i) => i.status === 'processing');
+
+  const elapsed = (Date.now() - batchStartTimeRef.current) / 1000;
+  const avgPerSlide = completedSlides > 0 ? elapsed / completedSlides : 0;
+  const remainingSlides = Math.max(0, totalSlides - completedSlides);
+  const estSeconds = Math.round(remainingSlides * avgPerSlide);
+
+  const formatBatchEta = (seconds: number): string => {
+    if (completedSlides === 0) return 'Berechne Restzeit...';
+    if (seconds <= 0) return 'Gleich fertig...';
+    if (seconds < 60) return `~${seconds}s verbleibend`;
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return secs > 0 ? `~${mins}m ${secs}s verbleibend` : `~${mins}m verbleibend`;
+  };
+
+  const batchEtaText = formatBatchEta(estSeconds);
 
   return (
     <div className="glass-card rounded-2xl p-6 space-y-6">
@@ -108,18 +142,23 @@ export const BatchQueue: React.FC<BatchQueueProps> = ({
           <div className="flex items-center justify-between text-xs font-semibold">
             <span className="text-slate-200 flex items-center gap-2">
               <Loader2 className="w-4 h-4 animate-spin text-accent" />
-              Verarbeite Dokument {completedItems + 1} von {items.length}
-              {processingItem && <span className="text-slate-400 font-normal">({processingItem.fileName})</span>}
+              <span>
+                Dokument {completedItems + 1} von {items.length}
+                {processingItem && <span className="text-slate-400 font-normal"> ({processingItem.fileName})</span>}
+              </span>
+              <span className="text-slate-400 font-normal flex items-center gap-1 text-[11px]">
+                • <Clock className="w-3 h-3 text-accent" /> {batchEtaText}
+              </span>
             </span>
             <span className="font-mono text-accent font-bold">
-              {Math.round((completedItems / items.length) * 100)}%
+              {Math.round((completedSlides / (totalSlides || 1)) * 100)}%
             </span>
           </div>
 
           <div className="w-full h-2.5 bg-background border border-border rounded-full overflow-hidden p-0.5">
             <div
               className="h-full bg-accent rounded-full transition-all duration-300 ease-out"
-              style={{ width: `${Math.round((completedItems / items.length) * 100)}%` }}
+              style={{ width: `${Math.round((completedSlides / (totalSlides || 1)) * 100)}%` }}
             />
           </div>
         </div>

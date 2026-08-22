@@ -1,5 +1,5 @@
-import React from 'react';
-import { Loader2, Zap, Sparkles, Coins, CheckCircle2, XCircle } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Loader2, Zap, Sparkles, Coins, CheckCircle2, XCircle, Clock } from 'lucide-react';
 
 interface ProgressDashboardProps {
   fileName: string;
@@ -40,6 +40,14 @@ const getModelRate = (modelName: string): number => {
   return 0.0003;
 };
 
+const formatEta = (seconds: number): string => {
+  if (seconds <= 0) return 'Gleich fertig...';
+  if (seconds < 60) return `~${seconds}s verbleibend`;
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return secs > 0 ? `~${mins}m ${secs}s verbleibend` : `~${mins}m verbleibend`;
+};
+
 export const ProgressDashboard: React.FC<ProgressDashboardProps> = ({
   fileName,
   completedPages,
@@ -48,6 +56,22 @@ export const ProgressDashboard: React.FC<ProgressDashboardProps> = ({
   usedModels = [],
   onCancel,
 }) => {
+  const startTimeRef = useRef<number>(Date.now());
+  const [etaText, setEtaText] = useState<string>('Berechne Restzeit...');
+
+  useEffect(() => {
+    if (completedPages === 0) {
+      startTimeRef.current = Date.now();
+      setEtaText('Berechne Restzeit...');
+    } else {
+      const elapsed = (Date.now() - startTimeRef.current) / 1000;
+      const avgPerSlide = elapsed / completedPages;
+      const remaining = Math.max(0, totalPages - completedPages);
+      const estSeconds = Math.round(remaining * avgPerSlide);
+      setEtaText(formatEta(estSeconds));
+    }
+  }, [completedPages, totalPages]);
+
   const percentage = totalPages > 0 ? Math.round((completedPages / totalPages) * 100) : 0;
   
   // Calculate exact dynamic accumulated costs based on each completed slide's model
@@ -118,7 +142,7 @@ export const ProgressDashboard: React.FC<ProgressDashboardProps> = ({
           {onCancel && (
             <button
               onClick={onCancel}
-              className="inline-flex items-center space-x-1.5 px-3 py-1 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-full text-xs font-semibold transition"
+              className="inline-flex items-center space-x-1.5 px-3 py-1 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-full text-xs font-semibold transition cursor-pointer"
               title="Konvertierung abbrechen"
             >
               <XCircle className="w-3.5 h-3.5" />
@@ -130,8 +154,13 @@ export const ProgressDashboard: React.FC<ProgressDashboardProps> = ({
 
       <div className="space-y-2">
         <div className="flex justify-between text-xs font-semibold">
-          <span className="text-slate-300">
-            Folie {completedPages} von {totalPages}
+          <span className="text-slate-300 flex items-center gap-2">
+            <span>Folie {completedPages} von {totalPages}</span>
+            {totalPages > 0 && completedPages < totalPages && (
+              <span className="inline-flex items-center gap-1 text-[11px] text-slate-400 font-normal">
+                • <Clock className="w-3 h-3 text-accent" /> {etaText}
+              </span>
+            )}
           </span>
           <span className="text-accent font-mono">{percentage}%</span>
         </div>
