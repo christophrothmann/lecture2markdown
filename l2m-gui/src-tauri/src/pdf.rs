@@ -63,10 +63,15 @@ print(str(int(is_vis)) + ":::" + slide_hash + ":::" + base64.b64encode(raw_bytes
         .arg("-c")
         .arg(&script)
         .output()
-        .map_err(|e| format!("Fehler beim Rendern von Folie {}: {}", page_number, e))?;
+        .map_err(|e| format!("Fehler beim Ausführen von Python ({:?}): {}", py_exec, e))?;
 
     if !output.status.success() {
         let err = String::from_utf8_lossy(&output.stderr);
+        if err.contains("No module named 'fitz'") || err.contains("ModuleNotFoundError") {
+            return Err(
+                "PyMuPDF ('fitz') oder Pillow wurde nicht in der Python-Umgebung gefunden.\n\nBitte installiere die Pakete im Terminal mit:\npip install pymupdf pillow\n(oder: uv pip install pymupdf pillow)".to_string()
+            );
+        }
         return Err(format!("Rendering-Fehler auf Folie {}: {}", page_number, err.trim()));
     }
 
@@ -88,8 +93,17 @@ print(str(int(is_vis)) + ":::" + slide_hash + ":::" + base64.b64encode(raw_bytes
     })
 }
 
-/// Reads the total page count of a PDF.
+/// Reads the total page count of a PDF in 100% Pure Rust without any Python dependency.
 pub fn get_pdf_page_count(pdf_path: &Path, py_bin: Option<&Path>) -> Result<usize, String> {
+    // 1. Pure Rust parsing via lopdf (Instant, 0 dependencies, 100% reliable)
+    if let Ok(doc) = lopdf::Document::load(pdf_path) {
+        let pages = doc.get_pages();
+        if !pages.is_empty() {
+            return Ok(pages.len());
+        }
+    }
+
+    // 2. Fallback to Python if lopdf encounters unusual encryption
     let py_exec = py_bin.unwrap_or_else(|| Path::new("python3"));
     let script = format!(
         r#"
@@ -109,6 +123,9 @@ doc.close()
 
     if !output.status.success() {
         let err = String::from_utf8_lossy(&output.stderr);
+        if err.contains("No module named 'fitz'") {
+            return Err("PyMuPDF ('fitz') fehlt in deiner Python-Umgebung. Bitte 'pip install pymupdf pillow' ausführen.".to_string());
+        }
         return Err(format!("PDF-Fehler: {}", err.trim()));
     }
 

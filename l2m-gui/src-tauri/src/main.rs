@@ -42,42 +42,78 @@ fn read_keys_map(app: &tauri::AppHandle) -> HashMap<String, String> {
 
 static PYTHON_BIN_CACHE: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
 
-/// Dynamically locates the Python binary (cached for high performance across slides and batch runs).
+fn check_python_candidate(candidate: &Path) -> bool {
+    if !candidate.exists() {
+        return false;
+    }
+    if let Ok(output) = std::process::Command::new(candidate)
+        .arg("-c")
+        .arg("import fitz, PIL")
+        .output()
+    {
+        return output.status.success();
+    }
+    false
+}
+
+/// Dynamically locates a working Python binary that has PyMuPDF (fitz) and Pillow installed.
 fn find_python_binary() -> Option<PathBuf> {
     PYTHON_BIN_CACHE.get_or_init(|| {
-        let mut search_dirs = Vec::new();
+        let mut candidate_paths = Vec::new();
+
+        // 1. Check local & parent virtual environments
         if let Ok(cwd) = std::env::current_dir() {
-            search_dirs.push(cwd);
-        }
-        if let Ok(exe) = std::env::current_exe() {
-            if let Some(parent) = exe.parent() {
-                search_dirs.push(parent.to_path_buf());
-            }
-        }
-
-        for start_dir in search_dirs {
-            let mut curr = Some(start_dir.as_path());
+            let mut curr = Some(cwd.as_path());
             while let Some(dir) = curr {
-                let venv_candidate = dir.join(".venv");
-                if venv_candidate.exists() {
-                    #[cfg(unix)]
-                    let py_bin = venv_candidate.join("bin").join("python3");
-                    #[cfg(unix)]
-                    let py_bin_alt = venv_candidate.join("bin").join("python");
-                    #[cfg(windows)]
-                    let py_bin = venv_candidate.join("Scripts").join("python.exe");
-                    #[cfg(windows)]
-                    let py_bin_alt = venv_candidate.join("Scripts").join("python.exe");
-
-                    if py_bin.exists() {
-                        return Some(py_bin);
-                    } else if py_bin_alt.exists() {
-                        return Some(py_bin_alt);
-                    }
-                }
+                candidate_paths.push(dir.join(".venv/bin/python3"));
+                candidate_paths.push(dir.join(".venv/bin/python"));
+                candidate_paths.push(dir.join(".venv/Scripts/python.exe"));
                 curr = dir.parent();
             }
         }
+
+        // 2. Check user home directories
+        if let Ok(home) = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")) {
+            let home_path = PathBuf::from(home);
+            candidate_paths.push(home_path.join(".venv/bin/python3"));
+            candidate_paths.push(home_path.join(".virtualenvs/lecture2markdown/bin/python3"));
+            candidate_paths.push(home_path.join(".pyenv/shims/python3"));
+            candidate_paths.push(home_path.join(".pyenv/shims/python"));
+            candidate_paths.push(home_path.join(".local/bin/python3"));
+            candidate_paths.push(home_path.join(".cargo/bin/uv"));
+        }
+
+        // 3. Check standard Unix/macOS package manager paths
+        #[cfg(unix)]
+        {
+            candidate_paths.push(PathBuf::from("/opt/homebrew/bin/python3"));
+            candidate_paths.push(PathBuf::from("/opt/homebrew/bin/python3.12"));
+            candidate_paths.push(PathBuf::from("/opt/homebrew/bin/python3.11"));
+            candidate_paths.push(PathBuf::from("/opt/homebrew/bin/python3.10"));
+            candidate_paths.push(PathBuf::from("/usr/local/bin/python3"));
+            candidate_paths.push(PathBuf::from("/usr/local/bin/python3.12"));
+            candidate_paths.push(PathBuf::from("/usr/local/bin/python3.11"));
+            candidate_paths.push(PathBuf::from("/Library/Frameworks/Python.framework/Versions/Current/bin/python3"));
+        }
+
+        // 4. Test PATH binaries
+        candidate_paths.push(PathBuf::from("python3"));
+        candidate_paths.push(PathBuf::from("python"));
+
+        // Pick the first candidate where `import fitz, PIL` succeeds!
+        for candidate in &candidate_paths {
+            if check_python_candidate(candidate) {
+                return Some(candidate.clone());
+            }
+        }
+
+        // If no candidate with fitz was found, return the first existing candidate
+        for candidate in candidate_paths {
+            if candidate.exists() {
+                return Some(candidate);
+            }
+        }
+
         None
     }).clone()
 }
