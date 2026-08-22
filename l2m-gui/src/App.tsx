@@ -30,17 +30,10 @@ export function App() {
   const [isBatchRunning, setIsBatchRunning] = useState<boolean>(false);
   const [activeQueueId, setActiveQueueId] = useState<string | null>(null);
 
-  // Single active conversion state for live progress & preview
-  const [activeConvertingFile, setActiveConvertingFile] = useState<string>('');
-  const [progress, setProgress] = useState<{ completed: number; total: number; lastModel: string; usedModels: string[] }>({
-    completed: 0,
-    total: 0,
-    lastModel: '',
-    usedModels: [],
-  });
-
+  // Markdown Preview & Selected History item
   const [markdownResult, setMarkdownResult] = useState<string | null>(null);
   const [previewFileName, setPreviewFileName] = useState<string>('');
+  const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
 
   const [history, setHistory] = useState<HistoryItem[]>(() => {
     try {
@@ -76,7 +69,6 @@ export function App() {
       try {
         const payload = JSON.parse(event.payload);
         if (payload.type === 'start') {
-          setProgress({ completed: 0, total: payload.total_pages, lastModel: '', usedModels: [] });
           if (activeJobIdRef.current) {
             setHistory((prev) =>
               prev.map((item) =>
@@ -87,18 +79,6 @@ export function App() {
             );
           }
         } else if (payload.type === 'progress') {
-          setProgress((prev) => {
-            const nextUsed = payload.model_used && payload.model_used !== 'cache-hit'
-              ? [...prev.usedModels, payload.model_used]
-              : prev.usedModels;
-            return {
-              completed: payload.completed,
-              total: payload.total,
-              lastModel: payload.model_used || prev.lastModel,
-              usedModels: nextUsed,
-            };
-          });
-
           // Update active queue item progress
           setQueue((prev) =>
             prev.map((item) =>
@@ -147,11 +127,27 @@ export function App() {
   const handleClearHistory = () => {
     setHistory([]);
     localStorage.removeItem('conversion_history');
+    if (selectedHistoryId) {
+      setMarkdownResult(null);
+      setPreviewFileName('');
+      setSelectedHistoryId(null);
+    }
+  };
+
+  const handleDeleteCurrentHistoryItem = () => {
+    if (!selectedHistoryId) return;
+    const updated = history.filter((h) => h.id !== selectedHistoryId);
+    setHistory(updated);
+    localStorage.setItem('conversion_history', JSON.stringify(updated.slice(0, 100)));
+    setMarkdownResult(null);
+    setPreviewFileName('');
+    setSelectedHistoryId(null);
   };
 
   // Add multiple files to the batch queue
   const handleFilesSelected = async (selectedFiles: SelectedFileInfo[]) => {
     setMarkdownResult(null);
+    setSelectedHistoryId(null);
     const newItems: BatchQueueItem[] = [];
 
     for (const file of selectedFiles) {
@@ -220,7 +216,6 @@ export function App() {
       if (item.status === 'completed') continue;
 
       setActiveQueueId(item.id);
-      setActiveConvertingFile(item.fileName);
 
       const targetStart = item.rangeMode === 'custom' ? item.startPage : 1;
       const targetEnd = item.rangeMode === 'custom' ? item.endPage : item.totalPages;
@@ -290,7 +285,7 @@ export function App() {
                 }
               : h
           );
-          const toPersist = updated.filter((h) => h.status === 'completed' || !h.status).slice(0, 10);
+          const toPersist = updated.filter((h) => h.status === 'completed' || !h.status).slice(0, 100);
           localStorage.setItem('conversion_history', JSON.stringify(toPersist));
           return updated;
         });
@@ -298,6 +293,7 @@ export function App() {
         // Set last result for optional live preview
         setMarkdownResult(markdown);
         setPreviewFileName(item.fileName.replace('.pdf', '.md'));
+        setSelectedHistoryId(jobId);
       } catch (err: any) {
         if (cancelBatchRef.current || (err && err.includes('abgebrochen'))) {
           setQueue((prev) =>
@@ -441,8 +437,10 @@ export function App() {
               onNewConversion={() => {
                 setMarkdownResult(null);
                 setPreviewFileName('');
+                setSelectedHistoryId(null);
                 setQueue([]);
               }}
+              onDelete={selectedHistoryId ? handleDeleteCurrentHistoryItem : undefined}
             />
           )}
         </div>
@@ -451,7 +449,9 @@ export function App() {
         <div className="lg:col-span-1">
           <HistorySidebar
             items={history}
+            selectedItemId={selectedHistoryId}
             onSelect={(item) => {
+              setSelectedHistoryId(item.id);
               setPreviewFileName(item.fileName.replace('.pdf', '.md'));
               setMarkdownResult(item.content);
             }}

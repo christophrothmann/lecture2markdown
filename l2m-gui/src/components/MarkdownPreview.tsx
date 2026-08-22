@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { Copy, Save, Check, FileText, PlusCircle } from 'lucide-react';
+import { Copy, Save, Check, FileText, PlusCircle, Trash2 } from 'lucide-react';
 
 interface MarkdownPreviewProps {
   content: string;
   fileName: string;
   onSaveFile: () => void;
   onNewConversion: () => void;
+  onDelete?: () => void;
 }
 
 export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
@@ -13,6 +14,7 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
   fileName,
   onSaveFile,
   onNewConversion,
+  onDelete,
 }) => {
   const [copied, setCopied] = useState(false);
 
@@ -33,7 +35,9 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
     <div className="glass-card rounded-2xl p-6 space-y-4 flex flex-col h-full">
       <div className="flex flex-wrap items-center justify-between border-b border-border pb-4 gap-3">
         <div className="flex items-center space-x-2">
-          <FileText className="w-5 h-5 text-accent" />
+          <div className="p-2 bg-surface border border-border rounded-xl text-accent">
+            <FileText className="w-5 h-5" />
+          </div>
           <div>
             <h3 className="text-sm font-bold text-slate-100">{fileName}</h3>
             <p className="text-[10px] text-slate-400">
@@ -81,10 +85,21 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
               </>
             )}
           </button>
+
+          {onDelete && (
+            <button
+              type="button"
+              onClick={onDelete}
+              className="p-2 bg-surface hover:bg-rose-500/10 border border-border hover:border-rose-500/30 text-slate-400 hover:text-rose-400 rounded-xl text-xs font-semibold flex items-center justify-center transition cursor-pointer"
+              title="Diesen Eintrag aus dem Verlauf löschen"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto max-h-[420px] bg-background/80 p-4 rounded-xl border border-border/50 text-xs font-mono text-slate-300 whitespace-pre-wrap leading-relaxed">
+      <div className="flex-1 overflow-y-auto max-h-[460px] bg-background/80 p-4 rounded-xl border border-border/50 text-xs font-mono text-slate-300 whitespace-pre-wrap leading-relaxed">
         {content}
       </div>
     </div>
