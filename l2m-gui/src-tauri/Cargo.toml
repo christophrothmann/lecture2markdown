@@ -28,7 +28,7 @@ regex = "1.13.1"
 tokio = { version = "1.53.1", features = ["full"] }
 base64 = "0.23.1"
 rand = "0.10.2"
-lopdf = "0.34"
+lopdf = "0.44.0"
 
 [features]
 default = ["custom-protocol"]
