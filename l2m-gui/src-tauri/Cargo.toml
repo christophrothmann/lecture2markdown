@@ -1,6 +1,6 @@
 [package]
 name = "l2m-gui"
-version = "1.3.3"
+version = "1.3.4"
 description = "Lecture2Markdown Desktop GUI"
 authors = ["Lecture2Markdown Contributors"]
 edition = "2021"

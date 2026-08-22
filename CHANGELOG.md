@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3.4] - 2026-08-22 "pure-rust-pdf-and-updater"
+
+### Added
+- **Pure-Rust PDF Engine (`lopdf`)**: Fully native, instant PDF page count parsing without any external Python dependency.
+- **Smart Python Environment Discovery**: Automatically locates and verifies PyMuPDF (`fitz`) across `.venv`, Homebrew (`/opt/homebrew`), Pyenv, and custom Python environments.
+
 ## [1.3.3] - 2026-08-22 "batch-and-updater"
 
 ### Added
