@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3.0] - 2026-08-22 "batch-and-ranges"
+
+### Added
+- **Multi-File Batch Processing & Queue Dashboard**:
+  - Drag & drop multiple PDF files or entire directories simultaneously into the Dropzone.
+  - Interactive **Batch Queue Dashboard** with live slide count, per-document status badges (`⏳ Wartend`, `🔄 In Arbeit`, `✅ Gespeichert`, `❌ Fehler`), and clear/add actions.
+  - **Automatic Fail-Safe Export**: Each converted Markdown file is automatically saved to disk next to the source PDF upon completion.
+  - Python CLI support for batch folders via `--batch-dir <DIR>`.
+- **Page Range Filter (Seitenbereich-Filter)**:
+  - Support for converting targeted slide subsets (e.g. slides 10–25 of 80) in GUI and CLI (`--pages 10-25`, `--pages 1,3,5-7`).
+  - Native instant PDF page count detection (`get_pdf_page_count_native`) without full rendering overhead.
+  - Live cost & time savings preview in GUI (e.g. *"spart ~75% Kosten & Zeit"*).
+- **Dynamic Estimated Time Remaining (ETA)**:
+  - Real-time rolling average ETA calculation displayed directly in the progress bar (`Folie 12 von 45 • ⏱️ ~38s verbleibend`).
+  - Global batch ETA in the queue header (`Dokument 2 von 5 • ⏱️ ~2m 15s verbleibend`).
+
+### Changed & Optimized
+- **C-Speed In-Memory Hashing**: Optimized WebP slide hashing using `hashlib.sha256` directly during image compression, eliminating redundant base64 decoding and memory allocations.
+- **Cached Runtime Binary Resolution**: Wrapped Python environment lookup in `std::sync::OnceLock` for instant 0 ms execution on subsequent slide and batch conversions.
+- **Resilient 90s Client Timeouts**: Extended provider HTTP client timeouts to 90s for dense mathematical slides.
+- **Frontend Codebase Polish**: Cleaned up unneeded imports, consolidated state management, and optimized render cycles.
+
 ## [1.2.1] - 2026-08-21
 
 ### Added
