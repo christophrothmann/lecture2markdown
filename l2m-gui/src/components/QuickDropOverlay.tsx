@@ -85,7 +85,6 @@ export const QuickDropOverlay: React.FC<QuickDropOverlayProps> = ({
         fileName: fileName.replace(/\.pdf$/i, '.md'),
         content: markdown,
       });
-      await navigator.clipboard.writeText(markdown).catch(() => {});
 
       // 3. Audio & Notification feedback
       playSuccessChime();

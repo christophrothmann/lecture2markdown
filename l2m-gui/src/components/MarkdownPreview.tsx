@@ -131,7 +131,6 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
         fileName: fileName || 'Vorlesung.md',
         content,
       });
-      await navigator.clipboard.writeText(content).catch(() => {});
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);
     } catch (err) {
