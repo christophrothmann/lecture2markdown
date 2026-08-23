@@ -434,6 +434,15 @@ async fn convert_lecture_native(
 }
 
 #[tauri::command]
+fn save_text_file_native(file_path: String, content: String) -> Result<(), String> {
+    let path = std::path::Path::new(&file_path);
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    std::fs::write(&file_path, &content).map_err(|e| format!("Fehler beim Speichern der Datei: {}", e))
+}
+
+#[tauri::command]
 fn copy_file_to_clipboard_native(file_name: String, content: String) -> Result<String, String> {
     let clean_name = if file_name.ends_with(".md") {
         file_name
@@ -504,6 +513,7 @@ fn main() {
             get_slide_image_native,
             convert_lecture_native,
             cancel_conversion_native,
+            save_text_file_native,
             copy_file_to_clipboard_native,
             save_api_key_native,
             get_api_keys_native,

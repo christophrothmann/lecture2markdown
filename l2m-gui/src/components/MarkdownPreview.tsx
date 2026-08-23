@@ -45,6 +45,7 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
   const [copied, setCopied] = useState(false);
   const [ankiExported, setAnkiExported] = useState(false);
   const [activeView, setActiveView] = useState<'markdown' | 'split'>('markdown');
+  const [savedToast, setSavedToast] = useState<{ message: string; path?: string } | null>(null);
 
   // Split-Screen State
   const [slides, setSlides] = useState<SlideSection[]>([]);
@@ -155,12 +156,21 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
       });
 
       if (savePath) {
-        await writeTextFile(savePath, tsvContent);
+        await invoke('save_text_file_native', {
+          filePath: savePath,
+          content: tsvContent,
+        });
         setAnkiExported(true);
+        setSavedToast({
+          message: `🃏 ${cards.length} Anki-Lernkarten erfolgreich gespeichert!`,
+          path: savePath,
+        });
         setTimeout(() => setAnkiExported(false), 2500);
+        setTimeout(() => setSavedToast(null), 4500);
       }
     } catch (err) {
       console.error('Anki Export fehlgeschlagen:', err);
+      alert(`Fehler beim Speichern des Anki-Decks:\n${err}`);
     }
   };
 
@@ -177,6 +187,25 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
 
   return (
     <div className="glass-card rounded-2xl p-6 space-y-4 flex flex-col h-full">
+      {/* Toast Notification Banner */}
+      {savedToast && (
+        <div className="flex items-center justify-between px-4 py-2.5 bg-emerald-500/15 border border-emerald-500/30 rounded-xl text-emerald-300 text-xs font-medium animate-fade-in shrink-0">
+          <div className="flex items-center space-x-2 truncate">
+            <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>{savedToast.message}</span>
+            {savedToast.path && (
+              <span className="text-[10px] text-emerald-400/70 truncate max-w-[280px]">({savedToast.path})</span>
+            )}
+          </div>
+          <button
+            onClick={() => setSavedToast(null)}
+            className="text-emerald-400/80 hover:text-emerald-300 ml-2 cursor-pointer font-bold"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Top Header Toolbar */}
       <div className="flex flex-wrap items-center justify-between border-b border-border pb-4 gap-3 shrink-0">
         <div className="flex items-center space-x-3">

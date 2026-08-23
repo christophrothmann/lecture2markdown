@@ -381,17 +381,22 @@ export function App() {
       });
 
       if (filePath) {
-        await writeTextFile(filePath, markdownResult);
-        alert(`Erfolgreich gespeichert unter:\n${filePath}`);
+        await invoke('save_text_file_native', {
+          filePath,
+          content: markdownResult,
+        });
       }
-    } catch {
-      const blob = new Blob([markdownResult], { type: 'text/markdown;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = previewFileName;
-      link.click();
-      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error('Speichern fehlgeschlagen:', e);
+      try {
+        const blob = new Blob([markdownResult], { type: 'text/markdown;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = previewFileName;
+        link.click();
+        URL.revokeObjectURL(url);
+      } catch {}
     }
   };
 
