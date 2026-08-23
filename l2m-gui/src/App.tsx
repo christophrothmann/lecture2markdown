@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { BookOpen, Settings, ChevronDown, Sparkles } from 'lucide-react';
+import { BookOpen, Settings, ChevronDown, Sparkles, Zap } from 'lucide-react';
 import { save as saveFileDialog } from '@tauri-apps/plugin-dialog';
 import { open as openFileDialog } from '@tauri-apps/plugin-dialog';
 import { writeTextFile } from '@tauri-apps/plugin-fs';
@@ -12,6 +12,7 @@ import { Dropzone, type SelectedFileInfo } from './components/Dropzone';
 import { BatchQueue, type BatchQueueItem } from './components/BatchQueue';
 import { MarkdownPreview } from './components/MarkdownPreview';
 import { HistorySidebar, type HistoryItem } from './components/HistorySidebar';
+import { QuickDropOverlay } from './components/QuickDropOverlay';
 
 const PROVIDER_NAMES: Record<ProviderType, string> = {
   openai: 'OpenAI (GPT-4o)',
@@ -26,6 +27,7 @@ export function App() {
   });
   const [providerKeys, setProviderKeys] = useState<Record<string, string>>({});
   const [isKeyModalOpen, setIsKeyModalOpen] = useState<boolean>(false);
+  const [isQuickDropOpen, setIsQuickDropOpen] = useState<boolean>(false);
 
   // Background Auto-Update State
   const [updateAvailable, setUpdateAvailable] = useState<boolean>(false);
@@ -39,6 +41,7 @@ export function App() {
   // Markdown Preview & Selected History item
   const [markdownResult, setMarkdownResult] = useState<string | null>(null);
   const [previewFileName, setPreviewFileName] = useState<string>('');
+  const [previewPdfPath, setPreviewPdfPath] = useState<string | null>(null);
   const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
 
   const [history, setHistory] = useState<HistoryItem[]>(() => {
@@ -96,6 +99,18 @@ export function App() {
       setIsUpdating(false);
     }
   };
+
+  // Shortcut listener for Spotlight Quick-Drop (Cmd+Shift+L / Ctrl+Shift+L)
+  useEffect(() => {
+    const handleGlobalKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'l' || e.key === 'L')) {
+        e.preventDefault();
+        setIsQuickDropOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKey);
+    return () => window.removeEventListener('keydown', handleGlobalKey);
+  }, []);
 
   // Listen to Tauri events from Pure-Rust backend
   useEffect(() => {
@@ -272,6 +287,7 @@ export function App() {
       const inProgressItem: HistoryItem = {
         id: jobId,
         fileName: item.fileName,
+        filePath: item.filePath,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         content: '',
         totalPages: targetCount,
@@ -318,6 +334,7 @@ export function App() {
                   status: 'completed' as const,
                   content: markdown,
                   totalPages: targetCount,
+                  filePath: item.filePath,
                 }
               : h
           );
@@ -329,6 +346,7 @@ export function App() {
         // Set last result for optional live preview
         setMarkdownResult(markdown);
         setPreviewFileName(item.fileName.replace('.pdf', '.md'));
+        setPreviewPdfPath(item.filePath);
         setSelectedHistoryId(jobId);
       } catch (err: any) {
         if (cancelBatchRef.current || (err && err.includes('abgebrochen'))) {
@@ -415,6 +433,7 @@ export function App() {
             <h1 className="text-base font-bold text-slate-100 flex items-center gap-2">
               Lecture2Markdown
             </h1>
+            <p className="text-[10px] font-medium text-slate-400">v1.3.6</p>
           </div>
         </div>
 
@@ -424,13 +443,23 @@ export function App() {
             <button
               onClick={handleApplyUpdate}
               disabled={isUpdating}
-              className="flex items-center space-x-1.5 px-3 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 rounded-xl text-xs font-bold transition animate-pulse cursor-pointer shadow-lg"
+              className="flex items-center space-x-1.5 px-3 py-1.5 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 rounded-xl text-xs font-semibold transition cursor-pointer shadow-sm"
               title="Neues Update herunterladen und App neustarten"
             >
               <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-              <span>{isUpdating ? 'Lade Update...' : 'Update verfügbar!'}</span>
+              <span>{isUpdating ? 'Lade Update...' : 'Update verfügbar'}</span>
             </button>
           )}
+
+          {/* Quick-Drop Spotlight Button */}
+          <button
+            onClick={() => setIsQuickDropOpen(true)}
+            className="flex items-center space-x-1.5 px-3 py-1.5 bg-surface hover:bg-surface-hover border border-border rounded-xl text-xs font-semibold transition cursor-pointer text-slate-200"
+            title="Quick-Drop Spotlight öffnen (⌘ + ⇧ + L)"
+          >
+            <Zap className="w-3.5 h-3.5 text-accent" />
+            <span className="hidden sm:inline">Quick-Drop</span>
+          </button>
 
           {/* Active Provider Selector Badge */}
           <button
@@ -482,10 +511,12 @@ export function App() {
             <MarkdownPreview
               content={markdownResult}
               fileName={previewFileName}
+              pdfPath={previewPdfPath}
               onSaveFile={handleSaveFileLocally}
               onNewConversion={() => {
                 setMarkdownResult(null);
                 setPreviewFileName('');
+                setPreviewPdfPath(null);
                 setSelectedHistoryId(null);
                 setQueue([]);
               }}
@@ -503,6 +534,7 @@ export function App() {
               setSelectedHistoryId(item.id);
               setPreviewFileName(item.fileName.replace('.pdf', '.md'));
               setMarkdownResult(item.content);
+              setPreviewPdfPath(item.filePath || null);
             }}
             onClear={handleClearHistory}
           />
@@ -517,6 +549,14 @@ export function App() {
         onSelectProvider={handleSelectProvider}
         onSaveKey={handleSaveProviderKey}
         onClose={() => setIsKeyModalOpen(false)}
+      />
+
+      {/* Spotlight Quick-Drop Overlay */}
+      <QuickDropOverlay
+        isOpen={isQuickDropOpen}
+        onClose={() => setIsQuickDropOpen(false)}
+        activeProvider={activeProvider}
+        apiKey={currentActiveKey}
       />
     </div>
   );

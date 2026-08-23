@@ -7,6 +7,7 @@ export interface HistoryItem {
   timestamp: string;
   content: string;
   totalPages: number;
+  filePath?: string;
   status?: 'processing' | 'completed' | 'error';
   progressCurrent?: number;
   progressTotal?: number;

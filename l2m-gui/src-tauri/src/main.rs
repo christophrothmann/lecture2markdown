@@ -119,6 +119,24 @@ fn find_python_binary() -> Option<PathBuf> {
 }
 
 #[tauri::command]
+async fn get_slide_image_native(
+    pdf_path: String,
+    page_index: usize,
+) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || {
+        let path = PathBuf::from(&pdf_path);
+        if !path.exists() {
+            return Err(format!("PDF-Datei nicht gefunden: {}", pdf_path));
+        }
+        let py_bin = find_python_binary();
+        let rendered = pdf::render_pdf_slide_to_webp(&path, page_index, py_bin.as_deref())?;
+        Ok(rendered.webp_base64)
+    })
+    .await
+    .map_err(|e| format!("Task-Fehler: {}", e))?
+}
+
+#[tauri::command]
 async fn cancel_conversion_native(state: tauri::State<'_, AppState>) -> Result<(), String> {
     state.cancel_requested.store(true, Ordering::SeqCst);
     Ok(())
@@ -483,6 +501,7 @@ fn main() {
         .plugin(tauri_plugin_process::init())
         .invoke_handler(tauri::generate_handler![
             get_pdf_page_count_native,
+            get_slide_image_native,
             convert_lecture_native,
             cancel_conversion_native,
             copy_file_to_clipboard_native,
