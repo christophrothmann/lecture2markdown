@@ -2559,7 +2559,7 @@ dependencies = [
 
 [[package]]
 name = "l2m-gui"
-version = "1.4.0"
+version = "1.4.1"
 dependencies = [
  "async-trait",
  "base64 0.23.1",

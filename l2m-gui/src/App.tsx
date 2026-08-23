@@ -495,7 +495,7 @@ export function App() {
             <h1 className="text-base font-bold text-slate-100 flex items-center gap-2">
               Lecture2Markdown
             </h1>
-            <p className="text-[10px] font-medium text-slate-400">v1.3.6</p>
+            <p className="text-[10px] font-medium text-slate-400">v{__APP_VERSION__}</p>
           </div>
         </div>
 

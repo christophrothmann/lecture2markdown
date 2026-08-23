@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.1] - 2026-08-23 "dynamic-version-injection"
+
+### Added
+- **Dynamic Version Injection (`__APP_VERSION__`)**:
+  - Configured Vite build system to automatically inject the application version at compile time from `package.json`.
+  - Replaced hardcoded version text in the header with dynamic `v{__APP_VERSION__}`.
+
 ## [1.4.0] - 2026-08-23 "mental-load-reduction"
 
 ### Added
