@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { KeyRound, ExternalLink, CheckCircle2, AlertCircle, Loader2, X, Sparkles, Trash2, Database } from 'lucide-react';
+import { KeyRound, ExternalLink, CheckCircle2, AlertCircle, Loader2, X, Trash2, Database } from 'lucide-react';
 import { open as openUrl } from '@tauri-apps/plugin-shell';
 import { invoke } from '@tauri-apps/api/core';
 

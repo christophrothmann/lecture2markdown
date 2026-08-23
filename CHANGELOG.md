@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.0] - 2026-08-23 "mental-load-reduction"
+
+### Added
+- **⚡ Spotlight Quick-Drop Widget (`⌘ + ⇧ + L` / `Ctrl + Shift + L`)**:
+  - Global OS-wide keyboard shortcut registered via native Rust backend that brings the app to the foreground and opens an Apple Spotlight-inspired quick conversion modal from any active application (Chrome, Safari, Obsidian, Finder).
+  - Drag & drop a lecture PDF into the dropzone (or pick a file) for automated background conversion.
+  - Automatically saves the Markdown file next to the source PDF and copies it as an OS file descriptor directly into the system clipboard.
+  - Audio chime feedback, native macOS notifications, and animated live progress bar with slide count.
+- **🖥️ 100% Zero-Config Client-Side PDF Rendering (Mozilla PDF.js)**:
+  - Slide preview in Split-Screen view now renders client-side via Mozilla PDF.js directly onto HTML5 `<canvas>`.
+  - Works with **0 Python**, **0 PyMuPDF**, and **0 terminal setup** on every student laptop out of the box.
+  - Bundled offline Web Worker (`pdf.worker.min.mjs`) supporting full offline operation without internet or external font CDNs.
+- **🃏 1-Click Anki Deck Export**:
+  - Instant conversion of lecture notes into structured, Anki-ready flashcards (`.txt` TSV export).
+  - Automatically generates Definition Cards (`**Term**: Definition`), Formula Cards (LaTeX KaTeX/MathJax `\[...\]`), and Core Slide Takeaways.
+  - Native file saving with interactive in-app toast notification banner.
+- **🛡️ Smart History Deduplication & Dynamic Version Badge**:
+  - Automatically updates existing entries rather than creating duplicate history cards when reconverting documents.
+  - Clean, quiet update notification badge and live installed version indicator (`v1.4.0`) in the navigation bar.
+
 ## [1.3.6] - 2026-08-23 "clipboard-file-object-hand-off"
 
 ### Added

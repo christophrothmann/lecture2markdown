@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use tauri::{Emitter, Manager};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use tokio::sync::Semaphore;
 
 #[cfg(unix)]
@@ -18,6 +19,8 @@ use std::os::unix::fs::PermissionsExt;
 pub struct AppState {
     pub cancel_requested: Arc<AtomicBool>,
 }
+
+type SlideTaskResult = Result<(usize, String, String), String>;
 
 fn get_secret_file_path(app: &tauri::AppHandle) -> PathBuf {
     let config_dir = app
@@ -43,6 +46,24 @@ fn read_keys_map(app: &tauri::AppHandle) -> HashMap<String, String> {
 static PYTHON_BIN_CACHE: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
 
 fn check_python_candidate(candidate: &Path) -> bool {
+    let bin_name = candidate.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    if bin_name == "uv" || bin_name == "uv.exe" {
+        if let Ok(output) = std::process::Command::new(candidate)
+            .arg("run")
+            .arg("--with")
+            .arg("pymupdf")
+            .arg("--with")
+            .arg("pillow")
+            .arg("python")
+            .arg("-c")
+            .arg("import fitz, PIL")
+            .output()
+        {
+            return output.status.success();
+        }
+        return false;
+    }
+
     if !candidate.exists() {
         return false;
     }
@@ -56,7 +77,7 @@ fn check_python_candidate(candidate: &Path) -> bool {
     false
 }
 
-/// Dynamically locates a working Python binary that has PyMuPDF (fitz) and Pillow installed.
+/// Dynamically locates a working Python or uv binary.
 fn find_python_binary() -> Option<PathBuf> {
     PYTHON_BIN_CACHE.get_or_init(|| {
         let mut candidate_paths = Vec::new();
@@ -72,31 +93,33 @@ fn find_python_binary() -> Option<PathBuf> {
             }
         }
 
-        // 2. Check user home directories
+        // 2. Check user home directories & tools
         if let Ok(home) = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")) {
             let home_path = PathBuf::from(home);
+            candidate_paths.push(home_path.join(".cargo/bin/uv"));
+            candidate_paths.push(home_path.join(".local/bin/uv"));
+            candidate_paths.push(home_path.join(".local/bin/python3"));
             candidate_paths.push(home_path.join(".venv/bin/python3"));
             candidate_paths.push(home_path.join(".virtualenvs/lecture2markdown/bin/python3"));
             candidate_paths.push(home_path.join(".pyenv/shims/python3"));
             candidate_paths.push(home_path.join(".pyenv/shims/python"));
-            candidate_paths.push(home_path.join(".local/bin/python3"));
-            candidate_paths.push(home_path.join(".cargo/bin/uv"));
         }
 
         // 3. Check standard Unix/macOS package manager paths
         #[cfg(unix)]
         {
+            candidate_paths.push(PathBuf::from("/opt/homebrew/bin/uv"));
+            candidate_paths.push(PathBuf::from("/usr/local/bin/uv"));
             candidate_paths.push(PathBuf::from("/opt/homebrew/bin/python3"));
             candidate_paths.push(PathBuf::from("/opt/homebrew/bin/python3.12"));
             candidate_paths.push(PathBuf::from("/opt/homebrew/bin/python3.11"));
             candidate_paths.push(PathBuf::from("/opt/homebrew/bin/python3.10"));
             candidate_paths.push(PathBuf::from("/usr/local/bin/python3"));
-            candidate_paths.push(PathBuf::from("/usr/local/bin/python3.12"));
-            candidate_paths.push(PathBuf::from("/usr/local/bin/python3.11"));
             candidate_paths.push(PathBuf::from("/Library/Frameworks/Python.framework/Versions/Current/bin/python3"));
         }
 
         // 4. Test PATH binaries
+        candidate_paths.push(PathBuf::from("uv"));
         candidate_paths.push(PathBuf::from("python3"));
         candidate_paths.push(PathBuf::from("python"));
 
@@ -108,13 +131,7 @@ fn find_python_binary() -> Option<PathBuf> {
         }
 
         // If no candidate with fitz was found, return the first existing candidate
-        for candidate in candidate_paths {
-            if candidate.exists() {
-                return Some(candidate);
-            }
-        }
-
-        None
+        candidate_paths.into_iter().find(|c| c.exists())
     }).clone()
 }
 
@@ -222,6 +239,7 @@ async fn get_pdf_page_count_native(pdf_path: String) -> Result<usize, String> {
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 async fn convert_lecture_native(
     pdf_path: String,
     _output_path: String,
@@ -278,7 +296,7 @@ async fn convert_lecture_native(
     let semaphore = Arc::new(Semaphore::new(concurrency));
     let completed_counter = Arc::new(AtomicUsize::new(0));
 
-    let mut tasks: Vec<tokio::task::JoinHandle<Result<(usize, String, String), String>>> = Vec::new();
+    let mut tasks: Vec<tokio::task::JoinHandle<SlideTaskResult>> = Vec::new();
 
     for idx in selected_indices {
         let path_buf = path.to_path_buf();
@@ -434,6 +452,13 @@ async fn convert_lecture_native(
 }
 
 #[tauri::command]
+async fn read_file_binary_native(file_path: String) -> Result<Vec<u8>, String> {
+    tokio::fs::read(&file_path)
+        .await
+        .map_err(|e| format!("Fehler beim Lesen der Datei '{}': {}", file_path, e))
+}
+
+#[tauri::command]
 fn save_text_file_native(file_path: String, content: String) -> Result<(), String> {
     let path = std::path::Path::new(&file_path);
     if let Some(parent) = path.parent() {
@@ -508,9 +533,25 @@ fn main() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .setup(|app| {
+            let app_handle = app.handle().clone();
+            let _ = app.global_shortcut().on_shortcut("CommandOrControl+Shift+L", move |_app, _shortcut, event| {
+                if event.state() == ShortcutState::Pressed {
+                    if let Some(window) = app_handle.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.unminimize();
+                        let _ = window.set_focus();
+                        let _ = window.emit("open-quick-drop", ());
+                    }
+                }
+            });
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             get_pdf_page_count_native,
             get_slide_image_native,
+            read_file_binary_native,
             convert_lecture_native,
             cancel_conversion_native,
             save_text_file_native,

@@ -8,6 +8,36 @@ pub struct RenderedSlide {
     pub is_visual: bool,
 }
 
+pub fn execute_python_code(script: &str, py_bin: Option<&Path>) -> Result<std::process::Output, String> {
+    if let Some(bin) = py_bin {
+        let bin_name = bin.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        if bin_name == "uv" || bin_name == "uv.exe" {
+            return Command::new(bin)
+                .arg("run")
+                .arg("--with")
+                .arg("pymupdf")
+                .arg("--with")
+                .arg("pillow")
+                .arg("python")
+                .arg("-c")
+                .arg(script)
+                .output()
+                .map_err(|e| format!("Fehler beim Ausführen von uv ({:?}): {}", bin, e));
+        }
+        return Command::new(bin)
+            .arg("-c")
+            .arg(script)
+            .output()
+            .map_err(|e| format!("Fehler beim Ausführen von Python ({:?}): {}", bin, e));
+    }
+
+    Command::new("python3")
+        .arg("-c")
+        .arg(script)
+        .output()
+        .map_err(|e| format!("Fehler beim Ausführen von python3: {}", e))
+}
+
 /// High-speed PDF rendering pipeline producing In-Memory WebP.
 pub fn render_pdf_slide_to_webp(
     pdf_path: &Path,
@@ -16,8 +46,6 @@ pub fn render_pdf_slide_to_webp(
 ) -> Result<RenderedSlide, String> {
     let page_number = page_index + 1;
 
-    // Fast In-Memory WebP Rendering & Lightweight Complexity Check
-    let py_exec = py_bin.unwrap_or_else(|| Path::new("python3"));
     let script = format!(
         r#"
 import fitz, base64, io, hashlib
@@ -59,11 +87,7 @@ print(str(int(is_vis)) + ":::" + slide_hash + ":::" + base64.b64encode(raw_bytes
         page_index
     );
 
-    let output = Command::new(py_exec)
-        .arg("-c")
-        .arg(&script)
-        .output()
-        .map_err(|e| format!("Fehler beim Ausführen von Python ({:?}): {}", py_exec, e))?;
+    let output = execute_python_code(&script, py_bin)?;
 
     if !output.status.success() {
         let err = String::from_utf8_lossy(&output.stderr);
@@ -104,7 +128,6 @@ pub fn get_pdf_page_count(pdf_path: &Path, py_bin: Option<&Path>) -> Result<usiz
     }
 
     // 2. Fallback to Python if lopdf encounters unusual encryption
-    let py_exec = py_bin.unwrap_or_else(|| Path::new("python3"));
     let script = format!(
         r#"
 import fitz
@@ -115,11 +138,7 @@ doc.close()
         pdf_path.display()
     );
 
-    let output = Command::new(py_exec)
-        .arg("-c")
-        .arg(&script)
-        .output()
-        .map_err(|e| format!("Fehler beim Öffnen der PDF: {}", e))?;
+    let output = execute_python_code(&script, py_bin)?;
 
     if !output.status.success() {
         let err = String::from_utf8_lossy(&output.stderr);

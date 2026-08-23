@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { UploadCloud, FileText, ShieldCheck, Layers } from 'lucide-react';
+import { UploadCloud, FileText, Layers, ShieldCheck } from 'lucide-react';
 import { open as openFileDialog } from '@tauri-apps/plugin-dialog';
 
 export interface SelectedFileInfo {

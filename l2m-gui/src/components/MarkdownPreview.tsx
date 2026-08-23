@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Copy,
   Save,
@@ -10,14 +10,14 @@ import {
   ChevronLeft,
   ChevronRight,
   GripVertical,
-  Download,
   Loader2,
   Sparkles,
 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
-import { save as saveFileDialog } from '@tauri-apps/plugin-dialog';
-import { writeTextFile } from '@tauri-apps/plugin-fs';
+import { save as saveFileDialog, open as openFileDialog } from '@tauri-apps/plugin-dialog';
 import { generateAnkiCardsFromMarkdown, exportCardsToAnkiTsv } from '../utils/anki';
+import { loadPdfDocument, renderSlideToCanvas } from '../utils/pdfRenderer';
+import { parseMarkdownSlides, type SlideSection } from '../utils/slideParser';
 
 interface MarkdownPreviewProps {
   content: string;
@@ -26,12 +26,6 @@ interface MarkdownPreviewProps {
   onSaveFile: () => void;
   onNewConversion: () => void;
   onDelete?: () => void;
-}
-
-interface SlideSection {
-  slideNumber: number;
-  title: string;
-  content: string;
 }
 
 export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
@@ -46,69 +40,105 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
   const [ankiExported, setAnkiExported] = useState(false);
   const [activeView, setActiveView] = useState<'markdown' | 'split'>('markdown');
   const [savedToast, setSavedToast] = useState<{ message: string; path?: string } | null>(null);
+  const [activePdfPath, setActivePdfPath] = useState<string | null>(pdfPath || null);
 
-  // Split-Screen State
+  useEffect(() => {
+    if (pdfPath) {
+      setActivePdfPath(pdfPath);
+    }
+  }, [pdfPath]);
+
+  // Split-Screen State & Canvas Ref
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [isPdfJsRendered, setIsPdfJsRendered] = useState<boolean>(false);
   const [slides, setSlides] = useState<SlideSection[]>([]);
   const [currentSlideIndex, setCurrentSlideIndex] = useState<number>(0);
   const [currentSlideImage, setCurrentSlideImage] = useState<string | null>(null);
   const [isLoadingSlideImage, setIsLoadingSlideImage] = useState<boolean>(false);
 
-  // Parse markdown into slide sections
+  // Parse markdown into distinct slide sections with 1:1 page mapping
   useEffect(() => {
-    const rawSections = content.split(/\n(?=##\s+|---\s*\n)/);
-    const parsed: SlideSection[] = [];
-    let counter = 1;
-
-    for (const sec of rawSections) {
-      const trimmed = sec.trim();
-      if (!trimmed) continue;
-      const headerMatch = trimmed.match(/^##\s+(?:Folie|Slide)?\s*(\d+)?(?::|-)?\s*(.*)$/im);
-      let num = counter;
-      let title = `Folie ${counter}`;
-
-      if (headerMatch) {
-        if (headerMatch[1]) {
-          num = parseInt(headerMatch[1], 10);
-        }
-        if (headerMatch[2]?.trim()) {
-          title = headerMatch[2].trim();
-        }
-      }
-
-      parsed.push({
-        slideNumber: num,
-        title,
-        content: trimmed.replace(/^---\s*\n/, ''),
-      });
-      counter++;
-    }
-
+    const parsed = parseMarkdownSlides(content);
     setSlides(parsed.length > 0 ? parsed : [{ slideNumber: 1, title: 'Vorlesung', content }]);
     setCurrentSlideIndex(0);
   }, [content]);
 
-  // Load slide image when in split view
+  const [slideImageError, setSlideImageError] = useState<string | null>(null);
+
+  // Load and render slide with PDF.js (0 Python, 100% Zero-Config client-side)
   useEffect(() => {
-    if (activeView !== 'split' || !pdfPath || slides.length === 0) return;
+    if (activeView !== 'split' || !activePdfPath || slides.length === 0) {
+      if (!activePdfPath) {
+        setCurrentSlideImage(null);
+        setIsPdfJsRendered(false);
+      }
+      return;
+    }
 
     const currentSlide = slides[currentSlideIndex];
-    const pageIndex = currentSlide ? Math.max(0, currentSlide.slideNumber - 1) : currentSlideIndex;
+    const targetPage = currentSlide?.slideNumber || currentSlideIndex + 1;
 
     setIsLoadingSlideImage(true);
-    invoke<string>('get_slide_image_native', {
-      pdfPath,
-      pageIndex,
-    })
-      .then((base64) => {
-        setCurrentSlideImage(`data:image/webp;base64,${base64}`);
-        setIsLoadingSlideImage(false);
+    setSlideImageError(null);
+
+    let isCancelled = false;
+
+    loadPdfDocument(activePdfPath)
+      .then(async (loaded) => {
+        if (isCancelled) return;
+        if (canvasRef.current) {
+          const safePage = Math.min(Math.max(1, targetPage), loaded.numPages);
+          await renderSlideToCanvas(loaded.doc, safePage, canvasRef.current);
+          if (!isCancelled) {
+            setIsPdfJsRendered(true);
+            setIsLoadingSlideImage(false);
+          }
+        }
       })
-      .catch((err) => {
-        console.warn('Foliengrafik konnte nicht geladen werden:', err);
-        setCurrentSlideImage(null);
-        setIsLoadingSlideImage(false);
+      .catch((pdfJsErr) => {
+        if (isCancelled) return;
+        console.warn('PDF.js rendering fallback to native backend:', pdfJsErr);
+        const pageIndex = Math.max(0, targetPage - 1);
+        invoke<string>('get_slide_image_native', {
+          pdfPath: activePdfPath,
+          pageIndex,
+        })
+          .then((base64) => {
+            if (!isCancelled) {
+              setCurrentSlideImage(`data:image/webp;base64,${base64}`);
+              setIsPdfJsRendered(false);
+              setIsLoadingSlideImage(false);
+            }
+          })
+          .catch((nativeErr) => {
+            if (!isCancelled) {
+              console.error('Foliengrafik konnte nicht geladen werden:', nativeErr);
+              setCurrentSlideImage(null);
+              setIsPdfJsRendered(false);
+              setSlideImageError(String(pdfJsErr));
+              setIsLoadingSlideImage(false);
+            }
+          });
       });
-  }, [activeView, currentSlideIndex, pdfPath, slides]);
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [activeView, currentSlideIndex, activePdfPath, slides]);
+
+  const handleSelectPdfManually = async () => {
+    try {
+      const selected = await openFileDialog({
+        multiple: false,
+        filters: [{ name: 'PDF Vorlesungen', extensions: ['pdf'] }],
+      });
+      if (selected && typeof selected === 'string') {
+        setActivePdfPath(selected);
+      }
+    } catch (e) {
+      console.error('PDF-Auswahl fehlgeschlagen:', e);
+    }
+  };
 
   // Keyboard navigation for Split-Screen
   useEffect(() => {
@@ -372,26 +402,59 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
               </div>
             </div>
 
-            {/* Slide Image or High-Res Rendering */}
-            <div className="flex-1 flex items-center justify-center bg-black/40 rounded-lg border border-border/30 overflow-hidden min-h-0 relative">
-              {isLoadingSlideImage ? (
-                <div className="flex flex-col items-center space-y-2 text-slate-400">
+            {/* Slide Image / Canvas High-Res Rendering */}
+            <div className="flex-1 flex items-center justify-center bg-black/40 rounded-lg border border-border/30 overflow-hidden min-h-0 relative p-2">
+              {isLoadingSlideImage && (
+                <div className="absolute inset-0 bg-background/60 backdrop-blur-xs flex flex-col items-center justify-center space-y-2 text-slate-400 z-10">
                   <Loader2 className="w-6 h-6 animate-spin text-accent" />
-                  <span className="text-xs">Lade Original-Folie...</span>
+                  <span className="text-xs">Rendere Folie...</span>
                 </div>
-              ) : currentSlideImage ? (
+              )}
+
+              <canvas
+                ref={canvasRef}
+                className={`max-w-full max-h-full object-contain rounded shadow-md transition-opacity duration-150 ${
+                  activePdfPath && isPdfJsRendered ? 'block' : 'hidden'
+                }`}
+              />
+
+              {!isPdfJsRendered && currentSlideImage && (
                 <img
                   src={currentSlideImage}
                   alt={`Folie ${currentSlideIndex + 1}`}
                   className="max-w-full max-h-full object-contain rounded"
                 />
-              ) : (
-                <div className="text-center p-6 text-slate-500">
-                  <FileText className="w-10 h-10 mx-auto mb-2 opacity-40 text-accent" />
-                  <p className="text-xs font-semibold text-slate-400">Folie {currentSlideIndex + 1}</p>
-                  <p className="text-[10px] mt-1 text-slate-500">
-                    {currentSlide.title}
-                  </p>
+              )}
+
+              {!activePdfPath && (
+                <div className="text-center p-6 text-slate-500 space-y-3">
+                  <FileText className="w-10 h-10 mx-auto opacity-40 text-accent" />
+                  <div>
+                    <p className="text-xs font-semibold text-slate-300">Folie {currentSlideIndex + 1}: {currentSlide.title}</p>
+                    <p className="text-[11px] text-slate-400 mt-1">Keine Original-PDF-Datei verknüpft</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleSelectPdfManually}
+                    className="px-3 py-1.5 bg-surface hover:bg-surface-hover border border-border text-slate-200 rounded-xl text-xs font-semibold transition inline-flex items-center gap-1.5 cursor-pointer shadow-sm"
+                    title="Wähle die zugehörige PDF-Datei aus, um die Original-Folien synchron anzuzeigen"
+                  >
+                    <FileText className="w-3.5 h-3.5 text-accent" /> PDF verknüpfen
+                  </button>
+                </div>
+              )}
+
+              {activePdfPath && !isPdfJsRendered && !currentSlideImage && !isLoadingSlideImage && (
+                <div className="text-center p-6 text-slate-500 space-y-2">
+                  <FileText className="w-8 h-8 mx-auto opacity-40 text-rose-400" />
+                  <p className="text-xs text-rose-300">Folie konnte nicht gerendert werden</p>
+                  <button
+                    type="button"
+                    onClick={handleSelectPdfManually}
+                    className="px-2.5 py-1 bg-surface border border-border text-slate-300 rounded-lg text-xs"
+                  >
+                    Andere PDF wählen
+                  </button>
                 </div>
               )}
             </div>

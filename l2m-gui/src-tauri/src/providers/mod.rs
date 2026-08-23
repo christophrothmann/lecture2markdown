@@ -44,10 +44,7 @@ pub fn sanitize_markdown_output(markdown_text: &str) -> String {
     }
 
     // Strip zero-width & invisible control characters
-    let mut cleaned = markdown_text.replace('\u{200B}', "")
-        .replace('\u{200C}', "")
-        .replace('\u{200D}', "")
-        .replace('\u{FEFF}', "");
+    let mut cleaned = markdown_text.replace(['\u{200B}', '\u{200C}', '\u{200D}', '\u{FEFF}'], "");
 
     // Neutralize dangerous external image tracking exfiltrations: ![alt](http...) -> > *[Visual Content: alt]*
     if let Ok(re) = Regex::new(r"!\[([^\]]*)\]\(https?://[^\)]+\)") {

@@ -1,15 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, X, FileText, Loader2, CheckCircle2, Zap } from 'lucide-react';
+import { Sparkles, X, FileText, Loader2, CheckCircle2, Zap, UploadCloud } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
-import { writeTextFile } from '@tauri-apps/plugin-fs';
+import { listen } from '@tauri-apps/api/event';
+import { getCurrentWebview } from '@tauri-apps/api/webview';
+import { open as openFileDialog } from '@tauri-apps/plugin-dialog';
 import { sendNotification, isPermissionGranted, requestPermission } from '@tauri-apps/plugin-notification';
 import type { ProviderType } from './ApiKeyModal';
+import type { HistoryItem } from './HistorySidebar';
 
 interface QuickDropOverlayProps {
   isOpen: boolean;
   onClose: () => void;
   activeProvider: ProviderType;
   apiKey: string;
+  onSuccess?: (item: HistoryItem) => void;
 }
 
 export const QuickDropOverlay: React.FC<QuickDropOverlayProps> = ({
@@ -17,10 +21,13 @@ export const QuickDropOverlay: React.FC<QuickDropOverlayProps> = ({
   onClose,
   activeProvider,
   apiKey,
+  onSuccess,
 }) => {
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [status, setStatus] = useState<'idle' | 'processing' | 'success' | 'error'>('idle');
   const [currentFileName, setCurrentFileName] = useState<string>('');
+  const [progressCurrent, setProgressCurrent] = useState<number>(0);
+  const [progressTotal, setProgressTotal] = useState<number>(0);
   const [errorMessage, setErrorMessage] = useState<string>('');
 
   // Close on Escape
@@ -33,6 +40,67 @@ export const QuickDropOverlay: React.FC<QuickDropOverlayProps> = ({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
+
+  // Native OS Drag & Drop listener via Tauri v2 Webview
+  useEffect(() => {
+    if (!isOpen) return;
+
+    let unlistenFn: (() => void) | null = null;
+
+    getCurrentWebview()
+      .onDragDropEvent((event) => {
+        if (event.payload.type === 'enter' || event.payload.type === 'over') {
+          setIsDragging(true);
+        } else if (event.payload.type === 'leave') {
+          setIsDragging(false);
+        } else if (event.payload.type === 'drop') {
+          setIsDragging(false);
+          const paths = event.payload.paths;
+          if (paths && paths.length > 0) {
+            const firstPdf = paths.find((p) => p.toLowerCase().endsWith('.pdf'));
+            if (firstPdf) {
+              const name = firstPdf.split(/[\/\\]/).pop() || 'Vorlesung.pdf';
+              handleProcessFile(firstPdf, name);
+            } else {
+              alert('Bitte ziehe eine gültige .pdf-Vorlesungsdatei hierher.');
+            }
+          }
+        }
+      })
+      .then((unlisten) => {
+        unlistenFn = unlisten;
+      });
+
+    return () => {
+      if (unlistenFn) unlistenFn();
+    };
+  }, [isOpen, apiKey, activeProvider]);
+
+  // Listen to real-time progress events from backend
+  useEffect(() => {
+    if (!isOpen || status !== 'processing') return;
+
+    let unlistenFn: (() => void) | null = null;
+
+    listen<string>('python-event', (event) => {
+      try {
+        const payload = JSON.parse(event.payload);
+        if (payload.type === 'start') {
+          setProgressTotal(payload.total_pages || 1);
+          setProgressCurrent(0);
+        } else if (payload.type === 'progress') {
+          setProgressCurrent(payload.completed || 0);
+          if (payload.total) setProgressTotal(payload.total);
+        }
+      } catch {}
+    }).then((unlisten) => {
+      unlistenFn = unlisten;
+    });
+
+    return () => {
+      if (unlistenFn) unlistenFn();
+    };
+  }, [isOpen, status]);
 
   // Subtle web audio chime on completion
   const playSuccessChime = () => {
@@ -49,9 +117,7 @@ export const QuickDropOverlay: React.FC<QuickDropOverlayProps> = ({
       gain.connect(audioCtx.destination);
       osc.start();
       osc.stop(audioCtx.currentTime + 0.35);
-    } catch {
-      // Audio fallback ignored
-    }
+    } catch {}
   };
 
   const handleProcessFile = async (filePath: string, fileName: string) => {
@@ -63,6 +129,8 @@ export const QuickDropOverlay: React.FC<QuickDropOverlayProps> = ({
 
     setStatus('processing');
     setCurrentFileName(fileName);
+    setProgressCurrent(0);
+    setProgressTotal(0);
 
     try {
       const markdown = await invoke<string>('convert_lecture_native', {
@@ -72,15 +140,18 @@ export const QuickDropOverlay: React.FC<QuickDropOverlayProps> = ({
         apiKey,
       });
 
-      // 1. Auto-Save Markdown next to PDF
+      // 1. Auto-Save Markdown next to PDF via native Rust
       const autoSavePath = filePath.replace(/\.pdf$/i, '.md');
       try {
-        await writeTextFile(autoSavePath, markdown);
+        await invoke('save_text_file_native', {
+          filePath: autoSavePath,
+          content: markdown,
+        });
       } catch (saveErr) {
         console.warn('Auto-save failed:', saveErr);
       }
 
-      // 2. Put file descriptor on system clipboard
+      // 2. Put pure file descriptor on system clipboard
       await invoke('copy_file_to_clipboard_native', {
         fileName: fileName.replace(/\.pdf$/i, '.md'),
         content: markdown,
@@ -96,7 +167,20 @@ export const QuickDropOverlay: React.FC<QuickDropOverlayProps> = ({
       if (hasPerm) {
         sendNotification({
           title: 'Lecture2Markdown',
-          body: `✅ ${fileName.replace(/\.pdf$/i, '.md')} liegt im Clipboard für ChatGPT bereit!`,
+          body: `✅ ${fileName.replace(/\.pdf$/i, '.md')} liegt im Clipboard bereit!`,
+        });
+      }
+
+      // 4. Add to history
+      if (onSuccess) {
+        onSuccess({
+          id: Date.now().toString(),
+          fileName: fileName.replace(/\.pdf$/i, '.md'),
+          filePath,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          content: markdown,
+          totalPages: progressTotal || 1,
+          status: 'completed',
         });
       }
 
@@ -104,7 +188,7 @@ export const QuickDropOverlay: React.FC<QuickDropOverlayProps> = ({
       setTimeout(() => {
         setStatus('idle');
         onClose();
-      }, 1400);
+      }, 1600);
     } catch (err: any) {
       console.error('Quick drop failed:', err);
       setStatus('error');
@@ -115,34 +199,34 @@ export const QuickDropOverlay: React.FC<QuickDropOverlayProps> = ({
     }
   };
 
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
+  const handleClickPickFile = async () => {
     if (status === 'processing') return;
 
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      const file = e.dataTransfer.files[0];
-      const filePath = (file as any).path || file.name;
-      handleProcessFile(filePath, file.name);
-    }
+    try {
+      const selected = await openFileDialog({
+        multiple: false,
+        filters: [{ name: 'PDF Vorlesungen', extensions: ['pdf'] }],
+      });
+
+      if (selected && typeof selected === 'string') {
+        const name = selected.split(/[\/\\]/).pop() || 'Vorlesung.pdf';
+        handleProcessFile(selected, name);
+      }
+    } catch {}
   };
+
+  const percent = progressTotal > 0 ? Math.round((progressCurrent / progressTotal) * 100) : 0;
 
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-fade-in">
       <div
-        className={`w-full max-w-lg glass-card rounded-2xl p-6 border shadow-2xl transition-all ${
+        className={`w-full max-w-lg glass-card rounded-2xl p-6 border shadow-2xl transition-all duration-200 ${
           isDragging
-            ? 'border-accent ring-2 ring-accent/40 scale-[1.02]'
+            ? 'border-accent ring-4 ring-accent/40 scale-[1.03] bg-surface/90'
             : 'border-border/80 ring-1 ring-white/10'
         }`}
-        onDragOver={(e) => {
-          e.preventDefault();
-          setIsDragging(true);
-        }}
-        onDragLeave={() => setIsDragging(false)}
-        onDrop={handleDrop}
       >
         <div className="flex items-center justify-between border-b border-border/60 pb-3 mb-4">
           <div className="flex items-center space-x-2">
@@ -154,58 +238,84 @@ export const QuickDropOverlay: React.FC<QuickDropOverlayProps> = ({
                 Quick-Drop Spotlight
               </h3>
               <p className="text-[10px] text-slate-400">
-                Shortcut: <kbd className="px-1 py-0.5 bg-surface border border-border rounded text-[9px] font-mono">⌘ + ⇧ + L</kbd>
+                Kürzel: <kbd className="px-1 py-0.5 bg-surface border border-border rounded text-[9px] font-mono">⌘ + ⇧ + L</kbd>
               </p>
             </div>
           </div>
 
           <button
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-200 rounded-lg hover:bg-surface transition"
+            className="p-1.5 text-slate-400 hover:text-slate-200 rounded-lg hover:bg-surface transition cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Dynamic State View */}
+        {/* State 1: Idle Dropzone & File Picker */}
         {status === 'idle' && (
-          <div className="py-8 flex flex-col items-center justify-center border-2 border-dashed border-border/80 rounded-xl bg-surface/30 text-center space-y-2">
-            <div className="p-3 bg-surface rounded-2xl border border-border text-accent">
-              <Sparkles className="w-6 h-6 animate-pulse text-accent" />
+          <div
+            onClick={handleClickPickFile}
+            className={`py-8 px-4 flex flex-col items-center justify-center border-2 border-dashed rounded-xl text-center space-y-3 cursor-pointer transition-all duration-150 ${
+              isDragging
+                ? 'border-accent bg-accent/20 scale-[1.02]'
+                : 'border-border/80 hover:border-accent/60 bg-surface/30 hover:bg-surface/60'
+            }`}
+          >
+            <div className={`p-3 rounded-2xl border transition-transform ${isDragging ? 'scale-110 bg-accent text-white border-accent' : 'bg-surface border-border text-accent'}`}>
+              {isDragging ? <UploadCloud className="w-7 h-7 animate-bounce" /> : <Sparkles className="w-6 h-6 text-accent" />}
             </div>
             <div>
-              <p className="text-xs font-semibold text-slate-200">
-                PDF-Vorlesung hier ablegen
+              <p className="text-sm font-bold text-slate-100">
+                {isDragging ? 'PDF jetzt loslassen!' : 'PDF hier ablegen oder klicken'}
               </p>
-              <p className="text-[11px] text-slate-400 mt-0.5">
-                Konvertiert automatisch & legt die Datei für ChatGPT/Gemini ins Clipboard.
+              <p className="text-[11px] text-slate-400 mt-1 max-w-xs mx-auto">
+                Konvertiert automatisch im Hintergrund & legt die .md-Datei für ChatGPT / Gemini direkt ins Clipboard.
               </p>
             </div>
           </div>
         )}
 
+        {/* State 2: Live Processing with Progress Bar */}
         {status === 'processing' && (
-          <div className="py-8 flex flex-col items-center justify-center space-y-3 text-center">
-            <Loader2 className="w-8 h-8 text-accent animate-spin" />
+          <div className="py-6 flex flex-col items-center justify-center space-y-4 text-center">
+            <div className="relative">
+              <Loader2 className="w-10 h-10 text-accent animate-spin" />
+            </div>
+            <div className="space-y-1 w-full max-w-xs">
+              <p className="text-xs font-bold text-slate-100 truncate">{currentFileName}</p>
+              <p className="text-[11px] text-slate-400">
+                {progressTotal > 0
+                  ? `Folie ${progressCurrent} von ${progressTotal} verarbeitet (${percent}%)`
+                  : 'Strukturierte Markdown-Erstellung läuft...'}
+              </p>
+
+              {/* Animated Progress Bar */}
+              {progressTotal > 0 && (
+                <div className="w-full bg-surface border border-border/80 rounded-full h-2 overflow-hidden mt-2 shadow-inner">
+                  <div
+                    className="bg-accent h-full transition-all duration-300 rounded-full"
+                    style={{ width: `${percent}%` }}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* State 3: Success Feedback */}
+        {status === 'success' && (
+          <div className="py-6 flex flex-col items-center justify-center space-y-2 text-center text-emerald-400 animate-scale-up">
+            <CheckCircle2 className="w-10 h-10" />
             <div>
-              <p className="text-xs font-bold text-slate-100">Konvertiere {currentFileName}...</p>
-              <p className="text-[10px] text-slate-400 mt-1">
-                Strukturierte Markdown-Erstellung im Hintergrund
+              <p className="text-sm font-bold text-slate-100">Als Datei im Clipboard bereit!</p>
+              <p className="text-[11px] text-slate-400 mt-1">
+                Wechsle zu ChatGPT / Gemini und drücke <kbd className="px-1.5 py-0.5 bg-surface border border-border rounded text-[10px] font-mono text-slate-200">⌘ + V</kbd>
               </p>
             </div>
           </div>
         )}
 
-        {status === 'success' && (
-          <div className="py-8 flex flex-col items-center justify-center space-y-2 text-center text-emerald-400 animate-scale-up">
-            <CheckCircle2 className="w-8 h-8" />
-            <p className="text-xs font-bold text-slate-100">Als Datei im Clipboard bereit!</p>
-            <p className="text-[10px] text-slate-400">
-              Drücke jetzt einfach <kbd className="px-1 py-0.5 bg-surface border border-border rounded text-[9px] font-mono">⌘ + V</kbd> in ChatGPT / Gemini
-            </p>
-          </div>
-        )}
-
+        {/* State 4: Error State */}
         {status === 'error' && (
           <div className="py-6 text-center space-y-2 text-rose-400">
             <p className="text-xs font-bold">Fehler bei der Konvertierung</p>

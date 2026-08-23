@@ -1,5 +1,5 @@
 import React from 'react';
-import { History, Copy, Trash2, Loader2 } from 'lucide-react';
+import { History, Trash2, Loader2, Copy } from 'lucide-react';
 
 export interface HistoryItem {
   id: string;

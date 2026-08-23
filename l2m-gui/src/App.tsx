@@ -1,8 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { BookOpen, Settings, ChevronDown, Sparkles, Zap } from 'lucide-react';
-import { save as saveFileDialog } from '@tauri-apps/plugin-dialog';
-import { open as openFileDialog } from '@tauri-apps/plugin-dialog';
-import { writeTextFile } from '@tauri-apps/plugin-fs';
+import { save as saveFileDialog, open as openFileDialog } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { check } from '@tauri-apps/plugin-updater';
@@ -20,6 +18,25 @@ const PROVIDER_NAMES: Record<ProviderType, string> = {
   anthropic: 'Anthropic (Claude 3.7)',
   mistral: 'Mistral (Document OCR)',
 };
+
+function deduplicateHistory(items: any[]): HistoryItem[] {
+  if (!Array.isArray(items)) return [];
+  const seen = new Set<string>();
+  const result: HistoryItem[] = [];
+
+  for (const item of items) {
+    if (!item || typeof item !== 'object') continue;
+    const name = typeof item.fileName === 'string' ? item.fileName : '';
+    const path = typeof item.filePath === 'string' ? item.filePath : '';
+    const key = (path || name.replace(/\.(pdf|md)$/i, '') || item.id || '').toLowerCase().trim();
+    if (key && !seen.has(key)) {
+      seen.add(key);
+      result.push(item);
+    }
+  }
+
+  return result;
+}
 
 export function App() {
   const [activeProvider, setActiveProvider] = useState<ProviderType>(() => {
@@ -46,7 +63,8 @@ export function App() {
 
   const [history, setHistory] = useState<HistoryItem[]>(() => {
     try {
-      return JSON.parse(localStorage.getItem('conversion_history') || '[]');
+      const parsed = JSON.parse(localStorage.getItem('conversion_history') || '[]');
+      return deduplicateHistory(parsed);
     } catch {
       return [];
     }
@@ -100,16 +118,30 @@ export function App() {
     }
   };
 
-  // Shortcut listener for Spotlight Quick-Drop (Cmd+Shift+L / Ctrl+Shift+L)
+  // Shortcut listener for Spotlight Quick-Drop (Native Rust Global Hook + In-App Fallback)
   useEffect(() => {
-    const handleGlobalKey = (e: KeyboardEvent) => {
+    let unlistenEvent: (() => void) | null = null;
+
+    // Listen to native global shortcut triggered by Rust backend
+    listen('open-quick-drop', () => {
+      setIsQuickDropOpen(true);
+    }).then((unlisten) => {
+      unlistenEvent = unlisten;
+    });
+
+    // In-app key listener
+    const handleLocalKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'l' || e.key === 'L')) {
         e.preventDefault();
         setIsQuickDropOpen((prev) => !prev);
       }
     };
-    window.addEventListener('keydown', handleGlobalKey);
-    return () => window.removeEventListener('keydown', handleGlobalKey);
+    window.addEventListener('keydown', handleLocalKey);
+
+    return () => {
+      if (unlistenEvent) unlistenEvent();
+      window.removeEventListener('keydown', handleLocalKey);
+    };
   }, []);
 
   // Listen to Tauri events from Pure-Rust backend
@@ -173,6 +205,20 @@ export function App() {
   const handleSelectProvider = (provider: ProviderType) => {
     setActiveProvider(provider);
     localStorage.setItem('l2m_active_provider', provider);
+  };
+
+  const handleQuickDropSuccess = (item: HistoryItem) => {
+    setHistory((prev) => {
+      const itemKey = (item.filePath || item.fileName.replace(/\.(pdf|md)$/i, '')).toLowerCase().trim();
+      const filtered = prev.filter((h) => {
+        const hKey = (h.filePath || h.fileName.replace(/\.(pdf|md)$/i, '')).toLowerCase().trim();
+        return hKey !== itemKey;
+      });
+      const updated = [item, ...filtered];
+      const toPersist = updated.filter((h) => h.status === 'completed' || !h.status).slice(0, 100);
+      localStorage.setItem('conversion_history', JSON.stringify(toPersist));
+      return updated;
+    });
   };
 
   const handleClearHistory = () => {
@@ -296,7 +342,14 @@ export function App() {
         progressTotal: targetCount,
       };
 
-      setHistory((prev) => [inProgressItem, ...prev.filter((h) => h.id !== jobId && h.status !== 'processing')]);
+      const inProgressKey = (item.filePath || item.fileName.replace(/\.(pdf|md)$/i, '')).toLowerCase().trim();
+      setHistory((prev) => {
+        const filtered = prev.filter((h) => {
+          const hKey = (h.filePath || h.fileName.replace(/\.(pdf|md)$/i, '')).toLowerCase().trim();
+          return hKey !== inProgressKey && h.id !== jobId && h.status !== 'processing';
+        });
+        return [inProgressItem, ...filtered];
+      });
 
       try {
         const markdown = await invoke<string>('convert_lecture_native', {
@@ -311,7 +364,10 @@ export function App() {
         // Automatically save Markdown file next to PDF!
         const autoSavePath = item.filePath.replace(/\.pdf$/i, '.md');
         try {
-          await writeTextFile(autoSavePath, markdown);
+          await invoke('save_text_file_native', {
+            filePath: autoSavePath,
+            content: markdown,
+          });
         } catch (saveErr) {
           console.warn('Auto-Save fehlgeschlagen:', saveErr);
         }
@@ -325,7 +381,7 @@ export function App() {
           )
         );
 
-        // Update history
+        // Update history with strict deduplication
         setHistory((prev) => {
           const updated = prev.map((h) =>
             h.id === jobId
@@ -338,9 +394,10 @@ export function App() {
                 }
               : h
           );
-          const toPersist = updated.filter((h) => h.status === 'completed' || !h.status).slice(0, 100);
+          const deduped = deduplicateHistory(updated);
+          const toPersist = deduped.filter((h) => h.status === 'completed' || !h.status).slice(0, 100);
           localStorage.setItem('conversion_history', JSON.stringify(toPersist));
-          return updated;
+          return deduped;
         });
 
         // Set last result for optional live preview
@@ -562,6 +619,7 @@ export function App() {
         onClose={() => setIsQuickDropOpen(false)}
         activeProvider={activeProvider}
         apiKey={currentActiveKey}
+        onSuccess={handleQuickDropSuccess}
       />
     </div>
   );

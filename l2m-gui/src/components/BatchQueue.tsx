@@ -13,7 +13,6 @@ import {
   RefreshCw,
   FolderDown,
 } from 'lucide-react';
-import { open as openFileDialog } from '@tauri-apps/plugin-dialog';
 
 export interface BatchQueueItem {
   id: string;
