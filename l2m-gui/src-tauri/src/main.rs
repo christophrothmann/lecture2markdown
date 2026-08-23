@@ -415,6 +415,59 @@ async fn convert_lecture_native(
     Ok(full_markdown)
 }
 
+#[tauri::command]
+fn copy_file_to_clipboard_native(file_name: String, content: String) -> Result<String, String> {
+    let clean_name = if file_name.ends_with(".md") {
+        file_name
+    } else {
+        format!("{}.md", file_name)
+    };
+
+    let temp_dir = std::env::temp_dir().join("lecture2markdown");
+    let _ = std::fs::create_dir_all(&temp_dir);
+    let target_file = temp_dir.join(&clean_name);
+    std::fs::write(&target_file, &content).map_err(|e| format!("Fehler beim Schreiben: {}", e))?;
+
+    let abs_path = target_file.to_string_lossy().to_string();
+
+    #[cfg(target_os = "macos")]
+    {
+        let script = format!(r#"set the clipboard to (POSIX file "{}")"#, abs_path);
+        let _ = std::process::Command::new("osascript")
+            .arg("-e")
+            .arg(&script)
+            .output();
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let ps_cmd = format!(r#"Set-Clipboard -Path '{}'"#, abs_path);
+        let _ = std::process::Command::new("powershell")
+            .arg("-NoProfile")
+            .arg("-Command")
+            .arg(&ps_cmd)
+            .output();
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let uri = format!("file://{}", abs_path);
+        let _ = std::process::Command::new("xclip")
+            .args(&["-selection", "clipboard", "-t", "text/uri-list"])
+            .stdin(std::process::Stdio::piped())
+            .spawn()
+            .and_then(|mut child| {
+                use std::io::Write;
+                if let Some(mut stdin) = child.stdin.take() {
+                    let _ = stdin.write_all(uri.as_bytes());
+                }
+                child.wait()
+            });
+    }
+
+    Ok(abs_path)
+}
+
 fn main() {
     let app_state = AppState {
         cancel_requested: Arc::new(AtomicBool::new(false)),
@@ -432,6 +485,7 @@ fn main() {
             get_pdf_page_count_native,
             convert_lecture_native,
             cancel_conversion_native,
+            copy_file_to_clipboard_native,
             save_api_key_native,
             get_api_keys_native,
             get_api_key_native,

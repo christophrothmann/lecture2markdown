@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3.6] - 2026-08-23 "clipboard-file-object-hand-off"
+
+### Added
+- **Native File Clipboard Copying (`copy_file_to_clipboard_native`)**:
+  - Clicking **„Als Datei kopieren“** now places an actual `.md` file descriptor on the system clipboard (via `NSPasteboard` on macOS and `Set-Clipboard -Path` on Windows).
+  - Pasting (`Ctrl+V` / `Cmd+V`) into **ChatGPT, Gemini, Claude, or Discord** instantly uploads the lecture as an attached document pill (`[📄 Vorlesung.md]`), keeping the chat input clean and empty for student prompts.
+
 ## [1.3.5] - 2026-08-23 "auto-updater-capabilities-and-macos-bundles"
 
 ### Fixed

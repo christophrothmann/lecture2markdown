@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Copy, Save, Check, FileText, PlusCircle, Trash2 } from 'lucide-react';
+import { invoke } from '@tauri-apps/api/core';
 
 interface MarkdownPreviewProps {
   content: string;
@@ -20,11 +21,23 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
 
   const handleCopyAll = async () => {
     try {
-      await navigator.clipboard.writeText(content);
+      await invoke('copy_file_to_clipboard_native', {
+        fileName: fileName || 'Vorlesung.md',
+        content,
+      });
+      // Fallback text clipboard for standard editors
+      await navigator.clipboard.writeText(content).catch(() => {});
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);
     } catch (err) {
-      console.error('Kopieren fehlgeschlagen:', err);
+      console.warn('Native file clipboard copy failed, falling back to text:', err);
+      try {
+        await navigator.clipboard.writeText(content);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2500);
+      } catch (copyErr) {
+        console.error('Kopieren fehlgeschlagen:', copyErr);
+      }
     }
   };
 
@@ -73,15 +86,15 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
                 ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
                 : 'bg-accent hover:bg-accent-hover text-white border-transparent shadow-lg shadow-accent/20'
             }`}
-            title="Gesamtes Markdown in Zwischenablage kopieren"
+            title="Kopiert die Vorlesung als echte .md-Datei. Beim Einfügen in ChatGPT/Gemini (Strg+V) wird sie direkt als Datei-Anhang hochgeladen."
           >
             {copied ? (
               <>
-                <Check className="w-4 h-4" /> Kopiert!
+                <Check className="w-4 h-4" /> Als Datei kopiert!
               </>
             ) : (
               <>
-                <Copy className="w-4 h-4" /> Markdown kopieren
+                <Copy className="w-4 h-4" /> Als Datei kopieren
               </>
             )}
           </button>
