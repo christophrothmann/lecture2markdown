@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3.5] - 2026-08-23 "auto-updater-capabilities-and-macos-bundles"
+
+### Fixed
+- **In-App Updater Permissions**: Added missing `updater:default` and `process:default` capability permissions to `capabilities/default.json`.
+- **macOS Update Bundle Support**: Enabled `"targets": "all"` in `tauri.conf.json` to generate signed macOS `.app.tar.gz` updater bundles alongside `.dmg` installers in GitHub Actions.
+
 ## [1.3.4] - 2026-08-22 "pure-rust-pdf-and-updater"
 
 ### Added

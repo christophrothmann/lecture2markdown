@@ -9,6 +9,8 @@
     "shell:allow-open",
     "dialog:default",
     "fs:default",
-    "notification:default"
+    "notification:default",
+    "updater:default",
+    "process:default"
   ]
 }

@@ -75,10 +75,10 @@ export function App() {
         if (update && update.available) {
           setUpdateAvailable(true);
         }
-      } catch {
-        // Silently catch network errors or missing update endpoints
+      } catch (err) {
+        console.warn('[Updater] Check failed:', err);
       }
-    }, 2500);
+    }, 1500);
 
     return () => clearTimeout(timer);
   }, []);
