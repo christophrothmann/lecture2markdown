@@ -98,26 +98,27 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
     setTestResult(null);
 
     try {
-      const result = await invoke<{ success: boolean; message: string; model_used: string }>(
-        'test_api_key_native',
-        {
-          provider: selectedTab,
-          apiKey: currentInput.trim(),
-        }
-      );
-
-      setTestResult({
-        success: result.success,
-        message: result.message,
+      const isValid = await invoke<boolean>('validate_api_key_native', {
+        provider: selectedTab,
+        key: currentInput.trim(),
       });
 
-      if (result.success) {
+      if (isValid) {
+        setTestResult({
+          success: true,
+          message: 'API-Key ist gültig und einsatzbereit!',
+        });
         onSaveKey(selectedTab, currentInput.trim());
+      } else {
+        setTestResult({
+          success: false,
+          message: 'API-Key konnte nicht validiert werden.',
+        });
       }
     } catch (e: any) {
       setTestResult({
         success: false,
-        message: `Fehler: ${e?.toString() || 'Unbekannter Fehler'}`,
+        message: `${e?.toString() || 'Fehler beim Validieren des Keys'}`,
       });
     } finally {
       setTesting(false);
