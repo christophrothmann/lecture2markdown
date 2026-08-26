@@ -5,6 +5,7 @@ import { listen } from '@tauri-apps/api/event';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { open as openFileDialog } from '@tauri-apps/plugin-dialog';
 import { sendNotification, isPermissionGranted, requestPermission } from '@tauri-apps/plugin-notification';
+import { useTranslation } from 'react-i18next';
 import type { ProviderType } from './ApiKeyModal';
 import type { HistoryItem } from './HistorySidebar';
 
@@ -23,6 +24,7 @@ export const QuickDropOverlay: React.FC<QuickDropOverlayProps> = ({
   apiKey,
   onSuccess,
 }) => {
+  const { t } = useTranslation();
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [status, setStatus] = useState<'idle' | 'processing' | 'success' | 'error'>('idle');
   const [currentFileName, setCurrentFileName] = useState<string>('');
@@ -61,8 +63,6 @@ export const QuickDropOverlay: React.FC<QuickDropOverlayProps> = ({
             if (firstPdf) {
               const name = firstPdf.split(/[\/\\]/).pop() || 'Vorlesung.pdf';
               handleProcessFile(firstPdf, name);
-            } else {
-              alert('Bitte ziehe eine gültige .pdf-Vorlesungsdatei hierher.');
             }
           }
         }
@@ -102,100 +102,111 @@ export const QuickDropOverlay: React.FC<QuickDropOverlayProps> = ({
     };
   }, [isOpen, status]);
 
-  // Subtle web audio chime on completion
   const playSuccessChime = () => {
     try {
       const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
       const osc = audioCtx.createOscillator();
       const gain = audioCtx.createGain();
+
       osc.type = 'sine';
       osc.frequency.setValueAtTime(587.33, audioCtx.currentTime); // D5
-      osc.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.15); // A5
-      gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.12); // A5
+
+      gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.35);
+
       osc.connect(gain);
       gain.connect(audioCtx.destination);
+
       osc.start();
       osc.stop(audioCtx.currentTime + 0.35);
     } catch {}
   };
 
-  const handleProcessFile = async (filePath: string, fileName: string) => {
-    if (!apiKey) {
-      alert('Bitte richte zuerst deinen API-Key in den Einstellungen ein.');
-      onClose();
-      return;
-    }
-
-    setStatus('processing');
+  const handleProcessFile = async (pdfPath: string, fileName: string) => {
     setCurrentFileName(fileName);
+    setStatus('processing');
     setProgressCurrent(0);
     setProgressTotal(0);
+    setErrorMessage('');
 
     try {
-      const markdown = await invoke<string>('convert_lecture_native', {
-        pdfPath: filePath,
-        outputPath: '',
+      const result = await invoke<{
+        markdown: string;
+        total_pages: number;
+        cost_usd: number;
+        time_seconds: number;
+      }>('convert_lecture_native', {
+        pdfPath,
         provider: activeProvider,
         apiKey,
+        startPage: null,
+        endPage: null,
       });
 
-      // 1. Auto-Save Markdown next to PDF via native Rust
-      const autoSavePath = filePath.replace(/\.pdf$/i, '.md');
+      // Automatically copy markdown file descriptor to native clipboard
+      const cleanName = fileName.replace(/\.pdf$/i, '');
+      const targetMdPath = pdfPath.replace(/\.pdf$/i, '.md');
+
+      // Auto-save markdown file next to source PDF
       try {
-        await invoke('save_text_file_native', {
-          filePath: autoSavePath,
-          content: markdown,
+        await invoke('save_file_native', {
+          filePath: targetMdPath,
+          content: result.markdown,
         });
-      } catch (saveErr) {
-        console.warn('Auto-save failed:', saveErr);
+      } catch {}
+
+      // Copy to clipboard as native file object
+      try {
+        await invoke('copy_file_to_clipboard_native', {
+          fileName: `${cleanName}.md`,
+          content: result.markdown,
+        });
+      } catch {
+        await navigator.clipboard.writeText(result.markdown);
       }
 
-      // 2. Put pure file descriptor on system clipboard
-      await invoke('copy_file_to_clipboard_native', {
-        fileName: fileName.replace(/\.pdf$/i, '.md'),
-        content: markdown,
-      });
-
-      // 3. Audio & Notification feedback
+      // Play completion chime
       playSuccessChime();
-      let hasPerm = await isPermissionGranted();
-      if (!hasPerm) {
-        const perm = await requestPermission();
-        hasPerm = perm === 'granted';
-      }
-      if (hasPerm) {
-        sendNotification({
-          title: 'Lecture2Markdown',
-          body: `✅ ${fileName.replace(/\.pdf$/i, '.md')} liegt im Clipboard bereit!`,
-        });
-      }
 
-      // 4. Add to history
+      // Trigger system notification
+      try {
+        let hasPermission = await isPermissionGranted();
+        if (!hasPermission) {
+          const perm = await requestPermission();
+          hasPermission = perm === 'granted';
+        }
+        if (hasPermission) {
+          sendNotification({
+            title: 'Lecture2Markdown',
+            body: `${fileName} wurde erfolgreich konvertiert und ins Clipboard kopiert!`,
+          });
+        }
+      } catch {}
+
+      setStatus('success');
+
+      // Register in History
       if (onSuccess) {
         onSuccess({
-          id: Date.now().toString(),
-          fileName: fileName.replace(/\.pdf$/i, '.md'),
-          filePath,
+          id: `item-${Date.now()}`,
+          fileName,
+          filePath: pdfPath,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          content: markdown,
-          totalPages: progressTotal || 1,
+          content: result.markdown,
+          totalPages: result.total_pages || 1,
           status: 'completed',
         });
       }
 
-      setStatus('success');
       setTimeout(() => {
-        setStatus('idle');
         onClose();
-      }, 1600);
-    } catch (err: any) {
-      console.error('Quick drop failed:', err);
-      setStatus('error');
-      setErrorMessage(String(err));
-      setTimeout(() => {
         setStatus('idle');
-      }, 3500);
+      }, 2500);
+    } catch (e: any) {
+      console.error('Quick-Drop Konvertierungsfehler:', e);
+      setStatus('error');
+      setErrorMessage(e?.toString() || 'Fehler bei der Konvertierung');
     }
   };
 
@@ -205,7 +216,7 @@ export const QuickDropOverlay: React.FC<QuickDropOverlayProps> = ({
     try {
       const selected = await openFileDialog({
         multiple: false,
-        filters: [{ name: 'PDF Vorlesungen', extensions: ['pdf'] }],
+        filters: [{ name: t('dropzone.browse_filter'), extensions: ['pdf'] }],
       });
 
       if (selected && typeof selected === 'string') {
@@ -235,10 +246,11 @@ export const QuickDropOverlay: React.FC<QuickDropOverlayProps> = ({
             </div>
             <div>
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-100">
-                Quick-Drop Spotlight
+                {t('quickdrop.title')}
               </h3>
               <p className="text-[10px] text-slate-400">
-                Kürzel: <kbd className="px-1 py-0.5 bg-surface border border-border rounded text-[9px] font-mono">⌘ + ⇧ + L</kbd>
+                {t('quickdrop.shortcut_label')}{' '}
+                <kbd className="px-1 py-0.5 bg-surface border border-border rounded text-[9px] font-mono">⌘ + ⇧ + L</kbd>
               </p>
             </div>
           </div>
@@ -266,10 +278,10 @@ export const QuickDropOverlay: React.FC<QuickDropOverlayProps> = ({
             </div>
             <div>
               <p className="text-sm font-bold text-slate-100">
-                {isDragging ? 'PDF jetzt loslassen!' : 'PDF hier ablegen oder klicken'}
+                {isDragging ? t('quickdrop.drop_active') : t('quickdrop.drop_prompt')}
               </p>
               <p className="text-[11px] text-slate-400 mt-1 max-w-xs mx-auto">
-                Konvertiert automatisch im Hintergrund & legt die .md-Datei für ChatGPT / Gemini direkt ins Clipboard.
+                {t('quickdrop.subtitle')}
               </p>
             </div>
           </div>
@@ -285,8 +297,8 @@ export const QuickDropOverlay: React.FC<QuickDropOverlayProps> = ({
               <p className="text-xs font-bold text-slate-100 truncate">{currentFileName}</p>
               <p className="text-[11px] text-slate-400">
                 {progressTotal > 0
-                  ? `Folie ${progressCurrent} von ${progressTotal} verarbeitet (${percent}%)`
-                  : 'Strukturierte Markdown-Erstellung läuft...'}
+                  ? t('quickdrop.converting_slide', { current: progressCurrent, total: progressTotal, percent })
+                  : t('quickdrop.converting')}
               </p>
 
               {/* Animated Progress Bar */}
@@ -307,9 +319,9 @@ export const QuickDropOverlay: React.FC<QuickDropOverlayProps> = ({
           <div className="py-6 flex flex-col items-center justify-center space-y-2 text-center text-emerald-400 animate-scale-up">
             <CheckCircle2 className="w-10 h-10" />
             <div>
-              <p className="text-sm font-bold text-slate-100">Als Datei im Clipboard bereit!</p>
+              <p className="text-sm font-bold text-slate-100">{t('quickdrop.copied_badge')}</p>
               <p className="text-[11px] text-slate-400 mt-1">
-                Wechsle zu ChatGPT / Gemini und drücke <kbd className="px-1.5 py-0.5 bg-surface border border-border rounded text-[10px] font-mono text-slate-200">⌘ + V</kbd>
+                {t('quickdrop.paste_hint')}
               </p>
             </div>
           </div>
@@ -318,7 +330,7 @@ export const QuickDropOverlay: React.FC<QuickDropOverlayProps> = ({
         {/* State 4: Error State */}
         {status === 'error' && (
           <div className="py-6 text-center space-y-2 text-rose-400">
-            <p className="text-xs font-bold">Fehler bei der Konvertierung</p>
+            <p className="text-xs font-bold">{t('quickdrop.error_title')}</p>
             <p className="text-[10px] text-slate-400 whitespace-pre-wrap">{errorMessage}</p>
           </div>
         )}
@@ -326,3 +338,4 @@ export const QuickDropOverlay: React.FC<QuickDropOverlayProps> = ({
     </div>
   );
 };
+export default QuickDropOverlay;

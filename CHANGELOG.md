@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.0] - 2026-08-26 "internationalization-and-ui-polish"
+
+### Added
+- **🌐 Full Internationalization (i18n)**:
+  - Integrated `i18next`, `react-i18next`, and `i18next-browser-languagedetector` with comprehensive dictionaries for both **German 🇩🇪** and **English 🇬🇧**.
+  - Interactive language switcher in Settings modal with seamless, zero-reload runtime language toggle.
+  - Automatic initial OS language detection with persistent user choice in `localStorage`.
+  - 100% translation coverage across all UI modules: Header, Dropzone, Multi-File Batch Queue, Split-Screen Viewer, History Sidebar, and Spotlight Quick-Drop Widget.
+
+### Improved & Fixed
+- **🎛️ Settings Modal UX & Embedded Scrollbar**:
+  - Padded internal scroll container with fixed header, keeping the close button (`✕`) and title persistently in view on small laptop screens and low window heights.
+  - Fixed API key test validation handler integration with native Rust backend (`validate_api_key_native`).
+  - Preserved active test feedback banner visibility on successful key validation.
+
 ## [1.4.2] - 2026-08-26 "free-tier-highlight-and-code-splitting"
 
 ### Added

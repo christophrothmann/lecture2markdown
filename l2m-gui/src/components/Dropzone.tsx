@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { UploadCloud, FileText, Layers, ShieldCheck } from 'lucide-react';
 import { open as openFileDialog } from '@tauri-apps/plugin-dialog';
+import { useTranslation } from 'react-i18next';
 
 export interface SelectedFileInfo {
   path: string;
@@ -13,6 +14,7 @@ interface DropzoneProps {
 }
 
 export const Dropzone: React.FC<DropzoneProps> = ({ onFilesSelected, disabled }) => {
+  const { t } = useTranslation();
   const [isDragging, setIsDragging] = useState(false);
 
   const handleClick = async () => {
@@ -22,7 +24,7 @@ export const Dropzone: React.FC<DropzoneProps> = ({ onFilesSelected, disabled })
       // Native Tauri file picker with multiple files support
       const selected = await openFileDialog({
         multiple: true,
-        filters: [{ name: 'PDF Vorlesungen', extensions: ['pdf'] }],
+        filters: [{ name: t('dropzone.browse_filter'), extensions: ['pdf'] }],
       });
 
       if (selected) {
@@ -71,7 +73,6 @@ export const Dropzone: React.FC<DropzoneProps> = ({ onFilesSelected, disabled })
       }
 
       if (files.length === 0) {
-        alert('Bitte ziehe gültige .pdf-Vorlesungsdateien hierher.');
         return;
       }
 
@@ -98,27 +99,27 @@ export const Dropzone: React.FC<DropzoneProps> = ({ onFilesSelected, disabled })
 
         <div>
           <h3 className="text-lg font-bold text-slate-100">
-            Ziehe deine Vorlesungs-PDF(s) hierher
+            {t('dropzone.title')}
           </h3>
           <p className="text-xs text-slate-400 mt-1">
-            Unterstützt einzelne PDFs oder mehrere Dokumente gleichzeitig für Batch-Verarbeitung
+            {t('dropzone.subtitle')}
           </p>
         </div>
 
         <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
           <div className="flex items-center space-x-2 text-[11px] text-slate-400 bg-background/60 px-3 py-1.5 rounded-lg border border-border/50">
             <Layers className="w-3.5 h-3.5 text-accent" />
-            <span>Multi-File Batch Queue</span>
+            <span>{t('dropzone.batch_queue')}</span>
           </div>
 
           <div className="flex items-center space-x-2 text-[11px] text-slate-400 bg-background/60 px-3 py-1.5 rounded-lg border border-border/50">
             <FileText className="w-3.5 h-3.5 text-blue-400" />
-            <span>Smart Hybrid-Routing</span>
+            <span>{t('dropzone.smart_routing')}</span>
           </div>
 
           <div className="flex items-center space-x-2 text-[11px] text-slate-400 bg-background/60 px-3 py-1.5 rounded-lg border border-border/50">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-            <span>End-to-End verschlüsselt</span>
+            <span>{t('dropzone.encrypted')}</span>
           </div>
         </div>
       </div>
