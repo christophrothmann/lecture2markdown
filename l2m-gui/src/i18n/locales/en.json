@@ -1,0 +1,143 @@
+{
+  "common": {
+    "cancel": "Cancel",
+    "save": "Save",
+    "delete": "Delete",
+    "clear": "Clear",
+    "close": "Close",
+    "loading": "Loading...",
+    "done": "Done!",
+    "copy": "Copy",
+    "copied": "Copied!"
+  },
+  "header": {
+    "quick_drop": "Quick-Drop",
+    "quick_drop_title": "Open Quick-Drop Spotlight (⌘ + ⇧ + L)",
+    "provider_title": "Switch Provider / Configure Key",
+    "settings_title": "API Key Settings",
+    "update_available": "Update Available",
+    "loading_update": "Loading Update...",
+    "update_tooltip": "Download latest update and restart app",
+    "update_error": "Could not install update:\n{{error}}"
+  },
+  "dropzone": {
+    "title": "Drag & drop your lecture PDF(s) here",
+    "subtitle": "Supports single PDFs or multiple documents simultaneously for batch processing",
+    "browse_filter": "PDF Lectures",
+    "batch_queue": "Multi-File Batch Queue",
+    "smart_routing": "Smart Hybrid-Routing",
+    "encrypted": "End-to-End Encrypted"
+  },
+  "batch": {
+    "title": "Multi-File Batch Queue",
+    "subtitle": "{{count}} document in queue",
+    "subtitle_plural": "{{count}} documents in queue",
+    "status_pending": "Pending",
+    "status_running": "Converting...",
+    "status_completed": "Saved",
+    "status_error": "Error",
+    "range_all": "All slides",
+    "range_custom": "Range: Slides {{range}} ({{count}} of {{total}})",
+    "range_savings": "saves ~{{percent}}% cost & time",
+    "range_edit_title": "Edit slide range (e.g. 10-25 or 1,3,5-8)",
+    "add_more": "Add Documents",
+    "clear_queue": "Clear Queue",
+    "start_batch": "Start Batch Conversion ({{count}})",
+    "cancel_batch": "Cancel",
+    "eta_batch": "Document {{current}} of {{total}} • ⏱️ ~{{eta}} remaining",
+    "eta_slide": "Slide {{current}} of {{total}} • ⏱️ ~{{eta}} remaining"
+  },
+  "preview": {
+    "copy_file": "Copy as File",
+    "copy_file_tooltip": "Copy as real file – instant paste (⌘+V) into ChatGPT & Gemini",
+    "copy_file_success": "Markdown copied as file to clipboard! Paste directly with ⌘+V into ChatGPT or Gemini.",
+    "save_markdown": "Save Markdown",
+    "save_success": "File successfully saved at:\n{{path}}",
+    "save_error": "Error saving file:\n{{error}}",
+    "anki_export": "Anki Deck",
+    "anki_export_tooltip": "Export flashcards (definitions, LaTeX formulas, summaries) as an Anki deck",
+    "anki_success": "Anki deck successfully saved! You can import the .txt file directly into Anki.",
+    "new_conversion": "New Lecture",
+    "delete_entry": "Delete Entry",
+    "delete_confirm": "Are you sure you want to delete this entry from history?",
+    "drag_hint": "Drag file directly into ChatGPT, Gemini or Desktop",
+    "tab_markdown": "Markdown",
+    "tab_split": "Split-View",
+    "slide_counter": "Slide {{current}} of {{total}}",
+    "copy_slide": "Copy Slide",
+    "notes_title": "LaTeX & Markdown Notes",
+    "pdf_loading": "Rendering slide {{page}}...",
+    "pdf_no_page": "Could not load slide {{page}}"
+  },
+  "history": {
+    "title": "History",
+    "count": "{{count}} lecture",
+    "count_plural": "{{count}} lectures",
+    "empty_title": "No lectures converted yet",
+    "empty_subtitle": "Drag a PDF into the window to get started.",
+    "clear_history": "Clear History",
+    "clear_confirm": "Are you sure you want to permanently clear the entire history?",
+    "delete_item": "Remove from history",
+    "copy_item": "Copy markdown to clipboard",
+    "status_in_progress": "Converting...",
+    "cached_badge": "0.00 € (Cache)"
+  },
+  "settings": {
+    "title": "AI Providers & Settings",
+    "subtitle": "Manage providers, API keys, and slide cache",
+    "language_label": "Sprache / Language",
+    "lang_de": "Deutsch",
+    "lang_en": "English",
+    "mistral_tip_title": "💡 Free tier for students:",
+    "mistral_tip_body": "Mistral AI provides a <strong>free Free-Tier</strong>. You can create a key directly at <code className=\"text-emerald-300 bg-emerald-950/60 px-1 py-0.5 rounded\">console.mistral.ai</code> and convert lectures without pre-funding or credit cards.",
+    "key_input_label": "{{provider}} API Key",
+    "test_key": "Test Key",
+    "testing_key": "Testing...",
+    "save_key": "Save Key",
+    "saved_badge": "Saved",
+    "delete_key": "Delete Key",
+    "cache_title": "Slide Cache (0 ms & 0.00 € re-conversions)",
+    "cache_stats": "{{count}} slide cached ({{size}} KB)",
+    "cache_stats_plural": "{{count}} slides cached ({{size}} KB)",
+    "cache_clear": "Clear Cache",
+    "cache_clearing": "Clearing...",
+    "cache_clear_confirm": "Are you sure you want to delete all cached slide images and hashes?",
+    "providers": {
+      "openai": {
+        "badge": "GPT-4o & Mini",
+        "description": "Proven standard with automatic hybrid routing.",
+        "portalLabel": "Create OpenAI API Key"
+      },
+      "google": {
+        "badge": "Gemini 2.0 Flash & 1.5 Pro",
+        "description": "Ultra-fast Gemini 2.0 Flash & Gemini 1.5 Pro.",
+        "portalLabel": "Create Google AI Studio Key"
+      },
+      "anthropic": {
+        "badge": "Claude 3.7 Sonnet & 3.5 Haiku",
+        "description": "Highest precision for complex mathematical formulas and LaTeX.",
+        "portalLabel": "Create Anthropic Console Key"
+      },
+      "mistral": {
+        "badge": "🆓 Free-Tier • OCR",
+        "description": "Recommended for students: Free-Tier with specialized Document OCR & Pixtral 12B.",
+        "portalLabel": "Create Free Mistral API Key"
+      }
+    }
+  },
+  "quickdrop": {
+    "title": "Quick-Drop Spotlight",
+    "subtitle": "Drop lecture for instant clipboard upload",
+    "drop_prompt": "Drop PDF here",
+    "browse_prompt": "or click to browse",
+    "converting": "Converting lecture...",
+    "converting_slide": "Slide {{current}} of {{total}} ({{percent}}%)",
+    "success_title": "Successfully converted!",
+    "success_subtitle": "Markdown was saved and copied as a file to the clipboard.",
+    "copied_badge": "Copied to clipboard!",
+    "paste_hint": "Press ⌘ + V in ChatGPT, Claude, or Gemini",
+    "another_pdf": "Convert another lecture",
+    "key_missing_title": "No API key configured for {{provider}}.",
+    "key_missing_button": "Configure API key in settings"
+  }
+}

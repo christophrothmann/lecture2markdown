@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { save as saveFileDialog, open as openFileDialog } from '@tauri-apps/plugin-dialog';
+import { useTranslation } from 'react-i18next';
 import { generateAnkiCardsFromMarkdown, exportCardsToAnkiTsv } from '../utils/anki';
 import { loadPdfDocument, renderSlideToCanvas } from '../utils/pdfRenderer';
 import { parseMarkdownSlides, type SlideSection } from '../utils/slideParser';
@@ -36,6 +37,7 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
   onNewConversion,
   onDelete,
 }) => {
+  const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   const [ankiExported, setAnkiExported] = useState(false);
   const [activeView, setActiveView] = useState<'markdown' | 'split'>('markdown');
@@ -63,8 +65,6 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
     setCurrentSlideIndex(0);
   }, [content]);
 
-  const [slideImageError, setSlideImageError] = useState<string | null>(null);
-
   // Load and render slide with PDF.js (0 Python, 100% Zero-Config client-side)
   useEffect(() => {
     if (activeView !== 'split' || !activePdfPath || slides.length === 0) {
@@ -78,76 +78,60 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
     const currentSlide = slides[currentSlideIndex];
     const targetPage = currentSlide?.slideNumber || currentSlideIndex + 1;
 
-    setIsLoadingSlideImage(true);
-    setSlideImageError(null);
-
     let isCancelled = false;
 
-    loadPdfDocument(activePdfPath)
-      .then(async (loaded) => {
+    async function renderPage() {
+      setIsLoadingSlideImage(true);
+      try {
+        const pdfDoc = await loadPdfDocument(activePdfPath!);
         if (isCancelled) return;
+
         if (canvasRef.current) {
-          const safePage = Math.min(Math.max(1, targetPage), loaded.numPages);
-          await renderSlideToCanvas(loaded.doc, safePage, canvasRef.current);
-          if (!isCancelled) {
-            setIsPdfJsRendered(true);
-            setIsLoadingSlideImage(false);
-          }
+          await renderSlideToCanvas(pdfDoc, targetPage, canvasRef.current, 1.8);
+          setIsPdfJsRendered(true);
+          setCurrentSlideImage(null);
         }
-      })
-      .catch((pdfJsErr) => {
-        if (isCancelled) return;
-        console.warn('PDF.js rendering fallback to native backend:', pdfJsErr);
-        const pageIndex = Math.max(0, targetPage - 1);
-        invoke<string>('get_slide_image_native', {
-          pdfPath: activePdfPath,
-          pageIndex,
-        })
-          .then((base64) => {
-            if (!isCancelled) {
+      } catch {
+        // Fallback to native backend rendering if PDF.js fails
+        if (!isCancelled) {
+          try {
+            const base64 = await invoke<string>('get_slide_image_native', {
+              pdfPath: activePdfPath,
+              pageIndex: targetPage - 1,
+            });
+            if (!isCancelled && base64) {
               setCurrentSlideImage(`data:image/webp;base64,${base64}`);
               setIsPdfJsRendered(false);
-              setIsLoadingSlideImage(false);
             }
-          })
-          .catch((nativeErr) => {
+          } catch {
             if (!isCancelled) {
-              console.error('Foliengrafik konnte nicht geladen werden:', nativeErr);
               setCurrentSlideImage(null);
               setIsPdfJsRendered(false);
-              setSlideImageError(String(pdfJsErr));
-              setIsLoadingSlideImage(false);
             }
-          });
-      });
+          }
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsLoadingSlideImage(false);
+        }
+      }
+    }
+
+    renderPage();
 
     return () => {
       isCancelled = true;
     };
-  }, [activeView, currentSlideIndex, activePdfPath, slides]);
+  }, [activeView, activePdfPath, currentSlideIndex, slides]);
 
-  const handleSelectPdfManually = async () => {
-    try {
-      const selected = await openFileDialog({
-        multiple: false,
-        filters: [{ name: 'PDF Vorlesungen', extensions: ['pdf'] }],
-      });
-      if (selected && typeof selected === 'string') {
-        setActivePdfPath(selected);
-      }
-    } catch (e) {
-      console.error('PDF-Auswahl fehlgeschlagen:', e);
-    }
-  };
-
-  // Keyboard navigation for Split-Screen
+  // Keyboard navigation for Split-Screen slide browsing
   useEffect(() => {
     if (activeView !== 'split') return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowLeft') {
+      if (e.key === 'ArrowLeft' || e.key === 'Left') {
         setCurrentSlideIndex((prev) => Math.max(0, prev - 1));
-      } else if (e.key === 'ArrowRight') {
+      } else if (e.key === 'ArrowRight' || e.key === 'Right') {
         setCurrentSlideIndex((prev) => Math.min(slides.length - 1, prev + 1));
       }
     };
@@ -156,58 +140,83 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [activeView, slides.length]);
 
+  const handleSelectPdfManually = async () => {
+    try {
+      const selected = await openFileDialog({
+        multiple: false,
+        filters: [{ name: t('dropzone.browse_filter'), extensions: ['pdf'] }],
+      });
+      if (selected && typeof selected === 'string') {
+        setActivePdfPath(selected);
+      }
+    } catch {
+      // User cancelled
+    }
+  };
+
   const handleCopyAsFile = async () => {
     try {
+      const cleanName = fileName ? fileName.replace(/\.pdf$/i, '') : 'Vorlesung';
       await invoke('copy_file_to_clipboard_native', {
-        fileName: fileName || 'Vorlesung.md',
+        fileName: `${cleanName}.md`,
         content,
       });
+
       setCopied(true);
-      setTimeout(() => setCopied(false), 2500);
-    } catch (err) {
-      console.warn('File clipboard fallback:', err);
-      try {
-        await navigator.clipboard.writeText(content);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2500);
-      } catch {}
+      setSavedToast({
+        message: t('preview.copy_file_success'),
+      });
+      setTimeout(() => setCopied(false), 3000);
+      setTimeout(() => setSavedToast(null), 6000);
+    } catch {
+      await navigator.clipboard.writeText(content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 3000);
     }
   };
 
   const handleExportAnki = async () => {
     try {
-      const cards = generateAnkiCardsFromMarkdown(content, fileName);
+      const defaultName = (fileName ? fileName.replace(/\.md|\.pdf$/i, '') : 'Vorlesung') + '_anki_deck.txt';
+      const cards = generateAnkiCardsFromMarkdown(content);
+
+      if (cards.length === 0) {
+        alert('Keine Lernkarten gefunden.');
+        return;
+      }
+
       const tsvContent = exportCardsToAnkiTsv(cards);
 
-      const defaultName = fileName.replace(/\.(pdf|md)$/i, '') + '_Anki.txt';
-      const savePath = await saveFileDialog({
+      const filePath = await saveFileDialog({
         defaultPath: defaultName,
-        filters: [{ name: 'Anki Flashcard Deck (*.txt)', extensions: ['txt', 'tsv', 'csv'] }],
+        filters: [{ name: 'Anki Flashcard Deck', extensions: ['txt', 'tsv'] }],
       });
 
-      if (savePath) {
-        await invoke('save_text_file_native', {
-          filePath: savePath,
+      if (filePath) {
+        await invoke('save_file_native', {
+          filePath,
           content: tsvContent,
         });
+
         setAnkiExported(true);
         setSavedToast({
-          message: `🃏 ${cards.length} Anki-Lernkarten erfolgreich gespeichert!`,
-          path: savePath,
+          message: t('preview.anki_success'),
+          path: filePath,
         });
-        setTimeout(() => setAnkiExported(false), 2500);
-        setTimeout(() => setSavedToast(null), 4500);
+        setTimeout(() => setAnkiExported(false), 4000);
       }
     } catch (err) {
       console.error('Anki Export fehlgeschlagen:', err);
-      alert(`Fehler beim Speichern des Anki-Decks:\n${err}`);
     }
   };
 
   const handleDragStart = (e: React.DragEvent) => {
     const cleanName = fileName || 'Vorlesung.md';
     e.dataTransfer.setData('text/plain', content);
-    e.dataTransfer.setData('DownloadURL', `text/markdown:${cleanName}:data:text/markdown;charset=utf-8,${encodeURIComponent(content)}`);
+    e.dataTransfer.setData(
+      'DownloadURL',
+      `text/markdown:${cleanName}:data:text/markdown;charset=utf-8,${encodeURIComponent(content)}`
+    );
     e.dataTransfer.effectAllowed = 'copy';
   };
 
@@ -224,7 +233,9 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
             <Check className="w-4 h-4 text-emerald-400 shrink-0" />
             <span>{savedToast.message}</span>
             {savedToast.path && (
-              <span className="text-[10px] text-emerald-400/70 truncate max-w-[280px]">({savedToast.path})</span>
+              <span className="text-[10px] text-emerald-400/70 truncate max-w-[280px]">
+                ({savedToast.path})
+              </span>
             )}
           </div>
           <button
@@ -244,7 +255,7 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
             draggable
             onDragStart={handleDragStart}
             className="flex items-center space-x-2 px-3 py-1.5 bg-surface hover:bg-surface-hover border border-border hover:border-accent/50 rounded-xl cursor-grab active:cursor-grabbing transition group shadow-sm"
-            title="💡 Direct-Drag: Klicke und ziehe diese Datei direkt in dein geöffnetes ChatGPT- oder Gemini-Browserfenster!"
+            title={t('preview.drag_hint')}
           >
             <GripVertical className="w-3.5 h-3.5 text-slate-500 group-hover:text-accent transition" />
             <FileText className="w-4 h-4 text-accent" />
@@ -252,7 +263,7 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
           </div>
 
           <p className="text-[10px] text-slate-400 hidden sm:block">
-            {characterCount.toLocaleString('de-DE')} Zeichen • {lineCount} Zeilen
+            {characterCount.toLocaleString()} {t('preview.character_count', { defaultValue: 'Zeichen' })} • {lineCount} {t('preview.line_count', { defaultValue: 'Zeilen' })}
           </p>
         </div>
 
@@ -263,25 +274,25 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
             <button
               type="button"
               onClick={() => setActiveView('markdown')}
-              className={`px-3 py-1 text-xs font-semibold rounded-lg transition ${
+              className={`px-3 py-1 text-xs font-semibold rounded-lg transition cursor-pointer ${
                 activeView === 'markdown'
                   ? 'bg-surface text-slate-100 shadow-sm border border-border'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              Markdown
+              {t('preview.tab_markdown')}
             </button>
             <button
               type="button"
               onClick={() => setActiveView('split')}
-              className={`px-3 py-1 text-xs font-semibold rounded-lg transition flex items-center gap-1.5 ${
+              className={`px-3 py-1 text-xs font-semibold rounded-lg transition flex items-center gap-1.5 cursor-pointer ${
                 activeView === 'split'
                   ? 'bg-surface text-slate-100 shadow-sm border border-border'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
               <BookOpen className="w-3.5 h-3.5 text-accent" />
-              Split-View
+              {t('preview.tab_split')}
             </button>
           </div>
 
@@ -289,9 +300,9 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
             type="button"
             onClick={onNewConversion}
             className="px-3 py-1.5 bg-surface hover:bg-surface-hover border border-border text-slate-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
-            title="Neue Vorlesungs-PDF konvertieren"
+            title={t('preview.new_conversion')}
           >
-            <PlusCircle className="w-3.5 h-3.5 text-accent" /> Neu
+            <PlusCircle className="w-3.5 h-3.5 text-accent" /> {t('preview.new_conversion')}
           </button>
 
           {/* Anki Deck Export Button */}
@@ -303,15 +314,15 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
                 ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
                 : 'bg-surface hover:bg-surface-hover border-border text-slate-200'
             }`}
-            title="Erstellt automatisch ein fertiges Anki-Lernkarten-Deck (.txt) aus den Vorlesungsfolien"
+            title={t('preview.anki_export_tooltip')}
           >
             {ankiExported ? (
               <>
-                <Check className="w-3.5 h-3.5 text-emerald-400" /> Anki Deck exportiert!
+                <Check className="w-3.5 h-3.5 text-emerald-400" /> {t('common.done')}
               </>
             ) : (
               <>
-                <Sparkles className="w-3.5 h-3.5 text-amber-400" /> Anki Deck
+                <Sparkles className="w-3.5 h-3.5 text-amber-400" /> {t('preview.anki_export')}
               </>
             )}
           </button>
@@ -320,9 +331,9 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
             type="button"
             onClick={onSaveFile}
             className="px-3 py-1.5 bg-surface hover:bg-surface-hover border border-border text-slate-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
-            title="Speicherort wählen und als .md Datei sichern"
+            title={t('preview.save_markdown')}
           >
-            <Save className="w-3.5 h-3.5 text-slate-400" /> Speichern
+            <Save className="w-3.5 h-3.5 text-slate-400" /> {t('common.save')}
           </button>
 
           {/* Copy As File Button */}
@@ -334,15 +345,15 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
                 ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
                 : 'bg-accent hover:bg-accent-hover text-white border-transparent shadow-md'
             }`}
-            title="Kopiert die Vorlesung als echte .md-Datei. Beim Einfügen in ChatGPT/Gemini (Strg+V) wird sie direkt als Dokument-Anhang hochgeladen."
+            title={t('preview.copy_file_tooltip')}
           >
             {copied ? (
               <>
-                <Check className="w-3.5 h-3.5" /> Als Datei kopiert!
+                <Check className="w-3.5 h-3.5" /> {t('common.copied')}
               </>
             ) : (
               <>
-                <Copy className="w-3.5 h-3.5" /> Als Datei kopieren
+                <Copy className="w-3.5 h-3.5" /> {t('preview.copy_file')}
               </>
             )}
           </button>
@@ -350,9 +361,13 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
           {onDelete && (
             <button
               type="button"
-              onClick={onDelete}
+              onClick={() => {
+                if (window.confirm(t('preview.delete_confirm'))) {
+                  onDelete();
+                }
+              }}
               className="p-1.5 bg-surface hover:bg-rose-500/10 border border-border hover:border-rose-500/30 text-slate-400 hover:text-rose-400 rounded-xl text-xs font-semibold flex items-center justify-center transition cursor-pointer"
-              title="Diesen Eintrag aus dem Verlauf löschen"
+              title={t('preview.delete_entry')}
             >
               <Trash2 className="w-3.5 h-3.5" />
             </button>
@@ -372,7 +387,7 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
             <div className="flex items-center justify-between border-b border-border/60 pb-2 shrink-0">
               <div className="flex items-center space-x-2">
                 <span className="text-xs font-bold text-slate-200">
-                  Folie {currentSlideIndex + 1} von {slides.length}
+                  {t('preview.slide_counter', { current: currentSlideIndex + 1, total: slides.length })}
                 </span>
                 <span className="text-[10px] text-slate-400 truncate max-w-[140px]">
                   {currentSlide.title}
@@ -385,8 +400,8 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
                   type="button"
                   onClick={() => setCurrentSlideIndex((prev) => Math.max(0, prev - 1))}
                   disabled={currentSlideIndex === 0}
-                  className="p-1.5 bg-surface hover:bg-surface-hover border border-border text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition"
-                  title="Vorherige Folie (Pfeiltaste links)"
+                  className="p-1.5 bg-surface hover:bg-surface-hover border border-border text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition cursor-pointer"
+                  title="←"
                 >
                   <ChevronLeft className="w-3.5 h-3.5" />
                 </button>
@@ -394,8 +409,8 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
                   type="button"
                   onClick={() => setCurrentSlideIndex((prev) => Math.min(slides.length - 1, prev + 1))}
                   disabled={currentSlideIndex === slides.length - 1}
-                  className="p-1.5 bg-surface hover:bg-surface-hover border border-border text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition"
-                  title="Nächste Folie (Pfeiltaste rechts)"
+                  className="p-1.5 bg-surface hover:bg-surface-hover border border-border text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition cursor-pointer"
+                  title="→"
                 >
                   <ChevronRight className="w-3.5 h-3.5" />
                 </button>
@@ -407,7 +422,7 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
               {isLoadingSlideImage && (
                 <div className="absolute inset-0 bg-background/60 backdrop-blur-xs flex flex-col items-center justify-center space-y-2 text-slate-400 z-10">
                   <Loader2 className="w-6 h-6 animate-spin text-accent" />
-                  <span className="text-xs">Rendere Folie...</span>
+                  <span className="text-xs">{t('preview.pdf_loading', { page: currentSlideIndex + 1 })}</span>
                 </div>
               )}
 
@@ -421,7 +436,7 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
               {!isPdfJsRendered && currentSlideImage && (
                 <img
                   src={currentSlideImage}
-                  alt={`Folie ${currentSlideIndex + 1}`}
+                  alt={`Slide ${currentSlideIndex + 1}`}
                   className="max-w-full max-h-full object-contain rounded"
                 />
               )}
@@ -430,14 +445,14 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
                 <div className="text-center p-6 text-slate-500 space-y-3">
                   <FileText className="w-10 h-10 mx-auto opacity-40 text-accent" />
                   <div>
-                    <p className="text-xs font-semibold text-slate-300">Folie {currentSlideIndex + 1}: {currentSlide.title}</p>
-                    <p className="text-[11px] text-slate-400 mt-1">Keine Original-PDF-Datei verknüpft</p>
+                    <p className="text-xs font-semibold text-slate-300">
+                      {t('preview.slide_counter', { current: currentSlideIndex + 1, total: slides.length })}: {currentSlide.title}
+                    </p>
                   </div>
                   <button
                     type="button"
                     onClick={handleSelectPdfManually}
                     className="px-3 py-1.5 bg-surface hover:bg-surface-hover border border-border text-slate-200 rounded-xl text-xs font-semibold transition inline-flex items-center gap-1.5 cursor-pointer shadow-sm"
-                    title="Wähle die zugehörige PDF-Datei aus, um die Original-Folien synchron anzuzeigen"
                   >
                     <FileText className="w-3.5 h-3.5 text-accent" /> PDF verknüpfen
                   </button>
@@ -447,13 +462,15 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
               {activePdfPath && !isPdfJsRendered && !currentSlideImage && !isLoadingSlideImage && (
                 <div className="text-center p-6 text-slate-500 space-y-2">
                   <FileText className="w-8 h-8 mx-auto opacity-40 text-rose-400" />
-                  <p className="text-xs text-rose-300">Folie konnte nicht gerendert werden</p>
+                  <p className="text-xs text-rose-300">
+                    {t('preview.pdf_no_page', { page: currentSlideIndex + 1 })}
+                  </p>
                   <button
                     type="button"
                     onClick={handleSelectPdfManually}
-                    className="px-2.5 py-1 bg-surface border border-border text-slate-300 rounded-lg text-xs"
+                    className="px-2.5 py-1 bg-surface border border-border text-slate-300 rounded-lg text-xs cursor-pointer"
                   >
-                    Andere PDF wählen
+                    PDF wählen
                   </button>
                 </div>
               )}
@@ -463,16 +480,16 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
           {/* Right Column: Synchronized Markdown Text */}
           <div className="flex flex-col bg-background/80 p-4 rounded-xl border border-border/50 min-h-0 space-y-2">
             <div className="flex items-center justify-between border-b border-border/60 pb-2 shrink-0">
-              <span className="text-xs font-bold text-slate-200">LaTeX & Markdown Notizen</span>
+              <span className="text-xs font-bold text-slate-200">{t('preview.notes_title')}</span>
               <button
                 type="button"
                 onClick={async () => {
                   await navigator.clipboard.writeText(currentSlide.content);
                 }}
-                className="text-[10px] font-semibold text-accent hover:text-accent-hover transition flex items-center gap-1"
-                title="Nur diese Folie kopieren"
+                className="text-[10px] font-semibold text-accent hover:text-accent-hover transition flex items-center gap-1 cursor-pointer"
+                title={t('preview.copy_slide')}
               >
-                <Copy className="w-3 h-3" /> Folie kopieren
+                <Copy className="w-3 h-3" /> {t('preview.copy_slide')}
               </button>
             </div>
 
@@ -485,3 +502,4 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
     </div>
   );
 };
+export default MarkdownPreview;

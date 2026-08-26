@@ -1,56 +1,42 @@
 import React, { useState, useEffect } from 'react';
-import { KeyRound, ExternalLink, CheckCircle2, AlertCircle, Loader2, X, Trash2, Database, Sparkles } from 'lucide-react';
+import { KeyRound, ExternalLink, CheckCircle2, AlertCircle, Loader2, X, Trash2, Database, Sparkles, Globe } from 'lucide-react';
 import { open as openUrl } from '@tauri-apps/plugin-shell';
 import { invoke } from '@tauri-apps/api/core';
+import { useTranslation } from 'react-i18next';
 
 export type ProviderType = 'openai' | 'google' | 'anthropic' | 'mistral';
 
 interface ProviderConfig {
   id: ProviderType;
   name: string;
-  badge: string;
   keyPlaceholder: string;
   portalUrl: string;
-  portalLabel: string;
-  description: string;
 }
 
 const PROVIDERS: ProviderConfig[] = [
   {
     id: 'openai',
     name: 'OpenAI',
-    badge: 'GPT-4o & Mini',
     keyPlaceholder: 'sk-proj-...',
     portalUrl: 'https://platform.openai.com/api-keys',
-    portalLabel: 'OpenAI API-Key erstellen',
-    description: 'Bewährter Standard mit automatischem Hybrid-Routing.',
   },
   {
     id: 'google',
     name: 'Google Gemini',
-    badge: 'Gemini 2.0 Flash & 1.5 Pro',
     keyPlaceholder: 'AIzaSy...',
     portalUrl: 'https://aistudio.google.com/app/apikey',
-    portalLabel: 'Google AI Studio Key erstellen',
-    description: 'Extrem schnelles Gemini 2.0 Flash & Gemini 1.5 Pro.',
   },
   {
     id: 'anthropic',
     name: 'Anthropic Claude',
-    badge: 'Claude 3.7 Sonnet & 3.5 Haiku',
     keyPlaceholder: 'sk-ant-api03-...',
     portalUrl: 'https://console.anthropic.com/settings/keys',
-    portalLabel: 'Anthropic Console Key erstellen',
-    description: 'Höchste Präzision für komplexe mathematische Formeln und LaTeX.',
   },
   {
     id: 'mistral',
     name: 'Mistral AI',
-    badge: '🆓 Kostenlos (Free-Tier) • OCR',
     keyPlaceholder: 'mis_...',
     portalUrl: 'https://console.mistral.ai/api-keys/',
-    portalLabel: 'Kostenlosen Mistral API-Key erstellen',
-    description: 'Empfohlen für Studenten: Kostenloses Free-Tier mit spezialisiertem Document OCR & Pixtral 12B.',
   },
 ];
 
@@ -71,6 +57,7 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
   onSaveKey,
   onClose,
 }) => {
+  const { t, i18n } = useTranslation();
   const [selectedTab, setSelectedTab] = useState<ProviderType>(activeProvider);
   const [currentInput, setCurrentInput] = useState<string>('');
   const [testing, setTesting] = useState(false);
@@ -98,59 +85,42 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
     if (isOpen) {
       fetchCacheStats();
     }
-  }, [selectedTab, isOpen]);
+  }, [selectedTab, providerKeys, isOpen]);
 
   if (!isOpen) return null;
 
   const currentProviderInfo = PROVIDERS.find((p) => p.id === selectedTab)!;
-  const hasAnyKey = Object.values(providerKeys).some((k) => k && k.trim().length > 0);
 
   const handleTestKey = async () => {
-    if (!currentInput.trim()) {
-      setTestResult({ success: false, message: 'Bitte gib zuerst einen API-Key ein.' });
-      return;
-    }
+    if (!currentInput.trim()) return;
 
     setTesting(true);
     setTestResult(null);
 
     try {
-      await invoke<boolean>('validate_api_key_native', {
-        provider: selectedTab,
-        key: currentInput.trim(),
+      const result = await invoke<{ success: boolean; message: string; model_used: string }>(
+        'test_api_key_native',
+        {
+          provider: selectedTab,
+          apiKey: currentInput.trim(),
+        }
+      );
+
+      setTestResult({
+        success: result.success,
+        message: result.message,
       });
-      setTestResult({ success: true, message: `${currentProviderInfo.name} Key ist gültig!` });
-      onSaveKey(selectedTab, currentInput.trim());
-    } catch (err: any) {
+
+      if (result.success) {
+        onSaveKey(selectedTab, currentInput.trim());
+      }
+    } catch (e: any) {
       setTestResult({
         success: false,
-        message: typeof err === 'string' ? err : 'Ungültiger API-Key oder keine Verbindung.',
+        message: `Fehler: ${e?.toString() || 'Unbekannter Fehler'}`,
       });
     } finally {
       setTesting(false);
-    }
-  };
-
-  const handleClearSlideCache = async () => {
-    setCacheClearing(true);
-    try {
-      const deletedCount = await invoke<number>('clear_slide_cache_native');
-      setCacheStats({ count: 0, size_kb: 0 });
-      alert(`Folien-Cache erfolgreich geleert (${deletedCount} Folien gelöscht).`);
-    } catch (e) {
-      alert(`Fehler beim Leeren des Caches: ${e}`);
-    } finally {
-      setCacheClearing(false);
-    }
-  };
-
-  const handleOpenPortal = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    try {
-      await openUrl(currentProviderInfo.portalUrl);
-    } catch {
-      window.open(currentProviderInfo.portalUrl, '_blank', 'noopener,noreferrer');
     }
   };
 
@@ -162,16 +132,41 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
     onClose();
   };
 
+  const handleOpenPortal = async () => {
+    try {
+      await openUrl(currentProviderInfo.portalUrl);
+    } catch (e) {
+      console.error('Konnte URL nicht öffnen:', e);
+    }
+  };
+
+  const handleClearSlideCache = async () => {
+    if (!window.confirm(t('settings.cache_clear_confirm'))) {
+      return;
+    }
+
+    setCacheClearing(true);
+    try {
+      await invoke('clear_slide_cache_native');
+      await fetchCacheStats();
+    } catch (e) {
+      console.error('Fehler beim Leeren des Caches:', e);
+    } finally {
+      setCacheClearing(false);
+    }
+  };
+
+  const hasAnyKey = Object.values(providerKeys).some((k) => Boolean(k && k.trim()));
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
-      <div className="glass-card w-full max-w-lg rounded-2xl p-6 shadow-2xl space-y-6 relative border border-border">
-        {/* Close Button */}
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+      <div className="glass-card w-full max-w-lg rounded-2xl p-6 border border-border shadow-2xl space-y-5 relative">
+        {/* Close button */}
         {hasAnyKey && (
           <button
             type="button"
             onClick={onClose}
-            className="absolute top-5 right-5 text-slate-400 hover:text-slate-100 transition p-1 rounded-lg hover:bg-surface-hover cursor-pointer"
-            title="Schließen"
+            className="absolute top-5 right-5 text-slate-400 hover:text-slate-200 transition p-1 hover:bg-surface rounded-lg cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -184,9 +179,41 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
           </div>
           <div>
             <h2 className="text-xl font-bold text-slate-100 flex items-center gap-2">
-              KI-Provider & Einstellungen <Sparkles className="w-4 h-4 text-amber-400" />
+              {t('settings.title')} <Sparkles className="w-4 h-4 text-amber-400" />
             </h2>
-            <p className="text-xs text-slate-400">Verwalte Provider, API-Keys und den Folien-Cache</p>
+            <p className="text-xs text-slate-400">{t('settings.subtitle')}</p>
+          </div>
+        </div>
+
+        {/* Language Selector */}
+        <div className="p-3 bg-surface/50 border border-border/80 rounded-xl flex items-center justify-between">
+          <div className="flex items-center space-x-2.5">
+            <Globe className="w-4 h-4 text-accent" />
+            <span className="text-xs font-semibold text-slate-200">{t('settings.language_label')}</span>
+          </div>
+          <div className="flex bg-background p-1 rounded-lg border border-border">
+            <button
+              type="button"
+              onClick={() => i18n.changeLanguage('de')}
+              className={`px-3 py-1 text-xs font-semibold rounded-md transition cursor-pointer ${
+                i18n.language.startsWith('de')
+                  ? 'bg-accent text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              🇩🇪 {t('settings.lang_de')}
+            </button>
+            <button
+              type="button"
+              onClick={() => i18n.changeLanguage('en')}
+              className={`px-3 py-1 text-xs font-semibold rounded-md transition cursor-pointer ${
+                i18n.language.startsWith('en')
+                  ? 'bg-accent text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              🇬🇧 {t('settings.lang_en')}
+            </button>
           </div>
         </div>
 
@@ -232,8 +259,8 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
           <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-start space-x-2.5">
             <Sparkles className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
             <div className="text-[11px] text-emerald-200/90 leading-relaxed">
-              <span className="font-semibold text-emerald-300 block mb-0.5">💡 Kostenloser Einstieg für Studenten:</span>
-              Mistral AI bietet ein <strong>kostenloses Free-Tier</strong>. Du kannst direkt bei <code className="text-emerald-300 bg-emerald-950/60 px-1 py-0.5 rounded">console.mistral.ai</code> einen Key erstellen und Vorlesungen ohne Guthaben oder Zahlungsdaten konvertieren.
+              <span className="font-semibold text-emerald-300 block mb-0.5">{t('settings.mistral_tip_title')}</span>
+              <span dangerouslySetInnerHTML={{ __html: t('settings.mistral_tip_body') }} />
             </div>
           </div>
         )}
@@ -243,17 +270,19 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
           <div className="flex justify-between items-center">
             <span className="text-xs font-bold text-slate-200">{currentProviderInfo.name}</span>
             <span className="text-[10px] font-semibold px-2 py-0.5 bg-accent/20 text-accent rounded-md">
-              {currentProviderInfo.badge}
+              {t(`settings.providers.${currentProviderInfo.id}.badge`)}
             </span>
           </div>
-          <p className="text-[11px] text-slate-400">{currentProviderInfo.description}</p>
+          <p className="text-[11px] text-slate-400">
+            {t(`settings.providers.${currentProviderInfo.id}.description`)}
+          </p>
         </div>
 
         {/* Key Input Field */}
         <div className="space-y-3">
           <div>
             <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
-              {currentProviderInfo.name} API-Key
+              {t('settings.key_input_label', { provider: currentProviderInfo.name })}
             </label>
             <input
               type="password"
@@ -273,7 +302,7 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
               onClick={handleOpenPortal}
               className="inline-flex items-center text-accent hover:underline gap-1 transition cursor-pointer font-medium bg-transparent border-0 p-0"
             >
-              {currentProviderInfo.portalLabel} <ExternalLink className="w-3.5 h-3.5" />
+              {t(`settings.providers.${currentProviderInfo.id}.portalLabel`)} <ExternalLink className="w-3.5 h-3.5" />
             </button>
           </div>
 
@@ -300,9 +329,12 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
           <div className="flex items-center space-x-2.5">
             <Database className="w-4 h-4 text-slate-400" />
             <div>
-              <span className="text-xs font-semibold text-slate-200 block">Folien-Cache (6 Monate TTL)</span>
+              <span className="text-xs font-semibold text-slate-200 block">{t('settings.cache_title')}</span>
               <span className="text-[11px] text-slate-400">
-                {cacheStats.count} Folien gespeichert (~{cacheStats.size_kb} KB)
+                {t(cacheStats.count === 1 ? 'settings.cache_stats' : 'settings.cache_stats_plural', {
+                  count: cacheStats.count,
+                  size: cacheStats.size_kb,
+                })}
               </span>
             </div>
           </div>
@@ -313,7 +345,7 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
             disabled={cacheClearing || cacheStats.count === 0}
             className="px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 disabled:opacity-40 cursor-pointer"
           >
-            <Trash2 className="w-3.5 h-3.5" /> Folien Cache leeren
+            <Trash2 className="w-3.5 h-3.5" /> {cacheClearing ? t('settings.cache_clearing') : t('settings.cache_clear')}
           </button>
         </div>
 
@@ -325,7 +357,7 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
             disabled={testing || !currentInput.trim()}
             className="flex-1 py-3 px-4 bg-surface hover:bg-surface-hover border border-border text-slate-200 rounded-xl font-medium text-sm transition flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
           >
-            {testing ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Key testen'}
+            {testing ? <Loader2 className="w-4 h-4 animate-spin" /> : t('settings.test_key')}
           </button>
 
           <button
@@ -334,10 +366,11 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
             disabled={!currentInput.trim() && !hasAnyKey}
             className="flex-1 py-3 px-4 bg-accent hover:bg-accent-hover text-white rounded-xl font-medium text-sm transition flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer shadow-lg shadow-accent/20"
           >
-            Als aktiv festlegen & Weiter
+            {t('settings.save_key')}
           </button>
         </div>
       </div>
     </div>
   );
 };
+export default ApiKeyModal;

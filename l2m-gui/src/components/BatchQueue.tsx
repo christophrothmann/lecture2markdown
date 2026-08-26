@@ -10,9 +10,9 @@ import {
   AlertCircle,
   Clock,
   SlidersHorizontal,
-  RefreshCw,
   FolderDown,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 export interface BatchQueueItem {
   id: string;
@@ -52,6 +52,7 @@ export const BatchQueue: React.FC<BatchQueueProps> = ({
   onStartBatch,
   onCancelBatch,
 }) => {
+  const { t } = useTranslation();
   const batchStartTimeRef = React.useRef<number>(Date.now());
 
   React.useEffect(() => {
@@ -84,15 +85,15 @@ export const BatchQueue: React.FC<BatchQueueProps> = ({
   const estSeconds = Math.round(remainingSlides * avgPerSlide);
 
   const formatBatchEta = (seconds: number): string => {
-    if (completedSlides === 0) return 'Berechne Restzeit...';
-    if (seconds <= 0) return 'Gleich fertig...';
-    if (seconds < 60) return `~${seconds}s verbleibend`;
+    if (completedSlides === 0) return '...';
+    if (seconds <= 0) return '0s';
+    if (seconds < 60) return `${seconds}s`;
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
-    return secs > 0 ? `~${mins}m ${secs}s verbleibend` : `~${mins}m verbleibend`;
+    return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
   };
 
-  const batchEtaText = formatBatchEta(estSeconds);
+  const etaFormatted = formatBatchEta(estSeconds);
 
   return (
     <div className="glass-card rounded-2xl p-6 space-y-6">
@@ -104,13 +105,13 @@ export const BatchQueue: React.FC<BatchQueueProps> = ({
           </div>
           <div>
             <h3 className="text-base font-bold text-slate-100 flex items-center gap-2">
-              Batch-Warteschlange
+              {t('batch.title')}
               <span className="px-2 py-0.5 bg-surface text-slate-300 rounded-full text-xs font-mono font-semibold border border-border">
-                {items.length} {items.length === 1 ? 'Dokument' : 'Dokumente'}
+                {t(items.length === 1 ? 'batch.subtitle' : 'batch.subtitle_plural', { count: items.length })}
               </span>
             </h3>
             <p className="text-xs text-slate-400">
-              Automatische Abarbeitung via <strong className="text-slate-200">{activeProviderName}</strong> • {totalSlides} Folien gesamt
+              {activeProviderName} • {totalSlides} Folien
             </p>
           </div>
         </div>
@@ -120,14 +121,14 @@ export const BatchQueue: React.FC<BatchQueueProps> = ({
             <button
               onClick={onAddMoreFiles}
               className="px-3 py-1.5 bg-surface hover:bg-surface-hover border border-border text-slate-300 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
-              title="Weitere PDFs hinzufügen"
+              title={t('batch.add_more')}
             >
-              <Plus className="w-3.5 h-3.5 text-accent" /> Mehr hinzufügen
+              <Plus className="w-3.5 h-3.5 text-accent" /> {t('batch.add_more')}
             </button>
             <button
               onClick={onClearQueue}
               className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-xl transition cursor-pointer"
-              title="Warteschlange leeren"
+              title={t('batch.clear_queue')}
             >
               <Trash2 className="w-4 h-4" />
             </button>
@@ -142,11 +143,12 @@ export const BatchQueue: React.FC<BatchQueueProps> = ({
             <span className="text-slate-200 flex items-center gap-2">
               <Loader2 className="w-4 h-4 animate-spin text-accent" />
               <span>
-                Dokument {completedItems + 1} von {items.length}
+                {t('batch.eta_batch', {
+                  current: completedItems + 1,
+                  total: items.length,
+                  eta: etaFormatted,
+                })}
                 {processingItem && <span className="text-slate-400 font-normal"> ({processingItem.fileName})</span>}
-              </span>
-              <span className="text-slate-400 font-normal flex items-center gap-1 text-[11px]">
-                • <Clock className="w-3 h-3 text-accent" /> {batchEtaText}
               </span>
             </span>
             <span className="font-mono text-accent font-bold">
@@ -165,7 +167,7 @@ export const BatchQueue: React.FC<BatchQueueProps> = ({
 
       {/* Queue Items List */}
       <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
-        {items.map((item, index) => {
+        {items.map((item) => {
           const effectivePages = item.rangeMode === 'custom' ? item.endPage - item.startPage + 1 : item.totalPages;
 
           return (
@@ -209,7 +211,7 @@ export const BatchQueue: React.FC<BatchQueueProps> = ({
                   {item.status === 'pending' && (
                     <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-surface border border-border text-slate-400 rounded-lg text-[11px] font-medium">
                       <Clock className="w-3 h-3" />
-                      <span>Wartend</span>
+                      <span>{t('batch.status_pending')}</span>
                     </span>
                   )}
 
@@ -225,14 +227,14 @@ export const BatchQueue: React.FC<BatchQueueProps> = ({
                   {item.status === 'completed' && (
                     <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 rounded-lg text-[11px] font-bold">
                       <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>Gespeichert</span>
+                      <span>{t('batch.status_completed')}</span>
                     </span>
                   )}
 
                   {item.status === 'error' && (
                     <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-rose-500/10 text-rose-400 border border-rose-500/30 rounded-lg text-[11px] font-bold">
                       <AlertCircle className="w-3.5 h-3.5" />
-                      <span>Fehler</span>
+                      <span>{t('batch.status_error')}</span>
                     </span>
                   )}
 
@@ -240,7 +242,7 @@ export const BatchQueue: React.FC<BatchQueueProps> = ({
                     <button
                       onClick={() => onRemoveItem(item.id)}
                       className="p-1.5 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition cursor-pointer"
-                      title="Aus Warteschlange entfernen"
+                      title={t('common.delete')}
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -258,17 +260,17 @@ export const BatchQueue: React.FC<BatchQueueProps> = ({
                     </span>
                     <button
                       onClick={() => onUpdateItemRange(item.id, 1, item.totalPages, 'all')}
-                      className={`px-2 py-0.5 rounded transition ${
+                      className={`px-2 py-0.5 rounded transition cursor-pointer ${
                         item.rangeMode === 'all'
                           ? 'bg-accent text-white font-bold'
                           : 'bg-surface text-slate-400 hover:text-slate-200 border border-border'
                       }`}
                     >
-                      Alle
+                      {t('batch.range_all')}
                     </button>
                     <button
                       onClick={() => onUpdateItemRange(item.id, item.startPage, item.endPage, 'custom')}
-                      className={`px-2 py-0.5 rounded transition ${
+                      className={`px-2 py-0.5 rounded transition cursor-pointer ${
                         item.rangeMode === 'custom'
                           ? 'bg-accent text-white font-bold'
                           : 'bg-surface text-slate-400 hover:text-slate-200 border border-border'
@@ -326,7 +328,7 @@ export const BatchQueue: React.FC<BatchQueueProps> = ({
               onClick={onCancelBatch}
               className="px-5 py-2.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-xl text-xs font-bold transition cursor-pointer"
             >
-              Batch abbrechen
+              {t('batch.cancel_batch')}
             </button>
           ) : (
             <button
@@ -335,7 +337,7 @@ export const BatchQueue: React.FC<BatchQueueProps> = ({
               className="px-6 py-3 bg-accent hover:bg-accent-hover disabled:opacity-50 text-white rounded-xl text-xs font-bold flex items-center gap-2 transition cursor-pointer shadow-lg shadow-accent/20"
             >
               <Play className="w-4 h-4 fill-white" />
-              Batch starten ({items.length} {items.length === 1 ? 'Datei' : 'Dateien'}, {totalSlides} Folien)
+              {t('batch.start_batch', { count: items.length })}
             </button>
           )}
         </div>

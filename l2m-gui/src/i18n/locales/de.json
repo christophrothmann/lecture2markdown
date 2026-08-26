@@ -1,0 +1,143 @@
+{
+  "common": {
+    "cancel": "Abbrechen",
+    "save": "Speichern",
+    "delete": "Löschen",
+    "clear": "Leeren",
+    "close": "Schließen",
+    "loading": "Lade...",
+    "done": "Fertig!",
+    "copy": "Kopieren",
+    "copied": "Kopiert!"
+  },
+  "header": {
+    "quick_drop": "Quick-Drop",
+    "quick_drop_title": "Quick-Drop Spotlight öffnen (⌘ + ⇧ + L)",
+    "provider_title": "Provider wechseln / Key einrichten",
+    "settings_title": "API-Key Einstellungen",
+    "update_available": "Update verfügbar",
+    "loading_update": "Lade Update...",
+    "update_tooltip": "Neues Update herunterladen und App neustarten",
+    "update_error": "Update konnte nicht installiert werden:\n{{error}}"
+  },
+  "dropzone": {
+    "title": "Ziehe deine Vorlesungs-PDF(s) hierher",
+    "subtitle": "Unterstützt einzelne PDFs oder mehrere Dokumente gleichzeitig für Batch-Verarbeitung",
+    "browse_filter": "PDF Vorlesungen",
+    "batch_queue": "Multi-File Batch Queue",
+    "smart_routing": "Smart Hybrid-Routing",
+    "encrypted": "End-to-End verschlüsselt"
+  },
+  "batch": {
+    "title": "Multi-File Batch Queue",
+    "subtitle": "{{count}} Dokument in der Warteschlange",
+    "subtitle_plural": "{{count}} Dokumente in der Warteschlange",
+    "status_pending": "Wartend",
+    "status_running": "In Arbeit...",
+    "status_completed": "Gespeichert",
+    "status_error": "Fehler",
+    "range_all": "Alle Folien",
+    "range_custom": "Bereich: Folien {{range}} ({{count}} von {{total}})",
+    "range_savings": "spart ~{{percent}}% Kosten & Zeit",
+    "range_edit_title": "Seitenbereich bearbeiten (z.B. 10-25 oder 1,3,5-8)",
+    "add_more": "Dokumente hinzufügen",
+    "clear_queue": "Queue leeren",
+    "start_batch": "Batch-Konvertierung starten ({{count}})",
+    "cancel_batch": "Abbrechen",
+    "eta_batch": "Dokument {{current}} von {{total}} • ⏱️ ~{{eta}} verbleibend",
+    "eta_slide": "Folie {{current}} von {{total}} • ⏱️ ~{{eta}} verbleibend"
+  },
+  "preview": {
+    "copy_file": "Als Datei kopieren",
+    "copy_file_tooltip": "Als echte Datei kopieren – sofortiges Einfügen (⌘+V) in ChatGPT & Gemini",
+    "copy_file_success": "Markdown als Datei im Clipboard! Direkt mit ⌘+V in ChatGPT oder Gemini einfügen.",
+    "save_markdown": "Markdown speichern",
+    "save_success": "Datei erfolgreich gespeichert unter:\n{{path}}",
+    "save_error": "Fehler beim Speichern:\n{{error}}",
+    "anki_export": "Anki Deck",
+    "anki_export_tooltip": "Lernkarten (Definitionen, LaTeX-Formeln, Zusammenfassungen) als Anki-Deck exportieren",
+    "anki_success": "Anki-Deck erfolgreich gespeichert! Du kannst die .txt-Datei direkt in Anki importieren.",
+    "new_conversion": "Neue Vorlesung",
+    "delete_entry": "Eintrag löschen",
+    "delete_confirm": "Möchtest du diesen Eintrag wirklich aus dem Verlauf löschen?",
+    "drag_hint": "Datei anfassen und direkt in ChatGPT, Gemini oder Desktop ziehen",
+    "tab_markdown": "Markdown",
+    "tab_split": "Split-View",
+    "slide_counter": "Folie {{current}} von {{total}}",
+    "copy_slide": "Folie kopieren",
+    "notes_title": "LaTeX & Markdown Notizen",
+    "pdf_loading": "Rendere Folie {{page}}...",
+    "pdf_no_page": "Folie {{page}} konnte nicht geladen werden"
+  },
+  "history": {
+    "title": "Verlauf",
+    "count": "{{count}} Vorlesung",
+    "count_plural": "{{count}} Vorlesungen",
+    "empty_title": "Noch keine Vorlesungen konvertiert",
+    "empty_subtitle": "Ziehe ein PDF in das Fenster, um zu starten.",
+    "clear_history": "Verlauf leeren",
+    "clear_confirm": "Möchtest du den gesamten Verlauf wirklich unwiderruflich leeren?",
+    "delete_item": "Aus Verlauf löschen",
+    "copy_item": "Markdown in Zwischenablage kopieren",
+    "status_in_progress": "Wird konvertiert...",
+    "cached_badge": "0.00 € (Cache)"
+  },
+  "settings": {
+    "title": "KI-Provider & Einstellungen",
+    "subtitle": "Verwalte Provider, API-Keys und den Folien-Cache",
+    "language_label": "Sprache / Language",
+    "lang_de": "Deutsch",
+    "lang_en": "English",
+    "mistral_tip_title": "💡 Kostenloser Einstieg für Studenten:",
+    "mistral_tip_body": "Mistral AI bietet ein <strong>kostenloses Free-Tier</strong>. Du kannst direkt bei <code className=\"text-emerald-300 bg-emerald-950/60 px-1 py-0.5 rounded\">console.mistral.ai</code> einen Key erstellen und Vorlesungen ohne Guthaben oder Zahlungsdaten konvertieren.",
+    "key_input_label": "{{provider}} API-Key",
+    "test_key": "Key testen",
+    "testing_key": "Prüfe...",
+    "save_key": "Schlüssel speichern",
+    "saved_badge": "Gespeichert",
+    "delete_key": "Schlüssel löschen",
+    "cache_title": "Folien-Cache (0 ms & 0.00 € Wiederholungen)",
+    "cache_stats": "{{count}} Folie gecacht ({{size}} KB)",
+    "cache_stats_plural": "{{count}} Folien gecacht ({{size}} KB)",
+    "cache_clear": "Cache leeren",
+    "cache_clearing": "Leere...",
+    "cache_clear_confirm": "Möchtest du alle zwischengespeicherten Folienbilder und Hashes wirklich löschen?",
+    "providers": {
+      "openai": {
+        "badge": "GPT-4o & Mini",
+        "description": "Bewährter Standard mit automatischem Hybrid-Routing.",
+        "portalLabel": "OpenAI API-Key erstellen"
+      },
+      "google": {
+        "badge": "Gemini 2.0 Flash & 1.5 Pro",
+        "description": "Extrem schnelles Gemini 2.0 Flash & Gemini 1.5 Pro.",
+        "portalLabel": "Google AI Studio Key erstellen"
+      },
+      "anthropic": {
+        "badge": "Claude 3.7 Sonnet & 3.5 Haiku",
+        "description": "Höchste Präzision für komplexe mathematische Formeln und LaTeX.",
+        "portalLabel": "Anthropic Console Key erstellen"
+      },
+      "mistral": {
+        "badge": "🆓 Kostenlos (Free-Tier) • OCR",
+        "description": "Empfohlen für Studenten: Kostenloses Free-Tier mit spezialisiertem Document OCR & Pixtral 12B.",
+        "portalLabel": "Kostenlosen Mistral API-Key erstellen"
+      }
+    }
+  },
+  "quickdrop": {
+    "title": "Quick-Drop Spotlight",
+    "subtitle": "Vorlesung einwerfen für sofortigen Clipboard-Upload",
+    "drop_prompt": "PDF hier ablegen",
+    "browse_prompt": "oder klicken zum Auswählen",
+    "converting": "Konvertiere Vorlesung...",
+    "converting_slide": "Folie {{current}} von {{total}} ({{percent}}%)",
+    "success_title": "Erfolgreich konvertiert!",
+    "success_subtitle": "Markdown wurde gespeichert und als Datei in die Zwischenablage kopiert.",
+    "copied_badge": "In Zwischenablage kopiert!",
+    "paste_hint": "Drücke ⌘ + V in ChatGPT, Claude oder Gemini",
+    "another_pdf": "Weitere Vorlesung konvertieren",
+    "key_missing_title": "Kein API-Key für {{provider}} hinterlegt.",
+    "key_missing_button": "API-Key in Einstellungen einrichten"
+  }
+}

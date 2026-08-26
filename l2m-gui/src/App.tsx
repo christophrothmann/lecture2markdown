@@ -5,6 +5,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { check } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
+import { useTranslation } from 'react-i18next';
 import type { ProviderType } from './components/ApiKeyModal';
 import { Dropzone, type SelectedFileInfo } from './components/Dropzone';
 import { BatchQueue, type BatchQueueItem } from './components/BatchQueue';
@@ -48,6 +49,7 @@ function deduplicateHistory(items: any[]): HistoryItem[] {
 }
 
 export function App() {
+  const { t } = useTranslation();
   const [activeProvider, setActiveProvider] = useState<ProviderType>(() => {
     return (localStorage.getItem('l2m_active_provider') as ProviderType) || 'openai';
   });
@@ -515,10 +517,10 @@ export function App() {
               onClick={handleApplyUpdate}
               disabled={isUpdating}
               className="flex items-center space-x-1.5 px-3 py-1.5 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 rounded-xl text-xs font-semibold transition cursor-pointer shadow-sm"
-              title="Neues Update herunterladen und App neustarten"
+              title={t('header.update_tooltip')}
             >
               <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-              <span>{isUpdating ? 'Lade Update...' : 'Update verfügbar'}</span>
+              <span>{isUpdating ? t('header.loading_update') : t('header.update_available')}</span>
             </button>
           )}
 
@@ -526,17 +528,17 @@ export function App() {
           <button
             onClick={() => setIsQuickDropOpen(true)}
             className="flex items-center space-x-1.5 px-3 py-1.5 bg-surface hover:bg-surface-hover border border-border rounded-xl text-xs font-semibold transition cursor-pointer text-slate-200"
-            title="Quick-Drop Spotlight öffnen (⌘ + ⇧ + L)"
+            title={t('header.quick_drop_title')}
           >
             <Zap className="w-3.5 h-3.5 text-accent" />
-            <span className="hidden sm:inline">Quick-Drop</span>
+            <span className="hidden sm:inline">{t('header.quick_drop')}</span>
           </button>
 
           {/* Active Provider Selector Badge */}
           <button
             onClick={() => setIsKeyModalOpen(true)}
             className="flex items-center space-x-2 px-3 py-1.5 bg-surface hover:bg-surface-hover border border-border rounded-xl text-xs font-semibold transition cursor-pointer"
-            title="Provider wechseln / Key einrichten"
+            title={t('header.provider_title')}
           >
             <span className="w-2 h-2 rounded-full bg-emerald-400" />
             <span className="text-slate-200">{PROVIDER_NAMES[activeProvider]}</span>
@@ -546,7 +548,7 @@ export function App() {
           <button
             onClick={() => setIsKeyModalOpen(true)}
             className="p-2 bg-surface hover:bg-surface-hover border border-border text-slate-300 rounded-xl transition cursor-pointer"
-            title="API-Key Einstellungen"
+            title={t('header.settings_title')}
           >
             <Settings className="w-4 h-4" />
           </button>
