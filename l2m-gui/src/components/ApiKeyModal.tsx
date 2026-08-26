@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { KeyRound, ExternalLink, CheckCircle2, AlertCircle, Loader2, X, Trash2, Database } from 'lucide-react';
+import { KeyRound, ExternalLink, CheckCircle2, AlertCircle, Loader2, X, Trash2, Database, Sparkles } from 'lucide-react';
 import { open as openUrl } from '@tauri-apps/plugin-shell';
 import { invoke } from '@tauri-apps/api/core';
 
@@ -46,11 +46,11 @@ const PROVIDERS: ProviderConfig[] = [
   {
     id: 'mistral',
     name: 'Mistral AI',
-    badge: 'Mistral OCR & Pixtral',
+    badge: '🆓 Kostenlos (Free-Tier) • OCR',
     keyPlaceholder: 'mis_...',
     portalUrl: 'https://console.mistral.ai/api-keys/',
-    portalLabel: 'Mistral Console Key erstellen',
-    description: 'Spezialisiertes Mistral Document OCR & Pixtral 12B.',
+    portalLabel: 'Kostenlosen Mistral API-Key erstellen',
+    description: 'Empfohlen für Studenten: Kostenloses Free-Tier mit spezialisiertem Document OCR & Pixtral 12B.',
   },
 ];
 
@@ -201,13 +201,20 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
                 key={provider.id}
                 type="button"
                 onClick={() => setSelectedTab(provider.id)}
-                className={`py-2 px-2 rounded-lg text-xs font-semibold flex flex-col items-center gap-1 transition cursor-pointer ${
+                className={`py-2 px-2 rounded-lg text-xs font-semibold flex flex-col items-center gap-1 transition cursor-pointer relative ${
                   isSelected
                     ? 'bg-accent text-white shadow-md'
                     : 'text-slate-400 hover:text-slate-200 hover:bg-surface-hover'
                 }`}
               >
-                <span>{provider.name}</span>
+                <div className="flex items-center gap-1">
+                  <span>{provider.name}</span>
+                  {provider.id === 'mistral' && (
+                    <span className="text-[8px] px-1 py-0.2 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded font-mono font-bold">
+                      FREE
+                    </span>
+                  )}
+                </div>
                 {hasKey && (
                   <span
                     className={`w-1.5 h-1.5 rounded-full ${
@@ -219,6 +226,17 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
             );
           })}
         </div>
+
+        {/* Free-Tier Info Callout for Mistral */}
+        {selectedTab === 'mistral' && (
+          <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-start space-x-2.5">
+            <Sparkles className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+            <div className="text-[11px] text-emerald-200/90 leading-relaxed">
+              <span className="font-semibold text-emerald-300 block mb-0.5">💡 Kostenloser Einstieg für Studenten:</span>
+              Mistral AI bietet ein <strong>kostenloses Free-Tier</strong>. Du kannst direkt bei <code className="text-emerald-300 bg-emerald-950/60 px-1 py-0.5 rounded">console.mistral.ai</code> einen Key erstellen und Vorlesungen ohne Guthaben oder Zahlungsdaten konvertieren.
+            </div>
+          </div>
+        )}
 
         {/* Selected Provider Card */}
         <div className="p-3.5 bg-surface/60 border border-border rounded-xl space-y-1">

@@ -1,16 +1,25 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { BookOpen, Settings, ChevronDown, Sparkles, Zap } from 'lucide-react';
+import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
+import { BookOpen, Settings, ChevronDown, Sparkles, Zap, Loader2 } from 'lucide-react';
 import { save as saveFileDialog, open as openFileDialog } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { check } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
-import { ApiKeyModal, type ProviderType } from './components/ApiKeyModal';
+import type { ProviderType } from './components/ApiKeyModal';
 import { Dropzone, type SelectedFileInfo } from './components/Dropzone';
 import { BatchQueue, type BatchQueueItem } from './components/BatchQueue';
-import { MarkdownPreview } from './components/MarkdownPreview';
 import { HistorySidebar, type HistoryItem } from './components/HistorySidebar';
-import { QuickDropOverlay } from './components/QuickDropOverlay';
+
+// Lazy-loaded heavy components for instant startup (0ms initial bundle delay)
+const MarkdownPreview = lazy(() =>
+  import('./components/MarkdownPreview').then((m) => ({ default: m.MarkdownPreview }))
+);
+const ApiKeyModal = lazy(() =>
+  import('./components/ApiKeyModal').then((m) => ({ default: m.ApiKeyModal }))
+);
+const QuickDropOverlay = lazy(() =>
+  import('./components/QuickDropOverlay').then((m) => ({ default: m.QuickDropOverlay }))
+);
 
 const PROVIDER_NAMES: Record<ProviderType, string> = {
   openai: 'OpenAI (GPT-4o)',
@@ -570,20 +579,29 @@ export function App() {
 
           {/* State 3: Finished Markdown Preview */}
           {markdownResult && previewFileName && (
-            <MarkdownPreview
-              content={markdownResult}
-              fileName={previewFileName}
-              pdfPath={previewPdfPath}
-              onSaveFile={handleSaveFileLocally}
-              onNewConversion={() => {
-                setMarkdownResult(null);
-                setPreviewFileName('');
-                setPreviewPdfPath(null);
-                setSelectedHistoryId(null);
-                setQueue([]);
-              }}
-              onDelete={selectedHistoryId ? handleDeleteCurrentHistoryItem : undefined}
-            />
+            <Suspense
+              fallback={
+                <div className="glass-card rounded-2xl p-12 flex flex-col items-center justify-center space-y-3 min-h-[400px]">
+                  <Loader2 className="w-8 h-8 animate-spin text-accent" />
+                  <span className="text-xs text-slate-400">Lade Dokument-Vorschau...</span>
+                </div>
+              }
+            >
+              <MarkdownPreview
+                content={markdownResult}
+                fileName={previewFileName}
+                pdfPath={previewPdfPath}
+                onSaveFile={handleSaveFileLocally}
+                onNewConversion={() => {
+                  setMarkdownResult(null);
+                  setPreviewFileName('');
+                  setPreviewPdfPath(null);
+                  setSelectedHistoryId(null);
+                  setQueue([]);
+                }}
+                onDelete={selectedHistoryId ? handleDeleteCurrentHistoryItem : undefined}
+              />
+            </Suspense>
           )}
         </div>
 
@@ -604,23 +622,31 @@ export function App() {
       </main>
 
       {/* Multi-Provider API Key Modal */}
-      <ApiKeyModal
-        isOpen={isKeyModalOpen}
-        activeProvider={activeProvider}
-        providerKeys={providerKeys}
-        onSelectProvider={handleSelectProvider}
-        onSaveKey={handleSaveProviderKey}
-        onClose={() => setIsKeyModalOpen(false)}
-      />
+      {isKeyModalOpen && (
+        <Suspense fallback={null}>
+          <ApiKeyModal
+            isOpen={isKeyModalOpen}
+            activeProvider={activeProvider}
+            providerKeys={providerKeys}
+            onSelectProvider={handleSelectProvider}
+            onSaveKey={handleSaveProviderKey}
+            onClose={() => setIsKeyModalOpen(false)}
+          />
+        </Suspense>
+      )}
 
       {/* Spotlight Quick-Drop Overlay */}
-      <QuickDropOverlay
-        isOpen={isQuickDropOpen}
-        onClose={() => setIsQuickDropOpen(false)}
-        activeProvider={activeProvider}
-        apiKey={currentActiveKey}
-        onSuccess={handleQuickDropSuccess}
-      />
+      {isQuickDropOpen && (
+        <Suspense fallback={null}>
+          <QuickDropOverlay
+            isOpen={isQuickDropOpen}
+            onClose={() => setIsQuickDropOpen(false)}
+            activeProvider={activeProvider}
+            apiKey={currentActiveKey}
+            onSuccess={handleQuickDropSuccess}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }

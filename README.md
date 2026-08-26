@@ -37,7 +37,7 @@ https://github.com/user-attachments/assets/5054e824-ed83-4a9d-9486-140a4f571a28
   - **OpenAI**: `gpt-4o` & `gpt-4o-mini` (with adaptive detail tiling)
   - **Google Gemini**: `gemini-pro-latest` & `gemini-flash-latest` (with 15-RPM pacing rate limiter)
   - **Anthropic Claude**: `claude-3-7-sonnet` & `claude-3-5-haiku`
-  - **Mistral AI**: `mistral-ocr-latest` (dedicated document OCR) & `pixtral-12b`
+  - **Mistral AI**: `mistral-ocr-latest` (dedicated document OCR & free-tier friendly) & `pixtral-12b`
 - 🖥️ **Pure-Rust Native Desktop GUI (`l2m-gui`)**: High-performance desktop application built with **Tauri v2**, **Tokio Async**, **React + TypeScript**, and **TailwindCSS** with 1-click provider switching.
 - ⚡ **Content-Addressed Slide Cache (SHA-256)**: Instant 0 ms slide cache with 180-day TTL — re-converting previously seen slides costs 0.00 € and requires 0 API tokens.
 - 🔀 **Smart Hybrid Routing**: Intelligent visual complexity heuristic that automatically routes text-heavy slides to fast mini/flash models and dense figures to high-end vision models.
