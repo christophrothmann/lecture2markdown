@@ -10,7 +10,7 @@ All notable changes to this project will be documented in this file.
   - Added an in-modal student onboarding tip explaining that students can convert lectures completely free of charge using `console.mistral.ai` without needing pre-funded credit or credit cards.
   - Direct 1-click link to create free Mistral API keys.
 - **⚡ Dynamic Code-Splitting & Startup Boost**:
-  - Implemented `React.lazy()` and `<Suspense>` for heavy UI modules: [`MarkdownPreview.tsx`](file:///Users/student/Documents/Webprojekt_Astro/AntigravityProjects/Lecture2Markdown/l2m-gui/src/components/MarkdownPreview.tsx) (KaTeX, Mermaid.js, PDF.js), [`ApiKeyModal.tsx`](file:///Users/student/Documents/Webprojekt_Astro/AntigravityProjects/Lecture2Markdown/l2m-gui/src/components/ApiKeyModal.tsx), and [`QuickDropOverlay.tsx`](file:///Users/student/Documents/Webprojekt_Astro/AntigravityProjects/Lecture2Markdown/l2m-gui/src/components/QuickDropOverlay.tsx).
+  - Implemented `React.lazy()` and `<Suspense>` for heavy UI modules: `MarkdownPreview.tsx` (KaTeX, Mermaid.js, PDF.js), `ApiKeyModal.tsx`, and `QuickDropOverlay.tsx`.
   - Reduced the initial app bundle size from **710 kB down to 183 kB (~74% reduction)**, boosting desktop launch time down to ~4 ms.
 
 ## [1.4.1] - 2026-08-23 "dynamic-version-injection"
