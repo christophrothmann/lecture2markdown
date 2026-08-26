@@ -249,7 +249,8 @@ export const QuickDropOverlay: React.FC<QuickDropOverlayProps> = ({
                 {t('quickdrop.title')}
               </h3>
               <p className="text-[10px] text-slate-400">
-                Kürzel: <kbd className="px-1 py-0.5 bg-surface border border-border rounded text-[9px] font-mono">⌘ + ⇧ + L</kbd>
+                {t('quickdrop.shortcut_label')}{' '}
+                <kbd className="px-1 py-0.5 bg-surface border border-border rounded text-[9px] font-mono">⌘ + ⇧ + L</kbd>
               </p>
             </div>
           </div>
@@ -277,7 +278,7 @@ export const QuickDropOverlay: React.FC<QuickDropOverlayProps> = ({
             </div>
             <div>
               <p className="text-sm font-bold text-slate-100">
-                {isDragging ? 'PDF jetzt loslassen!' : t('quickdrop.drop_prompt')}
+                {isDragging ? t('quickdrop.drop_active') : t('quickdrop.drop_prompt')}
               </p>
               <p className="text-[11px] text-slate-400 mt-1 max-w-xs mx-auto">
                 {t('quickdrop.subtitle')}
@@ -329,7 +330,7 @@ export const QuickDropOverlay: React.FC<QuickDropOverlayProps> = ({
         {/* State 4: Error State */}
         {status === 'error' && (
           <div className="py-6 text-center space-y-2 text-rose-400">
-            <p className="text-xs font-bold">Fehler bei der Konvertierung</p>
+            <p className="text-xs font-bold">{t('quickdrop.error_title')}</p>
             <p className="text-[10px] text-slate-400 whitespace-pre-wrap">{errorMessage}</p>
           </div>
         )}

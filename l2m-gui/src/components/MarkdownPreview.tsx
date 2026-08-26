@@ -448,13 +448,14 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
                     <p className="text-xs font-semibold text-slate-300">
                       {t('preview.slide_counter', { current: currentSlideIndex + 1, total: slides.length })}: {currentSlide.title}
                     </p>
+                    <p className="text-[11px] text-slate-400 mt-1">{t('preview.no_pdf_linked')}</p>
                   </div>
                   <button
                     type="button"
                     onClick={handleSelectPdfManually}
                     className="px-3 py-1.5 bg-surface hover:bg-surface-hover border border-border text-slate-200 rounded-xl text-xs font-semibold transition inline-flex items-center gap-1.5 cursor-pointer shadow-sm"
                   >
-                    <FileText className="w-3.5 h-3.5 text-accent" /> PDF verknüpfen
+                    <FileText className="w-3.5 h-3.5 text-accent" /> {t('preview.link_pdf')}
                   </button>
                 </div>
               )}
@@ -470,7 +471,7 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
                     onClick={handleSelectPdfManually}
                     className="px-2.5 py-1 bg-surface border border-border text-slate-300 rounded-lg text-xs cursor-pointer"
                   >
-                    PDF wählen
+                    {t('preview.choose_other_pdf')}
                   </button>
                 </div>
               )}

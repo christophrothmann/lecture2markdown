@@ -106,19 +106,19 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
       if (isValid) {
         setTestResult({
           success: true,
-          message: 'API-Key ist gültig und einsatzbereit!',
+          message: t('settings.test_success'),
         });
         onSaveKey(selectedTab, currentInput.trim());
       } else {
         setTestResult({
           success: false,
-          message: 'API-Key konnte nicht validiert werden.',
+          message: t('settings.test_failed'),
         });
       }
     } catch (e: any) {
       setTestResult({
         success: false,
-        message: `${e?.toString() || 'Fehler beim Validieren des Keys'}`,
+        message: `${e?.toString() || t('settings.test_error')}`,
       });
     } finally {
       setTesting(false);

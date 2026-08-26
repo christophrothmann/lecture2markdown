@@ -111,7 +111,7 @@ export const BatchQueue: React.FC<BatchQueueProps> = ({
               </span>
             </h3>
             <p className="text-xs text-slate-400">
-              {activeProviderName} • {totalSlides} Folien
+              {activeProviderName} • {t('batch.slides_total', { count: totalSlides })}
             </p>
           </div>
         </div>
@@ -194,13 +194,15 @@ export const BatchQueue: React.FC<BatchQueueProps> = ({
                     <p className="text-[11px] text-slate-400 mt-0.5">
                       {item.totalPages > 0 ? (
                         <span>
-                          {effectivePages} von {item.totalPages} Folien{' '}
+                          {t('batch.slides_count', { effective: effectivePages, total: item.totalPages })}{' '}
                           {item.rangeMode === 'custom' && (
-                            <span className="text-accent font-semibold">(Folien {item.startPage}–{item.endPage})</span>
+                            <span className="text-accent font-semibold">
+                              {t('batch.slides_range_badge', { start: item.startPage, end: item.endPage })}
+                            </span>
                           )}
                         </span>
                       ) : (
-                        <span>Lade Metadaten...</span>
+                        <span>{t('batch.loading_meta')}</span>
                       )}
                     </p>
                   </div>
@@ -219,7 +221,10 @@ export const BatchQueue: React.FC<BatchQueueProps> = ({
                     <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-accent/20 text-accent border border-accent/40 rounded-lg text-[11px] font-bold animate-pulse">
                       <Loader2 className="w-3 h-3 animate-spin" />
                       <span>
-                        Folie {item.progressCurrent || 0}/{item.progressTotal || effectivePages}
+                        {t('batch.slide_progress', {
+                          current: item.progressCurrent || 0,
+                          total: item.progressTotal || effectivePages,
+                        })}
                       </span>
                     </span>
                   )}
@@ -256,7 +261,7 @@ export const BatchQueue: React.FC<BatchQueueProps> = ({
                   <div className="flex items-center space-x-2">
                     <span className="text-slate-400 flex items-center gap-1">
                       <SlidersHorizontal className="w-3 h-3 text-slate-500" />
-                      Bereich:
+                      {t('batch.range_label')}
                     </span>
                     <button
                       onClick={() => onUpdateItemRange(item.id, 1, item.totalPages, 'all')}
@@ -266,7 +271,7 @@ export const BatchQueue: React.FC<BatchQueueProps> = ({
                           : 'bg-surface text-slate-400 hover:text-slate-200 border border-border'
                       }`}
                     >
-                      {t('batch.range_all')}
+                      {t('batch.range_all_btn')}
                     </button>
                     <button
                       onClick={() => onUpdateItemRange(item.id, item.startPage, item.endPage, 'custom')}
@@ -276,13 +281,13 @@ export const BatchQueue: React.FC<BatchQueueProps> = ({
                           : 'bg-surface text-slate-400 hover:text-slate-200 border border-border'
                       }`}
                     >
-                      Benutzerdefiniert
+                      {t('batch.range_custom_btn')}
                     </button>
                   </div>
 
                   {item.rangeMode === 'custom' && (
                     <div className="flex items-center space-x-1.5 text-slate-300">
-                      <span>Von:</span>
+                      <span>{t('batch.from_label')}</span>
                       <input
                         type="number"
                         min={1}
@@ -294,7 +299,7 @@ export const BatchQueue: React.FC<BatchQueueProps> = ({
                         }}
                         className="w-12 bg-surface border border-border rounded px-1.5 py-0.5 text-center font-mono font-bold text-slate-100"
                       />
-                      <span>bis:</span>
+                      <span>{t('batch.to_label')}</span>
                       <input
                         type="number"
                         min={item.startPage}
@@ -319,7 +324,7 @@ export const BatchQueue: React.FC<BatchQueueProps> = ({
       <div className="pt-2 flex items-center justify-between border-t border-border/60">
         <div className="text-xs text-slate-400 flex items-center gap-1.5">
           <FolderDown className="w-4 h-4 text-emerald-400" />
-          <span>Markdown-Dateien werden automatisch neben den PDFs gespeichert</span>
+          <span>{t('batch.auto_save_hint')}</span>
         </div>
 
         <div className="flex items-center space-x-3">
@@ -337,7 +342,10 @@ export const BatchQueue: React.FC<BatchQueueProps> = ({
               className="px-6 py-3 bg-accent hover:bg-accent-hover disabled:opacity-50 text-white rounded-xl text-xs font-bold flex items-center gap-2 transition cursor-pointer shadow-lg shadow-accent/20"
             >
               <Play className="w-4 h-4 fill-white" />
-              {t('batch.start_batch', { count: items.length })}
+              {t('batch.start_batch', {
+                countFiles: t(items.length === 1 ? 'batch.files_count' : 'batch.files_count_plural', { count: items.length }),
+                totalSlides,
+              })}
             </button>
           )}
         </div>

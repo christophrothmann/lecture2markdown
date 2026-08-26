@@ -100,7 +100,7 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
                     </div>
                   ) : (
                     <div className="flex items-center space-x-2 text-[10px] text-slate-400">
-                      <span>{item.totalPages} Folien</span>
+                      <span>{t('history.slides_label', { count: item.totalPages })}</span>
                       <span>•</span>
                       <span>{item.timestamp}</span>
                     </div>
