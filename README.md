@@ -29,6 +29,7 @@ https://github.com/user-attachments/assets/5054e824-ed83-4a9d-9486-140a4f571a28
 
 ## ✨ Features
 
+- 🌐 **Full Internationalization (i18n)**: Seamless 1-click toggle between **German 🇩🇪** and **English 🇬🇧** with automatic OS language detection.
 - ⚡ **Spotlight Quick-Drop Widget (`⌘ + ⇧ + L` / `Ctrl + Shift + L`)**: Convert lectures from anywhere on your system without switching windows — drops the result directly as an attached document into your clipboard for instant `⌘ + V` pasting into ChatGPT & Gemini.
 - 🖥️ **Synchronized Split-Screen View (Mozilla PDF.js)**: 100% zero-config client-side slide canvas viewer synchronized 1:1 with extracted Markdown notes (requires **0 Python** or external dependencies on student machines).
 - 🃏 **1-Click Anki Deck Export**: Automatically generates high-quality Anki flashcard decks (`.txt` TSV) containing definitions, formulas with KaTeX math, and key takeaways.
