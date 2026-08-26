@@ -85,7 +85,7 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
     if (isOpen) {
       fetchCacheStats();
     }
-  }, [selectedTab, providerKeys, isOpen]);
+  }, [selectedTab, isOpen]);
 
   if (!isOpen) return null;
 
