@@ -159,14 +159,14 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
   const hasAnyKey = Object.values(providerKeys).some((k) => Boolean(k && k.trim()));
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
-      <div className="glass-card w-full max-w-lg rounded-2xl p-6 border border-border shadow-2xl space-y-5 relative">
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-200 overflow-y-auto">
+      <div className="glass-card w-full max-w-lg max-h-[88vh] overflow-y-auto rounded-2xl p-6 border border-border shadow-2xl space-y-5 relative my-auto">
         {/* Close button */}
         {hasAnyKey && (
           <button
             type="button"
             onClick={onClose}
-            className="absolute top-5 right-5 text-slate-400 hover:text-slate-200 transition p-1 hover:bg-surface rounded-lg cursor-pointer"
+            className="sticky top-0 float-right text-slate-400 hover:text-slate-200 transition p-1 hover:bg-surface rounded-lg cursor-pointer z-10 -mr-2 -mt-2"
           >
             <X className="w-5 h-5" />
           </button>
