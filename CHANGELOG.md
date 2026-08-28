@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.1] - 2026-08-28 "windows-hotfix-and-drag-drop"
+
+### Fixed
+- **🪟 Windows 11 Subprocess Isolation (`CREATE_NO_WINDOW`)**:
+  - Attached `0x08000000 (CREATE_NO_WINDOW)` creation flags to all Rust subprocess invocations (Python slide rendering and PowerShell clipboard handler).
+  - Completely eliminates flashing `cmd.exe` terminal window popups during PDF conversion.
+- **📂 Native Windows Drag & Drop**:
+  - Replaced browser-level HTML5 drag events with Tauri's native `getCurrentWebview().onDragDropEvent` in `Dropzone.tsx`.
+  - Fixes drag-and-drop file imports on Microsoft WebView2 / Windows 11 where browser security strips local file paths.
+- **⌨️ Platform-Aware Shortcuts**:
+  - Automatically displays `Ctrl + Shift + L` (and `Ctrl + V`) on Windows / Linux and `⌘ + ⇧ + L` on macOS.
+- **🎛️ Provider Selector Indicator**:
+  - Cleaned up the active provider pill in the navigation header to avoid confusing dropdown indicators.
+
 ## [1.5.0] - 2026-08-26 "internationalization-and-ui-polish"
 
 ### Added
