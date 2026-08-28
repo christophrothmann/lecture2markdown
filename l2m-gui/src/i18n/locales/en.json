@@ -12,7 +12,7 @@
   },
   "header": {
     "quick_drop": "Quick-Drop",
-    "quick_drop_title": "Open Quick-Drop Spotlight (⌘ + ⇧ + L)",
+    "quick_drop_title": "Open Quick-Drop Spotlight ({{shortcut}})",
     "provider_title": "Switch Provider / Manage Keys",
     "settings_title": "API Key Settings",
     "update_available": "Update Available",

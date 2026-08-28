@@ -48,7 +48,7 @@ static PYTHON_BIN_CACHE: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceL
 fn check_python_candidate(candidate: &Path) -> bool {
     let bin_name = candidate.file_name().and_then(|n| n.to_str()).unwrap_or("");
     if bin_name == "uv" || bin_name == "uv.exe" {
-        if let Ok(output) = std::process::Command::new(candidate)
+        if let Ok(output) = pdf::create_hidden_command(candidate)
             .arg("run")
             .arg("--with")
             .arg("pymupdf")
@@ -67,7 +67,7 @@ fn check_python_candidate(candidate: &Path) -> bool {
     if !candidate.exists() {
         return false;
     }
-    if let Ok(output) = std::process::Command::new(candidate)
+    if let Ok(output) = pdf::create_hidden_command(candidate)
         .arg("-c")
         .arg("import fitz, PIL")
         .output()
@@ -494,7 +494,7 @@ fn copy_file_to_clipboard_native(file_name: String, content: String) -> Result<S
     #[cfg(target_os = "windows")]
     {
         let ps_cmd = format!(r#"Set-Clipboard -Path '{}'"#, abs_path);
-        let _ = std::process::Command::new("powershell")
+        let _ = pdf::create_hidden_command("powershell")
             .arg("-NoProfile")
             .arg("-Command")
             .arg(&ps_cmd)

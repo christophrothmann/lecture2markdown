@@ -29,6 +29,9 @@ const PROVIDER_NAMES: Record<ProviderType, string> = {
   mistral: 'Mistral (Document OCR)',
 };
 
+const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPod|iPad/i.test(navigator.userAgent || '');
+const quickDropShortcut = isMac ? '⌘ + ⇧ + L' : 'Ctrl + Shift + L';
+
 function deduplicateHistory(items: any[]): HistoryItem[] {
   if (!Array.isArray(items)) return [];
   const seen = new Set<string>();
@@ -528,7 +531,7 @@ export function App() {
           <button
             onClick={() => setIsQuickDropOpen(true)}
             className="flex items-center space-x-1.5 px-3 py-1.5 bg-surface hover:bg-surface-hover border border-border rounded-xl text-xs font-semibold transition cursor-pointer text-slate-200"
-            title={t('header.quick_drop_title')}
+            title={t('header.quick_drop_title', { shortcut: quickDropShortcut })}
           >
             <Zap className="w-3.5 h-3.5 text-accent" />
             <span className="hidden sm:inline">{t('header.quick_drop')}</span>
@@ -542,7 +545,6 @@ export function App() {
           >
             <span className="w-2 h-2 rounded-full bg-emerald-400" />
             <span className="text-slate-200">{PROVIDER_NAMES[activeProvider]}</span>
-            <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
           </button>
 
           <button

@@ -8,11 +8,24 @@ pub struct RenderedSlide {
     pub is_visual: bool,
 }
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
+pub fn create_hidden_command<P: AsRef<std::ffi::OsStr>>(program: P) -> Command {
+    #[allow(unused_mut)]
+    let mut cmd = Command::new(program);
+    #[cfg(target_os = "windows")]
+    {
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW: Prevents console window popup on Windows
+    }
+    cmd
+}
+
 pub fn execute_python_code(script: &str, py_bin: Option<&Path>) -> Result<std::process::Output, String> {
     if let Some(bin) = py_bin {
         let bin_name = bin.file_name().and_then(|n| n.to_str()).unwrap_or("");
         if bin_name == "uv" || bin_name == "uv.exe" {
-            return Command::new(bin)
+            return create_hidden_command(bin)
                 .arg("run")
                 .arg("--with")
                 .arg("pymupdf")
@@ -24,14 +37,14 @@ pub fn execute_python_code(script: &str, py_bin: Option<&Path>) -> Result<std::p
                 .output()
                 .map_err(|e| format!("Fehler beim Ausführen von uv ({:?}): {}", bin, e));
         }
-        return Command::new(bin)
+        return create_hidden_command(bin)
             .arg("-c")
             .arg(script)
             .output()
             .map_err(|e| format!("Fehler beim Ausführen von Python ({:?}): {}", bin, e));
     }
 
-    Command::new("python3")
+    create_hidden_command("python3")
         .arg("-c")
         .arg(script)
         .output()

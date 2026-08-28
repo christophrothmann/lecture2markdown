@@ -25,6 +25,9 @@ export const QuickDropOverlay: React.FC<QuickDropOverlayProps> = ({
   onSuccess,
 }) => {
   const { t } = useTranslation();
+  const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPod|iPad/i.test(navigator.userAgent || '');
+  const shortcutText = isMac ? '⌘ + ⇧ + L' : 'Ctrl + Shift + L';
+  const pasteShortcutText = isMac ? '⌘ + V' : 'Ctrl + V';
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [status, setStatus] = useState<'idle' | 'processing' | 'success' | 'error'>('idle');
   const [currentFileName, setCurrentFileName] = useState<string>('');
@@ -250,7 +253,7 @@ export const QuickDropOverlay: React.FC<QuickDropOverlayProps> = ({
               </h3>
               <p className="text-[10px] text-slate-400">
                 {t('quickdrop.shortcut_label')}{' '}
-                <kbd className="px-1 py-0.5 bg-surface border border-border rounded text-[9px] font-mono">⌘ + ⇧ + L</kbd>
+                <kbd className="px-1 py-0.5 bg-surface border border-border rounded text-[9px] font-mono">{shortcutText}</kbd>
               </p>
             </div>
           </div>
@@ -321,7 +324,7 @@ export const QuickDropOverlay: React.FC<QuickDropOverlayProps> = ({
             <div>
               <p className="text-sm font-bold text-slate-100">{t('quickdrop.copied_badge')}</p>
               <p className="text-[11px] text-slate-400 mt-1">
-                {t('quickdrop.paste_hint')}
+                {t('quickdrop.paste_hint', { key: pasteShortcutText })}
               </p>
             </div>
           </div>

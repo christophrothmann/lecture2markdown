@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { UploadCloud, FileText, Layers, ShieldCheck } from 'lucide-react';
 import { open as openFileDialog } from '@tauri-apps/plugin-dialog';
+import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { useTranslation } from 'react-i18next';
 
 export interface SelectedFileInfo {
@@ -16,6 +17,45 @@ interface DropzoneProps {
 export const Dropzone: React.FC<DropzoneProps> = ({ onFilesSelected, disabled }) => {
   const { t } = useTranslation();
   const [isDragging, setIsDragging] = useState(false);
+
+  // Native OS Drag & Drop listener via Tauri v2 Webview (100% reliable on Windows 11, macOS, Linux)
+  useEffect(() => {
+    let unlistenFn: (() => void) | null = null;
+
+    getCurrentWebview()
+      .onDragDropEvent((event) => {
+        if (disabled) return;
+
+        if (event.payload.type === 'enter' || event.payload.type === 'over') {
+          setIsDragging(true);
+        } else if (event.payload.type === 'leave') {
+          setIsDragging(false);
+        } else if (event.payload.type === 'drop') {
+          setIsDragging(false);
+          const paths = event.payload.paths;
+          if (paths && paths.length > 0) {
+            const pdfFiles: SelectedFileInfo[] = paths
+              .filter((p) => typeof p === 'string' && p.toLowerCase().endsWith('.pdf'))
+              .map((p) => {
+                const parts = p.split(/[\/\\]/);
+                const fileName = parts[parts.length - 1] || 'Vorlesung.pdf';
+                return { path: p, name: fileName };
+              });
+
+            if (pdfFiles.length > 0) {
+              onFilesSelected(pdfFiles);
+            }
+          }
+        }
+      })
+      .then((unlisten) => {
+        unlistenFn = unlisten;
+      });
+
+    return () => {
+      if (unlistenFn) unlistenFn();
+    };
+  }, [disabled, onFilesSelected]);
 
   const handleClick = async () => {
     if (disabled) return;
@@ -72,11 +112,9 @@ export const Dropzone: React.FC<DropzoneProps> = ({ onFilesSelected, disabled })
         }
       }
 
-      if (files.length === 0) {
-        return;
+      if (files.length > 0) {
+        onFilesSelected(files);
       }
-
-      onFilesSelected(files);
     }
   };
 
