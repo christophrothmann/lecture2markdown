@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.2] - 2026-08-28 "zero-config-standalone-engine"
+
+### Added & Improved
+- **🚀 100% Zero-Config Client-Side PDF Engine (Zero Python Required)**:
+  - Transitioned desktop slide rendering entirely to the bundled, high-performance Mozilla PDF.js engine.
+  - Generates high-resolution WebP slide representations directly in-memory and streams them to the native async Rust transcription pipeline.
+  - Completely eliminates the need for Python, PyMuPDF, or Pillow installations on user machines — the desktop app is now 100% standalone out-of-the-box on Windows 11, macOS, and Linux.
+
 ## [1.5.1] - 2026-08-28 "windows-hotfix-and-drag-drop"
 
 ### Fixed
