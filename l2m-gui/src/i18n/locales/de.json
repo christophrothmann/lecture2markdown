@@ -13,6 +13,7 @@
   "header": {
     "quick_drop": "Quick-Drop",
     "quick_drop_title": "Quick-Drop Spotlight öffnen ({{shortcut}})",
+    "active_model_label": "Aktives Modell",
     "provider_title": "Provider wechseln / Key einrichten",
     "settings_title": "API-Key Einstellungen",
     "update_available": "Update verfügbar",

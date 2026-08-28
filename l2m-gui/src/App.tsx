@@ -542,15 +542,14 @@ export function App() {
             <span className="hidden sm:inline">{t('header.quick_drop')}</span>
           </button>
 
-          {/* Active Provider Selector Badge */}
-          <button
-            onClick={() => setIsKeyModalOpen(true)}
-            className="flex items-center space-x-2 px-3 py-1.5 bg-surface hover:bg-surface-hover border border-border rounded-xl text-xs font-semibold transition cursor-pointer"
-            title={t('header.provider_title')}
+          {/* Active Provider Status Badge (Informational only) */}
+          <div
+            className="flex items-center space-x-2 px-3 py-1.5 bg-surface border border-border rounded-xl text-xs font-semibold select-none cursor-default"
+            title={`${t('header.active_model_label')}: ${PROVIDER_NAMES[activeProvider]}`}
           >
             <span className="w-2 h-2 rounded-full bg-emerald-400" />
             <span className="text-slate-200">{PROVIDER_NAMES[activeProvider]}</span>
-          </button>
+          </div>
 
           <button
             onClick={() => setIsKeyModalOpen(true)}
