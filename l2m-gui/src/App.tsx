@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
-import { BookOpen, Settings, ChevronDown, Sparkles, Zap, Loader2 } from 'lucide-react';
+import { BookOpen, Settings, Sparkles, Zap, Loader2 } from 'lucide-react';
 import { save as saveFileDialog, open as openFileDialog } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
@@ -10,6 +10,7 @@ import type { ProviderType } from './components/ApiKeyModal';
 import { Dropzone, type SelectedFileInfo } from './components/Dropzone';
 import { BatchQueue, type BatchQueueItem } from './components/BatchQueue';
 import { HistorySidebar, type HistoryItem } from './components/HistorySidebar';
+import { extractPdfSlidesWebp, loadPdfDocument } from './utils/pdfRenderer';
 
 // Lazy-loaded heavy components for instant startup (0ms initial bundle delay)
 const MarkdownPreview = lazy(() =>
@@ -265,8 +266,8 @@ export function App() {
       const id = `${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
       let totalPages = 1;
       try {
-        const count = await invoke<number>('get_pdf_page_count_native', { pdfPath: file.path });
-        if (count && count > 0) totalPages = count;
+        const { numPages } = await loadPdfDocument(file.path);
+        if (numPages && numPages > 0) totalPages = numPages;
       } catch (e) {
         console.error('Seitenzahl-Ermittlung fehlgeschlagen für:', file.name, e);
       }
@@ -366,13 +367,17 @@ export function App() {
       });
 
       try {
-        const markdown = await invoke<string>('convert_lecture_native', {
-          pdfPath: item.filePath,
-          outputPath: '',
+        const slides = await extractPdfSlidesWebp(
+          item.filePath,
+          item.rangeMode === 'custom' ? targetStart : undefined,
+          item.rangeMode === 'custom' ? targetEnd : undefined
+        );
+
+        const markdown = await invoke<string>('transcribe_slides_native', {
+          slides,
           provider: activeProvider,
           apiKey: currentActiveKey,
-          startPage: item.rangeMode === 'custom' ? targetStart : undefined,
-          endPage: item.rangeMode === 'custom' ? targetEnd : undefined,
+          fileName: item.fileName,
         });
 
         // Automatically save Markdown file next to PDF!

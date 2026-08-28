@@ -8,6 +8,7 @@ import { sendNotification, isPermissionGranted, requestPermission } from '@tauri
 import { useTranslation } from 'react-i18next';
 import type { ProviderType } from './ApiKeyModal';
 import type { HistoryItem } from './HistorySidebar';
+import { extractPdfSlidesWebp } from '../utils/pdfRenderer';
 
 interface QuickDropOverlayProps {
   isOpen: boolean;
@@ -134,17 +135,12 @@ export const QuickDropOverlay: React.FC<QuickDropOverlayProps> = ({
     setErrorMessage('');
 
     try {
-      const result = await invoke<{
-        markdown: string;
-        total_pages: number;
-        cost_usd: number;
-        time_seconds: number;
-      }>('convert_lecture_native', {
-        pdfPath,
+      const slides = await extractPdfSlidesWebp(pdfPath);
+      const markdown = await invoke<string>('transcribe_slides_native', {
+        slides,
         provider: activeProvider,
         apiKey,
-        startPage: null,
-        endPage: null,
+        fileName,
       });
 
       // Automatically copy markdown file descriptor to native clipboard
@@ -153,9 +149,9 @@ export const QuickDropOverlay: React.FC<QuickDropOverlayProps> = ({
 
       // Auto-save markdown file next to source PDF
       try {
-        await invoke('save_file_native', {
+        await invoke('save_text_file_native', {
           filePath: targetMdPath,
-          content: result.markdown,
+          content: markdown,
         });
       } catch {}
 
@@ -163,10 +159,10 @@ export const QuickDropOverlay: React.FC<QuickDropOverlayProps> = ({
       try {
         await invoke('copy_file_to_clipboard_native', {
           fileName: `${cleanName}.md`,
-          content: result.markdown,
+          content: markdown,
         });
       } catch {
-        await navigator.clipboard.writeText(result.markdown);
+        await navigator.clipboard.writeText(markdown);
       }
 
       // Play completion chime

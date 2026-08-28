@@ -93,3 +93,34 @@ export async function renderSlideToDataUrl(
   await page.render({ canvasContext: ctx, viewport }).promise;
   return canvas.toDataURL(format, quality);
 }
+
+/**
+ * Extracts and renders all slides from a PDF as base64 WebP images (100% Zero-Config client-side).
+ */
+export async function extractPdfSlidesWebp(
+  filePath: string,
+  startPage?: number,
+  endPage?: number,
+  onProgress?: (current: number, total: number) => void
+): Promise<{ page_number: number; webp_base64: string; is_visual?: boolean }[]> {
+  const { doc, numPages } = await loadPdfDocument(filePath);
+  const sPage = Math.max(1, Math.min(startPage || 1, numPages));
+  const ePage = Math.max(sPage, Math.min(endPage || numPages, numPages));
+
+  const slides: { page_number: number; webp_base64: string; is_visual?: boolean }[] = [];
+  const total = ePage - sPage + 1;
+  let done = 0;
+
+  for (let pageNum = sPage; pageNum <= ePage; pageNum++) {
+    const dataUrl = await renderSlideToDataUrl(doc, pageNum, 'image/webp', 0.85);
+    const base64Data = dataUrl.replace(/^data:image\/webp;base64,/, '');
+    slides.push({
+      page_number: pageNum,
+      webp_base64: base64Data,
+    });
+    done++;
+    if (onProgress) onProgress(done, total);
+  }
+
+  return slides;
+}
