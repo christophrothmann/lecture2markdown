@@ -68,12 +68,12 @@ export async function renderSlideToCanvas(
 }
 
 /**
- * Renders a specific slide to a base64 WebP / PNG data URL.
+ * Renders a specific slide to a base64 JPEG / WebP / PNG data URL.
  */
 export async function renderSlideToDataUrl(
   doc: pdfjsLib.PDFDocumentProxy,
   pageNumber: number,
-  format: 'image/webp' | 'image/png' = 'image/webp',
+  format: 'image/jpeg' | 'image/webp' | 'image/png' = 'image/jpeg',
   quality: number = 0.85
 ): Promise<string> {
   const page = await doc.getPage(pageNumber);
@@ -90,12 +90,16 @@ export async function renderSlideToDataUrl(
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Canvas context could not be created');
 
+  // Fill crisp white background so transparent PDF backgrounds don't render black in JPEG
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
   await page.render({ canvasContext: ctx, viewport }).promise;
   return canvas.toDataURL(format, quality);
 }
 
 /**
- * Extracts and renders all slides from a PDF as base64 WebP images (100% Zero-Config client-side).
+ * Extracts and renders all slides from a PDF as base64 images (100% Zero-Config client-side).
  */
 export async function extractPdfSlidesWebp(
   filePath: string,
@@ -112,8 +116,10 @@ export async function extractPdfSlidesWebp(
   let done = 0;
 
   for (let pageNum = sPage; pageNum <= ePage; pageNum++) {
-    const dataUrl = await renderSlideToDataUrl(doc, pageNum, 'image/webp', 0.85);
-    const base64Data = dataUrl.replace(/^data:image\/webp;base64,/, '');
+    const dataUrl = await renderSlideToDataUrl(doc, pageNum, 'image/jpeg', 0.85);
+    const commaIdx = dataUrl.indexOf(',');
+    const base64Data = commaIdx !== -1 ? dataUrl.slice(commaIdx + 1) : dataUrl;
+
     slides.push({
       page_number: pageNum,
       webp_base64: base64Data,

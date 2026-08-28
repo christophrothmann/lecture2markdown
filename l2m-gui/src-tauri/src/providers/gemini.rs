@@ -73,6 +73,12 @@ impl BaseProvider for GeminiProvider {
         let model = "gemini-flash-latest";
         let user_prompt = get_user_prompt(page_number);
 
+        let clean_base64 = if let Some(idx) = webp_base64.find(',') {
+            &webp_base64[idx + 1..]
+        } else {
+            webp_base64
+        };
+
         let mut attempts = 0;
         let max_attempts = 20;
 
@@ -101,8 +107,8 @@ impl BaseProvider for GeminiProvider {
                         "parts": [
                             {
                                 "inline_data": {
-                                    "mime_type": "image/webp",
-                                    "data": webp_base64
+                                    "mime_type": "image/jpeg",
+                                    "data": clean_base64
                                 }
                             },
                             {

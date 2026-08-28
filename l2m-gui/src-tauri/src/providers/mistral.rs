@@ -66,13 +66,19 @@ impl BaseProvider for MistralProvider {
         let mut attempts = 0;
         let max_attempts = 15;
 
+        let image_url = if webp_base64.starts_with("data:") {
+            webp_base64.to_string()
+        } else {
+            format!("data:image/jpeg;base64,{}", webp_base64)
+        };
+
         // 1. First try dedicated Mistral Document OCR endpoint if visual
         if !hybrid || is_visual {
             let ocr_payload = json!({
                 "model": "mistral-ocr-latest",
                 "document": {
                     "type": "image_url",
-                    "image_url": format!("data:image/webp;base64,{}", webp_base64)
+                    "image_url": image_url
                 }
             });
 
@@ -104,7 +110,6 @@ impl BaseProvider for MistralProvider {
         // 2. Standard Multimodal Chat Completion (Pixtral 12B) with 404 fallback & retries
         let mut model = "pixtral-12b-2409";
         let user_prompt = get_user_prompt(page_number);
-        let image_url = format!("data:image/webp;base64,{}", webp_base64);
 
         loop {
             attempts += 1;

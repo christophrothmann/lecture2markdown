@@ -71,6 +71,11 @@ impl BaseProvider for ClaudeProvider {
         };
 
         let user_prompt = get_user_prompt(page_number);
+        let clean_base64 = if let Some(idx) = webp_base64.find(',') {
+            &webp_base64[idx + 1..]
+        } else {
+            webp_base64
+        };
 
         let mut attempts = 0;
         let max_attempts = 15;
@@ -91,8 +96,8 @@ impl BaseProvider for ClaudeProvider {
                                 "type": "image",
                                 "source": {
                                     "type": "base64",
-                                    "media_type": "image/webp",
-                                    "data": webp_base64
+                                    "media_type": "image/jpeg",
+                                    "data": clean_base64
                                 }
                             },
                             {
