@@ -118,7 +118,30 @@ fn find_python_binary() -> Option<PathBuf> {
             candidate_paths.push(PathBuf::from("/Library/Frameworks/Python.framework/Versions/Current/bin/python3"));
         }
 
-        // 4. Test PATH binaries
+        // 4. Check standard Windows installation paths
+        #[cfg(windows)]
+        {
+            if let Ok(local_appdata) = std::env::var("LOCALAPPDATA") {
+                let local_path = PathBuf::from(local_appdata);
+                for ver in &["Python313", "Python312", "Python311", "Python310", "Python39"] {
+                    candidate_paths.push(local_path.join("Programs/Python").join(ver).join("python.exe"));
+                    candidate_paths.push(local_path.join("Programs/Python").join(ver).join("Scripts/uv.exe"));
+                }
+            }
+            if let Ok(prog_files) = std::env::var("ProgramFiles") {
+                let pf_path = PathBuf::from(prog_files);
+                for ver in &["Python313", "Python312", "Python311", "Python310"] {
+                    candidate_paths.push(pf_path.join(ver).join("python.exe"));
+                }
+            }
+            for drive in &["C:\\", "D:\\"] {
+                for ver in &["Python313", "Python312", "Python311", "Python310"] {
+                    candidate_paths.push(PathBuf::from(drive).join(ver).join("python.exe"));
+                }
+            }
+        }
+
+        // 5. Test PATH binaries
         candidate_paths.push(PathBuf::from("uv"));
         candidate_paths.push(PathBuf::from("python3"));
         candidate_paths.push(PathBuf::from("python"));

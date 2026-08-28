@@ -104,9 +104,9 @@ print(str(int(is_vis)) + ":::" + slide_hash + ":::" + base64.b64encode(raw_bytes
 
     if !output.status.success() {
         let err = String::from_utf8_lossy(&output.stderr);
-        if err.contains("No module named 'fitz'") || err.contains("ModuleNotFoundError") {
+        if err.contains("No module named 'fitz'") || err.contains("No module named 'PIL'") || err.contains("ModuleNotFoundError") {
             return Err(
-                "PyMuPDF ('fitz') oder Pillow wurde nicht in der Python-Umgebung gefunden.\n\nBitte installiere die Pakete im Terminal mit:\npip install pymupdf pillow\n(oder: uv pip install pymupdf pillow)".to_string()
+                "Missing Python dependencies: PyMuPDF ('fitz') and Pillow ('PIL') are required for slide rendering.\n\nPlease install them in your terminal / Command Prompt:\npip install pymupdf pillow\n(or with uv: uv pip install pymupdf pillow)\n\n---\nFehlende Python-Pakete: PyMuPDF ('fitz') und Pillow ('PIL') werden zum Rendern benötigt.\nBitte im Terminal installieren: pip install pymupdf pillow".to_string()
             );
         }
         return Err(format!("Rendering-Fehler auf Folie {}: {}", page_number, err.trim()));
