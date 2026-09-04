@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.3] - 2026-09-04 "anki-export-and-base64-fix"
+
+### Fixed
+- **🃏 Anki Deck Export**:
+  - Fixed native Rust file saving handler for Anki decks and added safe fallbacks.
+  - Added null-safety and default title handling to card tag sanitization (`sanitizeTag`).
+- **🖼️ Universal Vision API Image Sanitization**:
+  - Enforced crisp white background rendering on canvas export to prevent transparent PDF backgrounds from turning dark.
+  - Corrected base64 prefix handling across OpenAI, Anthropic Claude, Google Gemini, and Mistral OCR to eliminate `invalid_base64` API errors.
+- **🎛️ Header Navigation**:
+  - Converted the active model badge into a clean, non-clickable status indicator to avoid confusion with the settings modal button.
+
 ## [1.5.2] - 2026-08-28 "zero-config-standalone-engine"
 
 ### Added & Improved
