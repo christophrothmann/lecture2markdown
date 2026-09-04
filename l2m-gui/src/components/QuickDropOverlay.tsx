@@ -178,7 +178,7 @@ export const QuickDropOverlay: React.FC<QuickDropOverlayProps> = ({
         if (hasPermission) {
           sendNotification({
             title: 'Lecture2Markdown',
-            body: `${fileName} wurde erfolgreich konvertiert und ins Clipboard kopiert!`,
+            body: t('quickdrop.notification_body', { fileName }),
           });
         }
       } catch {}
@@ -192,8 +192,8 @@ export const QuickDropOverlay: React.FC<QuickDropOverlayProps> = ({
           fileName,
           filePath: pdfPath,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          content: result.markdown,
-          totalPages: result.total_pages || 1,
+          content: markdown,
+          totalPages: 1,
           status: 'completed',
         });
       }
@@ -205,7 +205,7 @@ export const QuickDropOverlay: React.FC<QuickDropOverlayProps> = ({
     } catch (e: any) {
       console.error('Quick-Drop Konvertierungsfehler:', e);
       setStatus('error');
-      setErrorMessage(e?.toString() || 'Fehler bei der Konvertierung');
+      setErrorMessage(e?.toString() || t('quickdrop.error_title'));
     }
   };
 

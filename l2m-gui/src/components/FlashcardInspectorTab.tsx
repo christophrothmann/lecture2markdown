@@ -20,7 +20,7 @@ import {
   AlertCircle,
   Edit3,
 } from 'lucide-react';
-import { useTranslation } from 'react-i18next';
+import { useTranslation, Trans } from 'react-i18next';
 import { save as saveFileDialog } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import type { AnkiCard, AnkiCardType, ImageOcclusionMask } from '../utils/anki';
@@ -57,7 +57,7 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
   // Slide browsing state
   const [currentSlideNumber, setCurrentSlideNumber] = useState<number>(1);
   const [totalSlideCount, setTotalSlideCount] = useState<number>(1);
-  const [currentSlideTitle, setCurrentSlideTitle] = useState<string>('Vorlesung');
+  const [currentSlideTitle, setCurrentSlideTitle] = useState<string>(() => t('flashcards.lecture_default'));
 
   // PDF.js Canvas state
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -91,7 +91,7 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
 
   // Initialize generated cards from markdown once
   useEffect(() => {
-    const cleanTitle = defaultTitle.replace(/\.md|\.pdf$/i, '').trim() || 'Vorlesung';
+    const cleanTitle = defaultTitle.replace(/\.md|\.pdf$/i, '').trim() || t('flashcards.lecture_default');
     setDeckName(cleanTitle);
 
     const generated = generateAnkiCardsFromMarkdown(markdownContent, cleanTitle);
@@ -107,7 +107,7 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
     }
 
     checkAnkiConnectAvailable().then(setIsAnkiConnectOnline);
-  }, [markdownContent, defaultTitle]);
+  }, [markdownContent, defaultTitle, t]);
 
   // Notify parent of active card count
   useEffect(() => {
@@ -122,9 +122,9 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
     if (cardForSlide) {
       setCurrentSlideTitle(cardForSlide.slideTitle);
     } else {
-      setCurrentSlideTitle(`Folie ${currentSlideNumber}`);
+      setCurrentSlideTitle(t('flashcards.slide_prefix', { number: currentSlideNumber }));
     }
-  }, [currentSlideNumber, cards]);
+  }, [currentSlideNumber, cards, t]);
 
   // Synchronize image occlusion cards whenever slideMasks or slideOcclusionMode change
   const syncOcclusionCards = (
@@ -154,10 +154,10 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
           const existing = existingMap.get(cardId);
 
           const frontPrompt = mask.label
-            ? `Was verbirgt sich hinter Markierung ${maskIdx + 1}?`
-            : `Welcher Begriff ist auf Folie ${slideNum} verdeckt?`;
+            ? t('flashcards.occlusion_prompt_label', { index: maskIdx + 1 })
+            : t('flashcards.occlusion_prompt_generic', { number: slideNum });
 
-          const backAnswer = mask.label || `Struktur #${maskIdx + 1}`;
+          const backAnswer = mask.label || t('flashcards.occlusion_structure', { index: maskIdx + 1 });
 
           newOcclusionCards.push({
             id: cardId,
@@ -165,7 +165,7 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
             front: existing?.front || frontPrompt,
             back: mask.label || existing?.back || backAnswer,
             slideNumber: slideNum,
-            slideTitle: `Folie ${slideNum}: Image Occlusion`,
+            slideTitle: `${t('flashcards.slide_prefix', { number: slideNum })}: Image Occlusion`,
             tags: [`Lecture2Markdown::${deckName.replace(/\s+/g, '_')}`, 'Image_Occlusion'],
             enabled: existing !== undefined ? existing.enabled : true,
             occlusionMasks: masks,
@@ -313,8 +313,8 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
     const newCard: AnkiCard = {
       id: `manual-${Date.now()}`,
       type: 'definition',
-      front: `Neue Frage zu Folie ${currentSlideNumber}...`,
-      back: 'Antwort hier eingeben...',
+      front: t('flashcards.new_card_front', { number: currentSlideNumber }),
+      back: t('flashcards.new_card_back'),
       slideNumber: currentSlideNumber,
       slideTitle: currentSlideTitle,
       tags: [`Lecture2Markdown::${deckName.replace(/\s+/g, '_')}`],
@@ -360,14 +360,14 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
   const handleSaveApkgFile = async () => {
     const activeCards = cards.filter((c) => c.enabled);
     if (activeCards.length === 0) {
-      setFeedback({ type: 'error', message: 'Keine aktiven Lernkarten ausgewählt.' });
+      setFeedback({ type: 'error', message: t('flashcards.no_cards_selected') });
       return;
     }
 
     try {
       setIsExportingApkg(true);
       setFeedback(null);
-      const safeDeck = deckName.trim() || 'Vorlesung';
+      const safeDeck = deckName.trim() || t('flashcards.lecture_default');
       const defaultFileName = `${safeDeck.replace(/[\/\\?%*:|"<>]/g, '_')}.apkg`;
 
       const targetPath = await saveFileDialog({
@@ -382,7 +382,7 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
           outputPath: targetPath,
         });
 
-        const successMsg = `Erfolgreich als .apkg gespeichert (${activeCards.length} Karten)`;
+        const successMsg = t('flashcards.export_success', { count: activeCards.length });
         setFeedback({ type: 'success', message: successMsg });
         if (onSuccessToast) onSuccessToast(successMsg, savedPath);
       }
@@ -390,7 +390,7 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
       console.error('APKG Export Error:', err);
       setFeedback({
         type: 'error',
-        message: err instanceof Error ? err.message : 'Fehler beim Erstellen der .apkg-Datei.',
+        message: err instanceof Error ? err.message : t('flashcards.export_error'),
       });
     } finally {
       setIsExportingApkg(false);
@@ -401,14 +401,14 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
   const handleOpenInAnki = async () => {
     const activeCards = cards.filter((c) => c.enabled);
     if (activeCards.length === 0) {
-      setFeedback({ type: 'error', message: 'Keine aktiven Lernkarten ausgewählt.' });
+      setFeedback({ type: 'error', message: t('flashcards.no_cards_selected') });
       return;
     }
 
     try {
       setIsOpeningInAnki(true);
       setFeedback(null);
-      const safeDeck = deckName.trim() || 'Vorlesung';
+      const safeDeck = deckName.trim() || t('flashcards.lecture_default');
 
       const apkgPath = await exportCardsToNativeApkg(cards, safeDeck, {
         slideImages: renderedSlideImages,
@@ -416,14 +416,14 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
         outputPath: '', // Empty path triggers temp file creation + OS launcher (open -a Anki / cmd start)
       });
 
-      const msg = `In Anki geöffnet! (${activeCards.length} Karten importiert)`;
+      const msg = t('flashcards.open_success', { count: activeCards.length });
       setFeedback({ type: 'success', message: msg });
       if (onSuccessToast) onSuccessToast(msg, apkgPath);
     } catch (err) {
       console.error('Open in Anki Error:', err);
       setFeedback({
         type: 'error',
-        message: err instanceof Error ? err.message : 'Anki konnte nicht automatisch geöffnet werden.',
+        message: err instanceof Error ? err.message : t('flashcards.open_error'),
       });
     } finally {
       setIsOpeningInAnki(false);
@@ -434,7 +434,7 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
   const handleCopyTsv = async () => {
     const activeCards = cards.filter((c) => c.enabled);
     if (activeCards.length === 0) {
-      setFeedback({ type: 'error', message: 'Keine Karten ausgewählt.' });
+      setFeedback({ type: 'error', message: t('flashcards.no_cards_copy') });
       return;
     }
 
@@ -448,7 +448,7 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
   const handleAnkiConnectSync = async () => {
     const activeCards = cards.filter((c) => c.enabled);
     if (activeCards.length === 0) {
-      setFeedback({ type: 'error', message: 'Keine Karten ausgewählt.' });
+      setFeedback({ type: 'error', message: t('flashcards.no_cards_copy') });
       return;
     }
 
@@ -457,16 +457,16 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
       setFeedback(null);
       const res = await syncCardsToAnkiConnect(cards, deckName);
       if (res.success) {
-        const msg = `${res.count} Karten direkt via AnkiConnect synchronisiert!`;
+        const msg = t('flashcards.sync_success', { count: res.count });
         setFeedback({ type: 'success', message: msg });
         if (onSuccessToast) onSuccessToast(msg);
       } else {
-        setFeedback({ type: 'error', message: res.error || 'AnkiConnect Fehler.' });
+        setFeedback({ type: 'error', message: res.error || t('flashcards.sync_error') });
       }
     } catch (err) {
       setFeedback({
         type: 'error',
-        message: err instanceof Error ? err.message : 'Verbindungsfehler zu AnkiConnect.',
+        message: err instanceof Error ? err.message : t('flashcards.sync_error'),
       });
     } finally {
       setIsSyncingAnkiConnect(false);
@@ -491,15 +491,15 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
   const getTypeLabel = (type: AnkiCardType) => {
     switch (type) {
       case 'definition':
-        return 'Definition';
+        return t('flashcards.type_definition');
       case 'formula':
-        return 'Formel';
+        return t('flashcards.type_formula');
       case 'cloze':
-        return 'Lückentext';
+        return t('flashcards.type_cloze');
       case 'qa':
-        return 'Konzept / Q&A';
+        return t('flashcards.type_qa');
       case 'image_occlusion':
-        return 'Image Occlusion';
+        return t('flashcards.type_occlusion');
     }
   };
 
@@ -539,7 +539,7 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
           <div className="flex items-center justify-between border-b border-border/60 pb-2 shrink-0">
             <div className="flex items-center space-x-2">
               <span className="text-xs font-bold text-slate-200">
-                Folie {currentSlideNumber} von {totalSlideCount}
+                {t('flashcards.slide_counter', { current: currentSlideNumber, total: totalSlideCount })}
               </span>
               <span className="text-[10px] text-slate-400 truncate max-w-[150px]">
                 {currentSlideTitle}
@@ -556,10 +556,10 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
                     ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
                     : 'bg-surface hover:bg-surface-hover border-border text-slate-300'
                 }`}
-                title="Visual Image Occlusion Masken zeichnen"
+                title={t('flashcards.masks_button_title')}
               >
                 <EyeOff className="w-3.5 h-3.5 text-rose-400" />
-                <span>Masken {currentSlideMasks.length > 0 ? `(${currentSlideMasks.length})` : ''}</span>
+                <span>{t('flashcards.masks_button')} {currentSlideMasks.length > 0 ? `(${currentSlideMasks.length})` : ''}</span>
               </button>
 
               {/* Prev / Next Slide */}
@@ -569,7 +569,7 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
                   onClick={() => setCurrentSlideNumber((prev) => Math.max(1, prev - 1))}
                   disabled={currentSlideNumber <= 1}
                   className="p-1.5 bg-surface hover:bg-surface-hover border border-border text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition cursor-pointer"
-                  title="Vorherige Folie"
+                  title={t('flashcards.prev_slide')}
                 >
                   <ChevronLeft className="w-3.5 h-3.5" />
                 </button>
@@ -578,7 +578,7 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
                   onClick={() => setCurrentSlideNumber((prev) => Math.min(totalSlideCount, prev + 1))}
                   disabled={currentSlideNumber >= totalSlideCount}
                   className="p-1.5 bg-surface hover:bg-surface-hover border border-border text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition cursor-pointer"
-                  title="Nächste Folie"
+                  title={t('flashcards.next_slide')}
                 >
                   <ChevronRight className="w-3.5 h-3.5" />
                 </button>
@@ -591,7 +591,7 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
             {isPdfLoading && (
               <div className="absolute inset-0 bg-background/70 backdrop-blur-xs flex flex-col items-center justify-center space-y-2 text-slate-300 z-30">
                 <Loader2 className="w-6 h-6 animate-spin text-accent" />
-                <span className="text-xs">Lade Folie {currentSlideNumber}...</span>
+                <span className="text-xs">{t('flashcards.loading_slide', { current: currentSlideNumber })}</span>
               </div>
             )}
 
@@ -607,7 +607,7 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
               {!pdfRenderedOk && currentSlideFallbackImage && (
                 <img
                   src={currentSlideFallbackImage}
-                  alt={`Folie ${currentSlideNumber}`}
+                  alt={t('flashcards.slide_prefix', { number: currentSlideNumber })}
                   className="max-w-full max-h-full object-contain rounded shadow-md"
                 />
               )}
@@ -635,16 +635,16 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
                 <FileText className="w-10 h-10 mx-auto opacity-40 text-accent" />
                 <div>
                   <p className="text-xs font-semibold text-slate-300">
-                    Folie {currentSlideNumber}: {currentSlideTitle}
+                    {t('flashcards.slide_prefix', { number: currentSlideNumber })}: {currentSlideTitle}
                   </p>
-                  <p className="text-[11px] text-slate-400 mt-1">Keine Original-PDF verknüpft</p>
+                  <p className="text-[11px] text-slate-400 mt-1">{t('flashcards.no_pdf_linked')}</p>
                 </div>
                 <button
                   type="button"
                   onClick={onLinkPdfRequested}
                   className="px-3 py-1.5 bg-surface hover:bg-surface-hover border border-border text-slate-200 rounded-xl text-xs font-semibold transition inline-flex items-center gap-1.5 cursor-pointer shadow-sm"
                 >
-                  <FileText className="w-3.5 h-3.5 text-accent" /> PDF verknüpfen
+                  <FileText className="w-3.5 h-3.5 text-accent" /> {t('flashcards.link_pdf')}
                 </button>
               </div>
             )}
@@ -667,7 +667,7 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
                       : 'text-slate-400 hover:text-slate-200'
                   }`}
                 >
-                  Folie {currentSlideNumber} ({counts.currentSlide})
+                  {t('flashcards.scope_current_slide', { current: currentSlideNumber })} ({counts.currentSlide})
                 </button>
                 <button
                   type="button"
@@ -678,7 +678,7 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
                       : 'text-slate-400 hover:text-slate-200'
                   }`}
                 >
-                  Alle ({counts.all})
+                  {t('flashcards.scope_all')} ({counts.all})
                 </button>
               </div>
 
@@ -688,7 +688,7 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
                 onClick={handleAddNewCard}
                 className="px-3 py-1 bg-surface hover:bg-surface-hover border border-border hover:border-accent text-slate-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
               >
-                <Plus className="w-3.5 h-3.5 text-accent" /> + Karte hinzufügen
+                <Plus className="w-3.5 h-3.5 text-accent" /> {t('flashcards.add_card')}
               </button>
             </div>
 
@@ -700,7 +700,7 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Karten durchsuchen..."
+                  placeholder={t('flashcards.search_placeholder')}
                   className="w-full pl-8 pr-3 py-1.5 text-xs bg-surface border border-border rounded-lg text-slate-100 focus:outline-none focus:border-accent transition"
                 />
               </div>
@@ -716,7 +716,7 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
                       : 'bg-surface border-border text-slate-400 hover:text-slate-200'
                   }`}
                 >
-                  Alle ({counts.all})
+                  {t('flashcards.filter_all')} ({counts.all})
                 </button>
                 {counts.definition > 0 && (
                   <button
@@ -728,7 +728,7 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
                         : 'bg-surface border-border text-slate-400 hover:text-slate-200'
                     }`}
                   >
-                    Def ({counts.definition})
+                    {t('flashcards.filter_definition')} ({counts.definition})
                   </button>
                 )}
                 {counts.formula > 0 && (
@@ -741,7 +741,7 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
                         : 'bg-surface border-border text-slate-400 hover:text-slate-200'
                     }`}
                   >
-                    Formeln ({counts.formula})
+                    {t('flashcards.filter_formula')} ({counts.formula})
                   </button>
                 )}
                 {counts.cloze > 0 && (
@@ -754,7 +754,7 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
                         : 'bg-surface border-border text-slate-400 hover:text-slate-200'
                     }`}
                   >
-                    Lückentext ({counts.cloze})
+                    {t('flashcards.filter_cloze')} ({counts.cloze})
                   </button>
                 )}
                 {counts.image_occlusion > 0 && (
@@ -767,7 +767,7 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
                         : 'bg-surface border-border text-slate-400 hover:text-slate-200'
                     }`}
                   >
-                    Occlusion ({counts.image_occlusion})
+                    {t('flashcards.filter_occlusion')} ({counts.image_occlusion})
                   </button>
                 )}
               </div>
@@ -779,11 +779,11 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
             {filteredCards.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-48 text-slate-400 space-y-2">
                 <Layers className="w-8 h-8 text-slate-600" />
-                <p className="text-sm font-medium">Keine Lernkarten gefunden</p>
+                <p className="text-sm font-medium">{t('flashcards.empty_title')}</p>
                 <p className="text-xs text-slate-500">
                   {scopeFilter === 'current_slide'
-                    ? 'Zu dieser Folie gibt es noch keine Karten. Klicke auf "+ Karte hinzufügen" oder aktiviere den Image Occlusion Builder.'
-                    : 'Passe Suchfilter oder Suchbegriff an.'}
+                    ? t('flashcards.empty_desc_slide')
+                    : t('flashcards.empty_desc_all')}
                 </p>
               </div>
             ) : (
@@ -802,7 +802,7 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
                     checked={card.enabled}
                     onChange={() => handleToggleCard(card.id)}
                     className="mt-1 h-4 w-4 rounded border-border text-accent focus:ring-accent cursor-pointer"
-                    title={card.enabled ? 'Karte aktiv (wird exportiert)' : 'Karte deaktiviert'}
+                    title={card.enabled ? t('flashcards.card_active') : t('flashcards.card_disabled')}
                   />
 
                   {/* Card Content & Inline Editing */}
@@ -817,7 +817,7 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
                           {getTypeLabel(card.type)}
                         </span>
                         <span className="text-[11px] text-slate-400 truncate">
-                          Folie {card.slideNumber}: {card.slideTitle}
+                          {t('flashcards.slide_prefix', { number: card.slideNumber })}: {card.slideTitle}
                         </span>
                       </div>
 
@@ -825,7 +825,7 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
                         type="button"
                         onClick={() => handleDeleteCard(card.id)}
                         className="p-1 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition cursor-pointer"
-                        title="Karte löschen"
+                        title={t('flashcards.delete_card')}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -835,27 +835,27 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
                     <div className="space-y-2">
                       <div className="space-y-1">
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                          {card.type === 'image_occlusion' ? 'Frage / Prompt (Vorderseite):' : 'Vorderseite:'}
+                          {card.type === 'image_occlusion' ? t('flashcards.front_occlusion_label') : t('flashcards.front_label')}
                         </span>
                         <textarea
                           rows={2}
                           value={card.front}
                           onChange={(e) => handleUpdateCardField(card.id, 'front', e.target.value)}
                           className="w-full p-2 text-xs bg-slate-950/60 border border-border/60 rounded-lg text-slate-200 focus:outline-none focus:border-accent resize-y font-mono leading-relaxed"
-                          placeholder="Vorderseite der Karte..."
+                          placeholder={t('flashcards.front_placeholder')}
                         />
                       </div>
 
                       <div className="space-y-1">
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                          {card.type === 'image_occlusion' ? 'Antwort / Begriff (Rückseite):' : 'Rückseite:'}
+                          {card.type === 'image_occlusion' ? t('flashcards.back_occlusion_label') : t('flashcards.back_label')}
                         </span>
                         <textarea
                           rows={2}
                           value={card.back}
                           onChange={(e) => handleUpdateCardField(card.id, 'back', e.target.value)}
                           className="w-full p-2 text-xs bg-slate-950/60 border border-border/60 rounded-lg text-slate-300 focus:outline-none focus:border-accent resize-y font-mono leading-relaxed"
-                          placeholder="Rückseite der Karte..."
+                          placeholder={t('flashcards.back_placeholder')}
                         />
                       </div>
                     </div>
@@ -872,18 +872,22 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
         {/* Left: Deck Name & Status */}
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center space-x-2">
-            <span className="text-xs font-semibold text-slate-300">Deck:</span>
+            <span className="text-xs font-semibold text-slate-300">{t('flashcards.deck_label')}</span>
             <input
               type="text"
               value={deckName}
               onChange={(e) => setDeckName(e.target.value)}
               className="px-2.5 py-1 text-xs bg-surface border border-border rounded-lg text-slate-100 focus:outline-none focus:border-accent max-w-[200px]"
-              placeholder="Deck-Name..."
+              placeholder={t('flashcards.deck_placeholder')}
             />
           </div>
 
           <span className="text-xs text-slate-400">
-            <strong className="text-slate-200">{counts.enabled}</strong> von {counts.all} Karten aktiv
+            <Trans
+              i18nKey="flashcards.active_count"
+              values={{ enabled: counts.enabled, total: counts.all }}
+              components={[<strong className="text-slate-200" key="0" />]}
+            />
           </span>
 
           {/* AnkiConnect Status Indicator */}
@@ -894,7 +898,7 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
               }`}
             />
             <span className="text-[11px]">
-              {isAnkiConnectOnline ? 'AnkiConnect aktiv' : 'AnkiConnect optional'}
+              {isAnkiConnectOnline ? t('flashcards.ankiconnect_active') : t('flashcards.ankiconnect_optional')}
             </span>
           </div>
         </div>
@@ -906,10 +910,10 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
             type="button"
             onClick={handleCopyTsv}
             className="flex items-center space-x-1.5 px-3 py-1.5 bg-surface hover:bg-surface-hover border border-border text-slate-300 rounded-xl text-xs font-semibold transition cursor-pointer"
-            title="TSV für Notion, Obsidian oder Web-Tools kopieren"
+            title={t('flashcards.copy_tsv_tooltip')}
           >
             {copiedTsv ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-            <span>{copiedTsv ? 'Kopiert!' : 'Kopieren (TSV)'}</span>
+            <span>{copiedTsv ? t('flashcards.copied_tsv') : t('flashcards.copy_tsv')}</span>
           </button>
 
           {/* Save .apkg File */}
@@ -918,14 +922,14 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
             onClick={handleSaveApkgFile}
             disabled={isExportingApkg || counts.enabled === 0}
             className="flex items-center space-x-1.5 px-3.5 py-1.5 bg-surface hover:bg-surface-hover border border-border text-slate-200 rounded-xl text-xs font-semibold transition cursor-pointer disabled:opacity-50"
-            title="Echtes Anki .apkg Deck mit SQLite und WebP-Folienbildern speichern"
+            title={t('flashcards.save_apkg_tooltip')}
           >
             {isExportingApkg ? (
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
             ) : (
               <Download className="w-3.5 h-3.5 text-amber-400" />
             )}
-            <span>Als .apkg speichern</span>
+            <span>{t('flashcards.save_apkg')}</span>
           </button>
 
           {/* Open in Anki (Native 1-Click) */}
@@ -934,14 +938,14 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
             onClick={handleOpenInAnki}
             disabled={isOpeningInAnki || counts.enabled === 0}
             className="flex items-center space-x-1.5 px-4 py-1.5 bg-accent hover:bg-accent/90 text-white rounded-xl text-xs font-semibold transition shadow-lg shadow-accent/25 cursor-pointer disabled:opacity-50"
-            title="Direkt in Anki Desktop öffnen und importieren"
+            title={t('flashcards.open_in_anki_tooltip')}
           >
             {isOpeningInAnki ? (
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
             ) : (
               <ExternalLink className="w-3.5 h-3.5" />
             )}
-            <span>In Anki öffnen</span>
+            <span>{t('flashcards.open_in_anki')}</span>
           </button>
 
           {/* AnkiConnect Direct Sync Button if running */}
@@ -957,7 +961,7 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
               ) : (
                 <Zap className="w-3.5 h-3.5 text-emerald-200" />
               )}
-              <span>1-Klick Sync</span>
+              <span>{t('flashcards.sync_ankiconnect')}</span>
             </button>
           )}
         </div>

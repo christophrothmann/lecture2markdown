@@ -129,7 +129,7 @@ export function App() {
         await relaunch();
       }
     } catch (e) {
-      alert(`Update konnte nicht installiert werden:\n${e}`);
+      alert(t('header.update_error', { error: String(e) }));
       setIsUpdating(false);
     }
   };
@@ -625,7 +625,7 @@ export function App() {
               fallback={
                 <div className="glass-card rounded-2xl p-12 flex flex-col items-center justify-center space-y-3 min-h-[400px]">
                   <Loader2 className="w-8 h-8 animate-spin text-accent" />
-                  <span className="text-xs text-slate-400">Lade Dokument-Vorschau...</span>
+                  <span className="text-xs text-slate-400">{t('preview.loading_preview')}</span>
                 </div>
               }
             >

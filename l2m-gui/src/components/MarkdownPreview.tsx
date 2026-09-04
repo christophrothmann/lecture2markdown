@@ -61,9 +61,9 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
   // Parse markdown into distinct slide sections with 1:1 page mapping
   useEffect(() => {
     const parsed = parseMarkdownSlides(content);
-    setSlides(parsed.length > 0 ? parsed : [{ slideNumber: 1, title: 'Vorlesung', content }]);
+    setSlides(parsed.length > 0 ? parsed : [{ slideNumber: 1, title: t('flashcards.lecture_default'), content }]);
     setCurrentSlideIndex(0);
-  }, [content]);
+  }, [content, t]);
 
   // Load and render slide with PDF.js (0 Python, 100% Zero-Config client-side)
   useEffect(() => {
@@ -156,7 +156,7 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
 
   const handleCopyAsFile = async () => {
     try {
-      const cleanName = fileName ? fileName.replace(/\.pdf$/i, '') : 'Vorlesung';
+      const cleanName = fileName ? fileName.replace(/\.pdf$/i, '') : t('flashcards.lecture_default');
       await invoke('copy_file_to_clipboard_native', {
         fileName: `${cleanName}.md`,
         content,
@@ -180,7 +180,7 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
   };
 
   const handleDragStart = (e: React.DragEvent) => {
-    const cleanName = fileName || 'Vorlesung.md';
+    const cleanName = fileName || `${t('flashcards.lecture_default')}.md`;
     e.dataTransfer.setData('text/plain', content);
     e.dataTransfer.setData(
       'DownloadURL',
@@ -191,7 +191,7 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
 
   const characterCount = content.length;
   const lineCount = content.split('\n').length;
-  const currentSlide = slides[currentSlideIndex] || { slideNumber: 1, title: 'Vorlesung', content };
+  const currentSlide = slides[currentSlideIndex] || { slideNumber: 1, title: t('flashcards.lecture_default'), content };
 
   return (
     <div className="glass-card rounded-2xl p-6 space-y-4 flex flex-col h-full">
@@ -387,7 +387,7 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
                 onClick={() => setCurrentSlideIndex((prev) => Math.max(0, prev - 1))}
                 disabled={currentSlideIndex === 0}
                 className="p-1.5 bg-surface hover:bg-surface-hover border border-border text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition cursor-pointer"
-                title="←"
+                title={t('flashcards.prev_slide')}
               >
                 <ChevronLeft className="w-3.5 h-3.5" />
               </button>
@@ -396,7 +396,7 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
                 onClick={() => setCurrentSlideIndex((prev) => Math.min(slides.length - 1, prev + 1))}
                 disabled={currentSlideIndex === slides.length - 1}
                 className="p-1.5 bg-surface hover:bg-surface-hover border border-border text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition cursor-pointer"
-                title="→"
+                title={t('flashcards.next_slide')}
               >
                 <ChevronRight className="w-3.5 h-3.5" />
               </button>
