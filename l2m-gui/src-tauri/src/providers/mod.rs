@@ -51,6 +51,27 @@ pub fn sanitize_markdown_output(markdown_text: &str) -> String {
         cleaned = re.replace_all(&cleaned, "> *[Visual Content: $1]*").to_string();
     }
 
+    // Strip outer markdown code fences like ```markdown ... ```
+    let trimmed = cleaned.trim();
+    if (trimmed.starts_with("```markdown") || trimmed.starts_with("```md")) && trimmed.ends_with("```") {
+        if let Some(first_newline) = trimmed.find('\n') {
+            if trimmed.len() > first_newline + 4 {
+                let inner = &trimmed[first_newline + 1..trimmed.len() - 3];
+                cleaned = inner.trim().to_string();
+            }
+        }
+    } else if trimmed.starts_with("```") && trimmed.ends_with("```") {
+        let count = trimmed.matches("```").count();
+        if count == 2 {
+            if let Some(first_newline) = trimmed.find('\n') {
+                if trimmed.len() > first_newline + 4 {
+                    let inner = &trimmed[first_newline + 1..trimmed.len() - 3];
+                    cleaned = inner.trim().to_string();
+                }
+            }
+        }
+    }
+
     cleaned
 }
 

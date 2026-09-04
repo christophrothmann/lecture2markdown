@@ -9,6 +9,34 @@ export interface SlideSection {
   content: string;
 }
 
+function cleanTitleString(raw: string): string {
+  if (!raw) return '';
+  return raw
+    .replace(/```[a-z]*/gi, '')
+    .replace(/^[:–—-\s#]+/, '')
+    .replace(/[:–—-\s#]+$/, '')
+    .trim();
+}
+
+function stripOuterCodeFences(text: string): string {
+  let cleaned = text.trim();
+  if ((cleaned.startsWith('```markdown') || cleaned.startsWith('```md')) && cleaned.endsWith('```')) {
+    const firstNewline = cleaned.indexOf('\n');
+    if (firstNewline !== -1 && cleaned.length > firstNewline + 4) {
+      cleaned = cleaned.slice(firstNewline + 1, -3).trim();
+    }
+  } else if (cleaned.startsWith('```') && cleaned.endsWith('```')) {
+    const count = (cleaned.match(/```/g) || []).length;
+    if (count === 2) {
+      const firstNewline = cleaned.indexOf('\n');
+      if (firstNewline !== -1 && cleaned.length > firstNewline + 4) {
+        cleaned = cleaned.slice(firstNewline + 1, -3).trim();
+      }
+    }
+  }
+  return cleaned;
+}
+
 export function parseMarkdownSlides(markdown: string): SlideSection[] {
   if (!markdown || !markdown.trim()) return [];
 
@@ -21,18 +49,29 @@ export function parseMarkdownSlides(markdown: string): SlideSection[] {
   while ((match = slideRegex.exec(markdown)) !== null) {
     const slideNum = parseInt(match[1], 10);
     const rawHeaderRest = match[2]?.trim() || '';
-    const slideBody = match[3]?.trim() || '';
+    const rawSlideBody = match[3]?.trim() || '';
+    const slideBody = stripOuterCodeFences(rawSlideBody);
 
-    let title = rawHeaderRest;
-    if (!title || title.startsWith('#')) {
-      const subheader = slideBody.match(/^###?\s+(.+)$/m);
-      title = subheader ? subheader[1].trim() : `Folie ${slideNum}`;
+    let topic = cleanTitleString(rawHeaderRest);
+
+    // If header rest is empty, just ```markdown, or starts with a generic label, search body
+    if (!topic || topic.toLowerCase().includes('markdown') || /^folie\s*\d+$/i.test(topic)) {
+      const subheader = slideBody.match(/^(?:#{1,4})\s+([^\n]+)/m);
+      if (subheader) {
+        topic = cleanTitleString(subheader[1]);
+      } else {
+        topic = '';
+      }
     }
+
+    const fullTitle = topic && !topic.toLowerCase().startsWith('folie')
+      ? `Folie ${slideNum}: ${topic}`
+      : `Folie ${slideNum}`;
 
     parsed.push({
       slideNumber: slideNum,
-      title: title.startsWith('Folie') ? title : `Folie ${slideNum}: ${title}`,
-      content: `## [Folie ${slideNum}] ${rawHeaderRest}\n\n${slideBody}`.trim(),
+      title: fullTitle,
+      content: `## [Folie ${slideNum}]${topic ? ` ${topic}` : ''}\n\n${slideBody}`.trim(),
     });
   }
 
@@ -46,17 +85,22 @@ export function parseMarkdownSlides(markdown: string): SlideSection[] {
 
       const headerMatch = trimmed.match(/^##\s*\[?(?:Folie|Slide)?\s*(\d+)?\]?(?::|-)?\s*(.*)$/im);
       let num = counter;
-      let title = `Folie ${counter}`;
+      let topic = '';
 
       if (headerMatch) {
         if (headerMatch[1]) num = parseInt(headerMatch[1], 10);
-        if (headerMatch[2]?.trim()) title = headerMatch[2].trim();
+        if (headerMatch[2]?.trim()) topic = cleanTitleString(headerMatch[2]);
       }
+
+      const bodyClean = stripOuterCodeFences(trimmed.replace(/^---\s*\n/, ''));
+      const fullTitle = topic && !topic.toLowerCase().startsWith('folie')
+        ? `Folie ${num}: ${topic}`
+        : `Folie ${num}`;
 
       parsed.push({
         slideNumber: num,
-        title: title.startsWith('Folie') ? title : `Folie ${num}: ${title}`,
-        content: trimmed.replace(/^---\s*\n/, ''),
+        title: fullTitle,
+        content: bodyClean,
       });
       counter += 1;
     }
@@ -66,7 +110,7 @@ export function parseMarkdownSlides(markdown: string): SlideSection[] {
     parsed.push({
       slideNumber: 1,
       title: 'Folie 1',
-      content: markdown.trim(),
+      content: stripOuterCodeFences(markdown.trim()),
     });
   }
 

@@ -20,6 +20,17 @@ export interface AnkiCard {
 }
 
 /**
+ * Strips raw markdown formatting and code fence remnants from a string.
+ */
+function cleanContentString(text: string): string {
+  if (!text) return '';
+  return text
+    .replace(/```[a-z]*/gi, '')
+    .replace(/[`]/g, '')
+    .trim();
+}
+
+/**
  * Parses markdown into atomic, high-quality Anki flashcards.
  */
 export function generateAnkiCardsFromMarkdown(
@@ -35,42 +46,56 @@ export function generateAnkiCardsFromMarkdown(
 
   for (const slide of slides) {
     const slideLines = slide.content.split('\n');
-    const slideTitle = slide.title.trim() || `Folie ${slide.slideNumber}`;
+    
+    // Extract a genuine, clean topic name without any "Folie X:" prefix or markdown fence artifacts
+    const cleanTopic = cleanContentString(
+      slide.title
+        .replace(/^Folie\s*\d+\s*[:–—-]?\s*/i, '')
+        .replace(/^[#:\s–—-]+/, '')
+    );
+
+    const hasRealTopic = cleanTopic.length >= 3 && !/^folie\s*\d+$/i.test(cleanTopic);
+    const displaySlideTitle = hasRealTopic ? `Folie ${slide.slideNumber}: ${cleanTopic}` : `Folie ${slide.slideNumber}`;
 
     // 1. Extract Key Definitions (**Term**: Definition or **Term** - Definition)
     for (const rawLine of slideLines) {
       const line = rawLine.trim();
-      if (!line) continue;
+      if (!line || line.startsWith('```')) continue;
 
       // Pattern: - **Term**: Definition or - **Term** – Definition
       const defMatch = line.match(/^[-*]?\s*\*\*([^*]+)\*\*[:\s–—-]+(.+)$/);
       if (defMatch) {
-        const term = defMatch[1].trim();
-        const definition = defMatch[2].trim();
+        const term = cleanContentString(defMatch[1].trim());
+        const definition = cleanContentString(defMatch[2].trim());
 
         if (term.length >= 2 && definition.length >= 5) {
-          // If the definition sentence is rich, create BOTH an atomic definition AND a Cloze card!
+          // Front: Clean, active question asking for the definition
+          const frontHtml = hasRealTopic
+            ? `Was versteht man unter <strong>${escapeHtml(term)}</strong>?<div style="font-size:11px;color:#888;margin-top:4px;">Thema: ${escapeHtml(cleanTopic)}</div>`
+            : `Was versteht man unter <strong>${escapeHtml(term)}</strong>?`;
+
           cards.push({
             id: generateId(),
             type: 'definition',
-            front: term,
+            front: frontHtml,
             back: formatAnkiMath(definition),
             slideNumber: slide.slideNumber,
-            slideTitle,
+            slideTitle: displaySlideTitle,
             tags: [`Lecture2Markdown::${cleanDeckTag}`, 'Definitionen'],
             enabled: true,
           });
 
-          // Cloze deletion card from definition sentence:
-          if (definition.length > 25 && !term.includes('\n')) {
+          // Cloze deletion card from rich definition sentences:
+          if (definition.length > 25 && !term.includes('\n') && !term.includes('`')) {
             const clozeFront = `{{c1::${escapeHtml(term)}}}: ${formatAnkiMath(definition)}`;
+            const clozeBack = hasRealTopic ? `<small style="color:#888;">Kontext: ${escapeHtml(cleanTopic)}</small>` : '';
             cards.push({
               id: generateId(),
               type: 'cloze',
               front: clozeFront,
-              back: `<small style="color:#888;">Kontext: ${escapeHtml(slideTitle)}</small>`,
+              back: clozeBack,
               slideNumber: slide.slideNumber,
-              slideTitle,
+              slideTitle: displaySlideTitle,
               tags: [`Lecture2Markdown::${cleanDeckTag}`, 'Lueckentext'],
               enabled: true,
             });
@@ -82,10 +107,17 @@ export function generateAnkiCardsFromMarkdown(
       const displayMathMatch = line.match(/\$\$([^\$]+)\$\$/);
       if (displayMathMatch) {
         const formula = displayMathMatch[1].trim();
-        const contextHint = line.replace(/\$\$([^\$]+)\$\$/, '').replace(/^[-*]\s*/, '').trim();
-        const frontText = contextHint.length > 3
-          ? `Wie lautet die Formel für: <strong>${escapeHtml(contextHint)}</strong>?`
-          : `Wie lautet die mathematische Formel auf Folie <em>${escapeHtml(slideTitle)}</em>?`;
+        const rawHint = line.replace(/\$\$([^\$]+)\$\$/, '').replace(/^[-*]\s*/, '').trim();
+        const contextHint = cleanContentString(rawHint);
+
+        let frontText = '';
+        if (contextHint.length > 3) {
+          frontText = `Wie lautet die Formel für: <strong>${escapeHtml(contextHint)}</strong>?`;
+        } else if (hasRealTopic) {
+          frontText = `Wie lautet die Formel zu: <strong>${escapeHtml(cleanTopic)}</strong>?`;
+        } else {
+          frontText = `Wie lautet die mathematische Formel für diesen Zusammenhang?`;
+        }
 
         cards.push({
           id: generateId(),
@@ -93,71 +125,77 @@ export function generateAnkiCardsFromMarkdown(
           front: frontText,
           back: `\\[${formula}\\]`,
           slideNumber: slide.slideNumber,
-          slideTitle,
+          slideTitle: displaySlideTitle,
           tags: [`Lecture2Markdown::${cleanDeckTag}`, 'Formeln'],
           enabled: true,
         });
       }
     }
 
-    // 3. Extract Atomic Concept Questions (Avoid dumping 8 bullets onto 1 card)
+    // 3. Extract High-Signal Cloze Sentences from Bullet Points
     const bulletItems = slideLines
       .map((l) => l.trim())
-      .filter((l) => l.startsWith('- ') || l.startsWith('* '))
+      .filter((l) => (l.startsWith('- ') || l.startsWith('* ')) && !l.startsWith('```'))
       .map((l) => l.replace(/^[-*]\s*/, '').trim());
 
-    // If there are distinct bullet points, extract the most informative ones as atomic QA cards
     for (const item of bulletItems) {
-      // Check if bullet contains a sub-definition, e.g. "Vorteil: Hohe Geschwindigkeit"
-      const subMatch = item.match(/^\*\*([^*]+)\*\*[:\s–—-]+(.+)$/);
-      if (subMatch) {
-        const subTerm = subMatch[1].trim();
-        const subDesc = subMatch[2].trim();
-        if (subTerm.length > 2 && subDesc.length > 4) {
-          // Already captured in definitions loop
-          continue;
-        }
-      }
+      // Don't duplicate full definitions
+      if (/^\*\*([^*]+)\*\*[:\s–—-]+(.+)$/.test(item)) continue;
 
-      // Single standalone high-value concept sentence (e.g. contains bold keyword)
       const boldInItem = item.match(/\*\*([^*]+)\*\*/);
-      if (boldInItem && item.length > 30 && item.length < 200) {
+      if (boldInItem && item.length > 30 && item.length < 220) {
         const keyWord = boldInItem[1].trim();
-        // Turn into an active Cloze card
-        const clozeItem = item.replace(`**${keyWord}**`, `{{c1::${keyWord}}}`);
-        cards.push({
-          id: generateId(),
-          type: 'cloze',
-          front: formatAnkiMath(clozeItem),
-          back: `<small style="color:#888;">Thema: ${escapeHtml(slideTitle)}</small>`,
-          slideNumber: slide.slideNumber,
-          slideTitle,
-          tags: [`Lecture2Markdown::${cleanDeckTag}`, 'Lueckentext'],
-          enabled: true,
-        });
+        if (keyWord.length >= 3 && !keyWord.toLowerCase().includes('markdown')) {
+          const cleanItem = cleanContentString(item);
+          const clozeItem = cleanItem.replace(`**${keyWord}**`, `{{c1::${keyWord}}}`);
+          
+          cards.push({
+            id: generateId(),
+            type: 'cloze',
+            front: formatAnkiMath(clozeItem),
+            back: hasRealTopic ? `<small style="color:#888;">Thema: ${escapeHtml(cleanTopic)}</small>` : '',
+            slideNumber: slide.slideNumber,
+            slideTitle: displaySlideTitle,
+            tags: [`Lecture2Markdown::${cleanDeckTag}`, 'Lueckentext'],
+            enabled: true,
+          });
+        }
       }
     }
 
-    // 4. If a slide has 2-4 concise bullet points (and hasn't generated 3+ cards yet), create a focused Summary Card
-    if (bulletItems.length >= 2 && bulletItems.length <= 4) {
+    // 4. Extract Concept Q&A - ONLY if there is a real, meaningful topic! (No generic "Folie X" cards)
+    if (hasRealTopic && bulletItems.length >= 2 && bulletItems.length <= 4) {
       const formattedList = bulletItems
-        .map((b) => `<li>${formatAnkiMath(b.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>'))}</li>`)
+        .map((b) => {
+          const cleanB = cleanContentString(b);
+          return `<li>${formatAnkiMath(cleanB.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>'))}</li>`;
+        })
         .join('');
+
+      let questionText = `Was sind die Kernpunkte zu: <strong>${escapeHtml(cleanTopic)}</strong>?`;
+
+      if (/^vorteile\b/i.test(cleanTopic)) {
+        questionText = `Welche Vorteile bieten <strong>${escapeHtml(cleanTopic.replace(/^vorteile\s+(von|zu)\s+/i, ''))}</strong>?`;
+      } else if (/^nachteile\b/i.test(cleanTopic)) {
+        questionText = `Welche Nachteile gibt es bei <strong>${escapeHtml(cleanTopic.replace(/^nachteile\s+(von|zu)\s+/i, ''))}</strong>?`;
+      } else if (/^(eigenschaften|merkmale)\b/i.test(cleanTopic)) {
+        questionText = `Was sind die zentralen Merkmale von <strong>${escapeHtml(cleanTopic.replace(/^(eigenschaften|merkmale)\s+(von|zu)\s+/i, ''))}</strong>?`;
+      }
 
       cards.push({
         id: generateId(),
         type: 'qa',
-        front: `Was sind die Kernaussagen zu: <strong>${escapeHtml(slideTitle)}</strong>?`,
+        front: questionText,
         back: `<ul style="text-align:left;line-height:1.6;margin:0;padding-left:20px;">${formattedList}</ul>`,
         slideNumber: slide.slideNumber,
-        slideTitle,
+        slideTitle: displaySlideTitle,
         tags: [`Lecture2Markdown::${cleanDeckTag}`, 'Konzepte'],
         enabled: true,
       });
     }
   }
 
-  // Fallback if no specific patterns were found
+  // Fallback if no specific cards could be generated
   if (cards.length === 0) {
     cards.push({
       id: generateId(),
