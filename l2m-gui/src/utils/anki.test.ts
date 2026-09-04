@@ -100,4 +100,36 @@ wobei $p$ der parallele Anteil ist.
     expect(sanitizeTag(undefined)).toBe('Vorlesung');
     expect(sanitizeTag('')).toBe('Vorlesung');
   });
+
+  it('rejects raw UML method stubs from becoming concept cards but retains explained code methods', () => {
+    const umlAndCodeMarkdown = `
+## [Folie 10: SW-Architektur und -Design]
+- **Proxy**
+- operation(): void
+- operation(): void
+
+## [Folie 11: Java Methoden]
+- **equals()**: Vergleicht zwei Objekte in Java auf inhaltliche Gleichheit statt Referenzidentität.
+- **hashCode()**: Liefert einen ganzzahligen Hash-Wert für Hashing-Datenstrukturen.
+`;
+
+    const cards = generateAnkiCardsFromMarkdown(umlAndCodeMarkdown, 'SW-Architektur und -Design');
+
+    // 1. Ensure NO card asks "Was sind die Kernpunkte zu: SW-Architektur..." with operation(): void
+    const badProxyCards = cards.filter(
+      (c) =>
+        c.front.includes('SW-Architektur und -Design') &&
+        (c.back.includes('operation(): void') || c.front.includes('operation(): void'))
+    );
+    expect(badProxyCards.length).toBe(0);
+
+    // 2. Ensure Java method definitions ARE successfully extracted
+    const equalsCard = cards.find((c) => c.type === 'definition' && c.front.includes('equals()'));
+    expect(equalsCard).toBeDefined();
+    expect(equalsCard?.back).toContain('inhaltliche Gleichheit');
+
+    const hashCodeCard = cards.find((c) => c.type === 'definition' && c.front.includes('hashCode()'));
+    expect(hashCodeCard).toBeDefined();
+    expect(hashCodeCard?.back).toContain('Hash-Wert');
+  });
 });

@@ -31,6 +31,36 @@ function cleanContentString(text: string): string {
 }
 
 /**
+ * Detects if a text string is a raw UML method signature, technical stub, or code fragment
+ * that shouldn't be extracted as an active recall bullet point.
+ */
+function isCodeOrUmlStub(text: string): boolean {
+  const trimmed = text.trim();
+  // Method signatures like operation(): void, +doSomething(x: int): boolean, getX(), void run()
+  if (/^[+\-#~]?\s*[a-zA-Z_][a-zA-Z0-9_]*\s*\([^)]*\)\s*(?::\s*[a-zA-Z0-9_<>\[\]]+)?\s*;?$/i.test(trimmed)) {
+    return true;
+  }
+  // Field or variable stubs like "int count;", "public String name;", "operation: void"
+  if (/^(?:public|private|protected)?\s*(?:static\s+)?(?:final\s+)?[a-zA-Z0-9_<>\[\]]+\s+[a-zA-Z_][a-zA-Z0-9_]*\s*;?$/i.test(trimmed)) {
+    return true;
+  }
+  if (/^[a-zA-Z_][a-zA-Z0-9_]*\s*:\s*[a-zA-Z0-9_<>\[\]]+\s*;?$/i.test(trimmed)) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Validates that a bullet point is a substantive explanation (not an isolated fragment or diagram stub).
+ */
+function isSubstantialExplanation(text: string): boolean {
+  if (isCodeOrUmlStub(text)) return false;
+  const clean = cleanContentString(text).replace(/[^a-zA-ZäöüÄÖÜß0-9\s]/g, ' ').trim();
+  const words = clean.split(/\s+/).filter((w) => w.length > 1);
+  return words.length >= 3 && clean.length >= 15;
+}
+
+/**
  * Parses markdown into atomic, high-quality Anki flashcards.
  */
 export function generateAnkiCardsFromMarkdown(
@@ -48,13 +78,40 @@ export function generateAnkiCardsFromMarkdown(
     const slideLines = slide.content.split('\n');
     
     // Extract a genuine, clean topic name without any "Folie X:" prefix or markdown fence artifacts
-    const cleanTopic = cleanContentString(
+    const rawSlideTopic = cleanContentString(
       slide.title
         .replace(/^Folie\s*\d+\s*[:–—-]?\s*/i, '')
         .replace(/^[#:\s–—-]+/, '')
     );
 
-    const hasRealTopic = cleanTopic.length >= 3 && !/^folie\s*\d+$/i.test(cleanTopic);
+    // Check if the topic is just the overall course name or generic
+    const isGenericCourseTopic =
+      !rawSlideTopic ||
+      rawSlideTopic.toLowerCase() === lectureTitle.toLowerCase() ||
+      rawSlideTopic.toLowerCase().replace(/[^a-z0-9]/g, '') === lectureTitle.toLowerCase().replace(/[^a-z0-9]/g, '') ||
+      /^(vorlesung|kapitel|lecture|chapter|folie|slide)\b/i.test(rawSlideTopic);
+
+    // Try to find a more specific sub-topic on the slide
+    let cleanTopic = rawSlideTopic;
+    if (isGenericCourseTopic) {
+      // 1. Check for sub-headings (e.g. ### Entwurfsmuster: Proxy)
+      const subHeaderMatch = slide.content.match(/^#{3,4}\s+([^\n]+)/m);
+      if (subHeaderMatch) {
+        cleanTopic = cleanContentString(subHeaderMatch[1]);
+      } else {
+        // 2. Check for standalone bold concepts (e.g. **Proxy**)
+        const boldConceptMatch = slide.content.match(/^\*\*([^*]{3,40})\*\*\s*$/m);
+        if (boldConceptMatch) {
+          cleanTopic = cleanContentString(boldConceptMatch[1]);
+        }
+      }
+    }
+
+    const hasRealTopic =
+      cleanTopic.length >= 3 &&
+      !/^folie\s*\d+$/i.test(cleanTopic) &&
+      (!isGenericCourseTopic || cleanTopic !== rawSlideTopic);
+
     const displaySlideTitle = hasRealTopic ? `Folie ${slide.slideNumber}: ${cleanTopic}` : `Folie ${slide.slideNumber}`;
 
     // 1. Extract Key Definitions (**Term**: Definition or **Term** - Definition)
@@ -163,9 +220,12 @@ export function generateAnkiCardsFromMarkdown(
       }
     }
 
-    // 4. Extract Concept Q&A - ONLY if there is a real, meaningful topic! (No generic "Folie X" cards)
-    if (hasRealTopic && bulletItems.length >= 2 && bulletItems.length <= 4) {
-      const formattedList = bulletItems
+    // 4. Extract Concept Q&A - ONLY if there is a real, meaningful topic and substantive explanations
+    const substantialBullets = bulletItems.filter((b) => isSubstantialExplanation(b));
+    const uniqueSubstantialBullets = Array.from(new Set(substantialBullets));
+
+    if (hasRealTopic && uniqueSubstantialBullets.length >= 2 && uniqueSubstantialBullets.length <= 4) {
+      const formattedList = uniqueSubstantialBullets
         .map((b) => {
           const cleanB = cleanContentString(b);
           return `<li>${formatAnkiMath(cleanB.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>'))}</li>`;

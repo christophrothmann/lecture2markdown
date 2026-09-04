@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import {
   X,
   Sparkles,
@@ -285,7 +286,7 @@ export const AnkiExportModal: React.FC<AnkiExportModalProps> = ({
     }
   };
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-fade-in">
       <div className="glass-card bg-surface/95 border border-border rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
         {/* Header */}
@@ -604,6 +605,7 @@ export const AnkiExportModal: React.FC<AnkiExportModalProps> = ({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
