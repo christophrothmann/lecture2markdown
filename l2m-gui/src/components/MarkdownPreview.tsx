@@ -177,11 +177,15 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
 
   const handleExportAnki = async () => {
     try {
-      const defaultName = (fileName ? fileName.replace(/\.md|\.pdf$/i, '') : 'Vorlesung') + '_anki_deck.txt';
-      const cards = generateAnkiCardsFromMarkdown(content);
+      const cleanTitle = (fileName ? fileName.replace(/\.md|\.pdf$/i, '') : 'Vorlesung');
+      const defaultName = `${cleanTitle}_anki_deck.txt`;
+      const cards = generateAnkiCardsFromMarkdown(content, cleanTitle);
 
       if (cards.length === 0) {
-        alert('Keine Lernkarten gefunden.');
+        setSavedToast({
+          message: t('preview.anki_no_cards') || 'Keine Lernkarten im Markdown gefunden.',
+        });
+        setTimeout(() => setSavedToast(null), 4000);
         return;
       }
 
@@ -193,7 +197,7 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
       });
 
       if (filePath) {
-        await invoke('save_file_native', {
+        await invoke('save_text_file_native', {
           filePath,
           content: tsvContent,
         });
@@ -204,6 +208,7 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
           path: filePath,
         });
         setTimeout(() => setAnkiExported(false), 4000);
+        setTimeout(() => setSavedToast(null), 6000);
       }
     } catch (err) {
       console.error('Anki Export fehlgeschlagen:', err);

@@ -11,7 +11,7 @@ export interface AnkiCard {
   tags: string;
 }
 
-export function generateAnkiCardsFromMarkdown(markdown: string, lectureTitle: string): AnkiCard[] {
+export function generateAnkiCardsFromMarkdown(markdown: string, lectureTitle: string = 'Vorlesung'): AnkiCard[] {
   const cards: AnkiCard[] = [];
   const slides = parseMarkdownSlides(markdown);
 
@@ -104,6 +104,7 @@ function formatAnkiMath(text: string): string {
   return formatted;
 }
 
-function sanitizeTag(tag: string): string {
+function sanitizeTag(tag?: string): string {
+  if (!tag || typeof tag !== 'string') return 'Vorlesung';
   return tag.replace(/[\s\(\)\[\]\{\}\/\\:\.\,\;\=\+\*\?]/g, '_').replace(/_+/g, '_');
 }

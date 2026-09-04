@@ -671,6 +671,11 @@ fn save_text_file_native(file_path: String, content: String) -> Result<(), Strin
 }
 
 #[tauri::command]
+fn save_file_native(file_path: String, content: String) -> Result<(), String> {
+    save_text_file_native(file_path, content)
+}
+
+#[tauri::command]
 fn copy_file_to_clipboard_native(file_name: String, content: String) -> Result<String, String> {
     let clean_name = if file_name.ends_with(".md") {
         file_name
@@ -759,6 +764,7 @@ fn main() {
             transcribe_slides_native,
             cancel_conversion_native,
             save_text_file_native,
+            save_file_native,
             copy_file_to_clipboard_native,
             save_api_key_native,
             get_api_keys_native,
