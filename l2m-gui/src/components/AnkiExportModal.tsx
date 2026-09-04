@@ -13,6 +13,8 @@ import {
   Loader2,
   Layers,
   Zap,
+  ExternalLink,
+  Info,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { save as saveFileDialog } from '@tauri-apps/plugin-dialog';
@@ -48,6 +50,7 @@ export const AnkiExportModal: React.FC<AnkiExportModalProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [isAnkiConnectOnline, setIsAnkiConnectOnline] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isOpeningInAnki, setIsOpeningInAnki] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [copied, setCopied] = useState(false);
   const [feedbackMsg, setFeedbackMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -196,7 +199,53 @@ export const AnkiExportModal: React.FC<AnkiExportModalProps> = ({
     }
   };
 
-  // 3. Copy TSV to Clipboard
+  // 3. Open directly in Anki Desktop (Native)
+  const handleOpenInAnki = async () => {
+    const activeCards = cards.filter((c) => c.enabled);
+    if (activeCards.length === 0) {
+      setFeedbackMsg({ type: 'error', text: t('anki.no_cards_selected') || 'Keine Karten ausgewählt.' });
+      return;
+    }
+
+    try {
+      setIsOpeningInAnki(true);
+      setFeedbackMsg(null);
+      const safeDeckName = deckName.trim() || 'Vorlesung';
+      const tsvContent = exportCardsToAnkiTsv(cards, safeDeckName);
+
+      await invoke('open_anki_import_native', {
+        deckName: safeDeckName,
+        tsvContent,
+      });
+
+      if (onSuccessToast) {
+        onSuccessToast(
+          t('anki.open_in_anki_success') ||
+            'In Anki geöffnet! Bitte bestätige kurz den Import im Anki-Fenster.'
+        );
+      } else {
+        setFeedbackMsg({
+          type: 'success',
+          text:
+            t('anki.open_in_anki_success') ||
+            'In Anki geöffnet! Bitte bestätige kurz den Import im Anki-Fenster.',
+        });
+      }
+    } catch (err) {
+      console.error('Öffnen in Anki fehlgeschlagen:', err);
+      setFeedbackMsg({
+        type: 'error',
+        text:
+          err instanceof Error
+            ? err.message
+            : t('anki.open_in_anki_error') || 'Anki konnte nicht automatisch geöffnet werden.',
+      });
+    } finally {
+      setIsOpeningInAnki(false);
+    }
+  };
+
+  // 4. Copy TSV to Clipboard
   const handleCopyClipboard = async () => {
     const activeCards = cards.filter((c) => c.enabled);
     if (activeCards.length === 0) {
@@ -468,15 +517,24 @@ export const AnkiExportModal: React.FC<AnkiExportModalProps> = ({
                 isAnkiConnectOnline ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'
               }`}
             />
-            <span className="text-slate-400">
-              {isAnkiConnectOnline
-                ? t('anki.ankiconnect_active') || 'AnkiConnect verbunden'
-                : t('anki.ankiconnect_offline') || 'AnkiConnect offline (Port 8765)'}
-            </span>
+            <div className="flex items-center space-x-1.5 text-slate-400">
+              <span>
+                {isAnkiConnectOnline
+                  ? t('anki.ankiconnect_active') || 'AnkiConnect aktiv'
+                  : t('anki.ankiconnect_optional') || 'AnkiConnect (Add-on optional)'}
+              </span>
+              <div className="group relative inline-flex items-center">
+                <Info className="w-3.5 h-3.5 text-slate-500 hover:text-slate-300 transition cursor-help" />
+                <div className="absolute bottom-full left-0 mb-2 hidden group-hover:block w-72 p-2.5 bg-slate-900 border border-slate-700 rounded-lg text-[11px] text-slate-300 shadow-2xl z-50 pointer-events-none leading-relaxed">
+                  {t('anki.ankiconnect_optional_tooltip')}
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Action Buttons */}
           <div className="flex flex-wrap items-center justify-end gap-2">
+            {/* Copy TSV */}
             <button
               onClick={handleCopyClipboard}
               className="flex items-center space-x-1.5 px-3 py-2 bg-surface hover:bg-surface-hover border border-border text-slate-300 rounded-xl text-xs font-semibold transition cursor-pointer"
@@ -486,7 +544,45 @@ export const AnkiExportModal: React.FC<AnkiExportModalProps> = ({
               <span>{copied ? t('anki.copied') || 'Kopiert!' : t('anki.copy_tsv') || 'Kopieren'}</span>
             </button>
 
-            {/* Direct AnkiConnect Sync (if Anki is open with AnkiConnect) */}
+            {/* Save TSV Deck File */}
+            <button
+              onClick={handleExportTsvFile}
+              disabled={isSaving || counts.enabled === 0}
+              className="flex items-center space-x-1.5 px-3.5 py-2 bg-surface hover:bg-surface-hover border border-border text-slate-300 rounded-xl text-xs font-semibold transition cursor-pointer disabled:opacity-50"
+              title={t('anki.export_deck') || 'Als Datei speichern'}
+            >
+              {isSaving ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Download className="w-3.5 h-3.5" />
+              )}
+              <span>
+                {isSaving
+                  ? t('anki.saving') || 'Speichere...'
+                  : t('anki.export_deck') || 'Als Datei speichern'}
+              </span>
+            </button>
+
+            {/* Open directly in Anki Desktop (Native) */}
+            <button
+              onClick={handleOpenInAnki}
+              disabled={isOpeningInAnki || counts.enabled === 0}
+              className="flex items-center space-x-1.5 px-4 py-2 bg-accent hover:bg-accent/90 text-white rounded-xl text-xs font-semibold transition shadow-lg shadow-accent/25 cursor-pointer disabled:opacity-50"
+              title={t('anki.open_in_anki') || 'In Anki öffnen'}
+            >
+              {isOpeningInAnki ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <ExternalLink className="w-3.5 h-3.5" />
+              )}
+              <span>
+                {isOpeningInAnki
+                  ? t('anki.opening_in_anki') || 'Öffne in Anki...'
+                  : t('anki.open_in_anki') || 'In Anki öffnen'}
+              </span>
+            </button>
+
+            {/* Direct AnkiConnect Sync (if Anki is open with AnkiConnect add-on) */}
             {isAnkiConnectOnline && (
               <button
                 onClick={handleDirectAnkiSync}
@@ -501,28 +597,10 @@ export const AnkiExportModal: React.FC<AnkiExportModalProps> = ({
                 <span>
                   {isSyncing
                     ? t('anki.syncing') || 'Übertrage...'
-                    : t('anki.direct_sync') || '1-Klick Sync in Anki'}
+                    : t('anki.direct_sync') || '1-Klick Sync (AnkiConnect)'}
                 </span>
               </button>
             )}
-
-            {/* Save TSV Deck File */}
-            <button
-              onClick={handleExportTsvFile}
-              disabled={isSaving || counts.enabled === 0}
-              className="flex items-center space-x-1.5 px-4 py-2 bg-accent hover:bg-accent/90 text-white rounded-xl text-xs font-semibold transition shadow-lg shadow-accent/25 cursor-pointer disabled:opacity-50"
-            >
-              {isSaving ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Download className="w-3.5 h-3.5" />
-              )}
-              <span>
-                {isSaving
-                  ? t('anki.saving') || 'Speichere...'
-                  : t('anki.export_deck') || 'Als Anki-Deck speichern'}
-              </span>
-            </button>
           </div>
         </div>
       </div>
