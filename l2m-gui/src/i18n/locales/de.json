@@ -77,6 +77,7 @@
     "drag_hint": "Datei anfassen und direkt in ChatGPT, Gemini oder Desktop ziehen",
     "tab_markdown": "Markdown",
     "tab_split": "Split-View",
+    "tab_flashcards": "Lernkarten",
     "slide_counter": "Folie {{current}} von {{total}}",
     "copy_slide": "Folie kopieren",
     "notes_title": "LaTeX & Markdown Notizen",

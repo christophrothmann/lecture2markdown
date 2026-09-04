@@ -16,7 +16,7 @@ import {
 import { invoke } from '@tauri-apps/api/core';
 import { open as openFileDialog } from '@tauri-apps/plugin-dialog';
 import { useTranslation } from 'react-i18next';
-import { AnkiExportModal } from './AnkiExportModal';
+import { FlashcardInspectorTab } from './FlashcardInspectorTab';
 import { loadPdfDocument, renderSlideToCanvas } from '../utils/pdfRenderer';
 import { parseMarkdownSlides, type SlideSection } from '../utils/slideParser';
 
@@ -40,8 +40,8 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   const [ankiExported, setAnkiExported] = useState(false);
-  const [isAnkiModalOpen, setIsAnkiModalOpen] = useState(false);
-  const [activeView, setActiveView] = useState<'markdown' | 'split'>('markdown');
+  const [activeView, setActiveView] = useState<'markdown' | 'split' | 'flashcards'>('markdown');
+  const [flashcardCount, setFlashcardCount] = useState<number>(0);
   const [savedToast, setSavedToast] = useState<{ message: string; path?: string } | null>(null);
   const [activePdfPath, setActivePdfPath] = useState<string | null>(pdfPath || null);
 
@@ -177,7 +177,7 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
   };
 
   const handleExportAnki = () => {
-    setIsAnkiModalOpen(true);
+    setActiveView((prev) => (prev === 'flashcards' ? 'markdown' : 'flashcards'));
   };
 
   const handleDragStart = (e: React.DragEvent) => {
@@ -264,6 +264,21 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
               <BookOpen className="w-3.5 h-3.5 text-accent" />
               {t('preview.tab_split')}
             </button>
+            <button
+              type="button"
+              onClick={() => setActiveView('flashcards')}
+              className={`px-3 py-1 text-xs font-semibold rounded-lg transition flex items-center gap-1.5 cursor-pointer ${
+                activeView === 'flashcards'
+                  ? 'bg-surface text-slate-100 shadow-sm border border-border'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              <span>
+                {t('preview.tab_flashcards', { defaultValue: 'Lernkarten' })}
+                {flashcardCount > 0 ? ` (${flashcardCount})` : ''}
+              </span>
+            </button>
           </div>
 
           <button
@@ -345,145 +360,163 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
         </div>
       </div>
 
-      {/* Main Content: Standard Markdown vs Synchronized Split-Screen */}
-      {activeView === 'markdown' ? (
-        <div className="flex-1 overflow-y-auto min-h-0 bg-background/80 p-4 rounded-xl border border-border/50 text-xs font-mono text-slate-300 whitespace-pre-wrap leading-relaxed">
-          {content}
-        </div>
-      ) : (
-        <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4 min-h-0">
-          {/* Left Column: Visual Slide Viewer & Navigator */}
-          <div className="flex flex-col bg-background/80 p-4 rounded-xl border border-border/50 min-h-0 space-y-3">
-            <div className="flex items-center justify-between border-b border-border/60 pb-2 shrink-0">
-              <div className="flex items-center space-x-2">
-                <span className="text-xs font-bold text-slate-200">
-                  {t('preview.slide_counter', { current: currentSlideIndex + 1, total: slides.length })}
-                </span>
-                <span className="text-[10px] text-slate-400 truncate max-w-[140px]">
-                  {currentSlide.title}
-                </span>
-              </div>
+      {/* Main Content: Standard Markdown vs Synchronized Split-Screen vs Integrated Flashcards */}
+      <div
+        className={
+          activeView === 'markdown'
+            ? 'flex-1 overflow-y-auto min-h-0 bg-background/80 p-4 rounded-xl border border-border/50 text-xs font-mono text-slate-300 whitespace-pre-wrap leading-relaxed'
+            : 'hidden'
+        }
+      >
+        {content}
+      </div>
 
-              {/* Slide Navigation Buttons */}
-              <div className="flex items-center space-x-1">
-                <button
-                  type="button"
-                  onClick={() => setCurrentSlideIndex((prev) => Math.max(0, prev - 1))}
-                  disabled={currentSlideIndex === 0}
-                  className="p-1.5 bg-surface hover:bg-surface-hover border border-border text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition cursor-pointer"
-                  title="←"
-                >
-                  <ChevronLeft className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCurrentSlideIndex((prev) => Math.min(slides.length - 1, prev + 1))}
-                  disabled={currentSlideIndex === slides.length - 1}
-                  className="p-1.5 bg-surface hover:bg-surface-hover border border-border text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition cursor-pointer"
-                  title="→"
-                >
-                  <ChevronRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
+      <div
+        className={
+          activeView === 'split'
+            ? 'flex-1 grid grid-cols-1 md:grid-cols-2 gap-4 min-h-0'
+            : 'hidden'
+        }
+      >
+        {/* Left Column: Visual Slide Viewer & Navigator */}
+        <div className="flex flex-col bg-background/80 p-4 rounded-xl border border-border/50 min-h-0 space-y-3">
+          <div className="flex items-center justify-between border-b border-border/60 pb-2 shrink-0">
+            <div className="flex items-center space-x-2">
+              <span className="text-xs font-bold text-slate-200">
+                {t('preview.slide_counter', { current: currentSlideIndex + 1, total: slides.length })}
+              </span>
+              <span className="text-[10px] text-slate-400 truncate max-w-[140px]">
+                {currentSlide.title}
+              </span>
             </div>
 
-            {/* Slide Image / Canvas High-Res Rendering */}
-            <div className="flex-1 flex items-center justify-center bg-black/40 rounded-lg border border-border/30 overflow-hidden min-h-0 relative p-2">
-              {isLoadingSlideImage && (
-                <div className="absolute inset-0 bg-background/60 backdrop-blur-xs flex flex-col items-center justify-center space-y-2 text-slate-400 z-10">
-                  <Loader2 className="w-6 h-6 animate-spin text-accent" />
-                  <span className="text-xs">{t('preview.pdf_loading', { page: currentSlideIndex + 1 })}</span>
-                </div>
-              )}
-
-              <canvas
-                ref={canvasRef}
-                className={`max-w-full max-h-full object-contain rounded shadow-md transition-opacity duration-150 ${
-                  activePdfPath && isPdfJsRendered ? 'block' : 'hidden'
-                }`}
-              />
-
-              {!isPdfJsRendered && currentSlideImage && (
-                <img
-                  src={currentSlideImage}
-                  alt={`Slide ${currentSlideIndex + 1}`}
-                  className="max-w-full max-h-full object-contain rounded"
-                />
-              )}
-
-              {!activePdfPath && (
-                <div className="text-center p-6 text-slate-500 space-y-3">
-                  <FileText className="w-10 h-10 mx-auto opacity-40 text-accent" />
-                  <div>
-                    <p className="text-xs font-semibold text-slate-300">
-                      {t('preview.slide_counter', { current: currentSlideIndex + 1, total: slides.length })}: {currentSlide.title}
-                    </p>
-                    <p className="text-[11px] text-slate-400 mt-1">{t('preview.no_pdf_linked')}</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleSelectPdfManually}
-                    className="px-3 py-1.5 bg-surface hover:bg-surface-hover border border-border text-slate-200 rounded-xl text-xs font-semibold transition inline-flex items-center gap-1.5 cursor-pointer shadow-sm"
-                  >
-                    <FileText className="w-3.5 h-3.5 text-accent" /> {t('preview.link_pdf')}
-                  </button>
-                </div>
-              )}
-
-              {activePdfPath && !isPdfJsRendered && !currentSlideImage && !isLoadingSlideImage && (
-                <div className="text-center p-6 text-slate-500 space-y-2">
-                  <FileText className="w-8 h-8 mx-auto opacity-40 text-rose-400" />
-                  <p className="text-xs text-rose-300">
-                    {t('preview.pdf_no_page', { page: currentSlideIndex + 1 })}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={handleSelectPdfManually}
-                    className="px-2.5 py-1 bg-surface border border-border text-slate-300 rounded-lg text-xs cursor-pointer"
-                  >
-                    {t('preview.choose_other_pdf')}
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Right Column: Synchronized Markdown Text */}
-          <div className="flex flex-col bg-background/80 p-4 rounded-xl border border-border/50 min-h-0 space-y-2">
-            <div className="flex items-center justify-between border-b border-border/60 pb-2 shrink-0">
-              <span className="text-xs font-bold text-slate-200">{t('preview.notes_title')}</span>
+            {/* Slide Navigation Buttons */}
+            <div className="flex items-center space-x-1">
               <button
                 type="button"
-                onClick={async () => {
-                  await navigator.clipboard.writeText(currentSlide.content);
-                }}
-                className="text-[10px] font-semibold text-accent hover:text-accent-hover transition flex items-center gap-1 cursor-pointer"
-                title={t('preview.copy_slide')}
+                onClick={() => setCurrentSlideIndex((prev) => Math.max(0, prev - 1))}
+                disabled={currentSlideIndex === 0}
+                className="p-1.5 bg-surface hover:bg-surface-hover border border-border text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition cursor-pointer"
+                title="←"
               >
-                <Copy className="w-3 h-3" /> {t('preview.copy_slide')}
+                <ChevronLeft className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setCurrentSlideIndex((prev) => Math.min(slides.length - 1, prev + 1))}
+                disabled={currentSlideIndex === slides.length - 1}
+                className="p-1.5 bg-surface hover:bg-surface-hover border border-border text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition cursor-pointer"
+                title="→"
+              >
+                <ChevronRight className="w-3.5 h-3.5" />
               </button>
             </div>
+          </div>
 
-            <div className="flex-1 overflow-y-auto min-h-0 text-xs font-mono text-slate-300 whitespace-pre-wrap leading-relaxed">
-              {currentSlide.content}
-            </div>
+          {/* Slide Image / Canvas High-Res Rendering */}
+          <div className="flex-1 flex items-center justify-center bg-black/40 rounded-lg border border-border/30 overflow-hidden min-h-0 relative p-2">
+            {isLoadingSlideImage && (
+              <div className="absolute inset-0 bg-background/60 backdrop-blur-xs flex flex-col items-center justify-center space-y-2 text-slate-400 z-10">
+                <Loader2 className="w-6 h-6 animate-spin text-accent" />
+                <span className="text-xs">{t('preview.pdf_loading', { page: currentSlideIndex + 1 })}</span>
+              </div>
+            )}
+
+            <canvas
+              ref={canvasRef}
+              className={`max-w-full max-h-full object-contain rounded shadow-md transition-opacity duration-150 ${
+                activePdfPath && isPdfJsRendered ? 'block' : 'hidden'
+              }`}
+            />
+
+            {!isPdfJsRendered && currentSlideImage && (
+              <img
+                src={currentSlideImage}
+                alt={`Slide ${currentSlideIndex + 1}`}
+                className="max-w-full max-h-full object-contain rounded"
+              />
+            )}
+
+            {!activePdfPath && (
+              <div className="text-center p-6 text-slate-500 space-y-3">
+                <FileText className="w-10 h-10 mx-auto opacity-40 text-accent" />
+                <div>
+                  <p className="text-xs font-semibold text-slate-300">
+                    {t('preview.slide_counter', { current: currentSlideIndex + 1, total: slides.length })}: {currentSlide.title}
+                  </p>
+                  <p className="text-[11px] text-slate-400 mt-1">{t('preview.no_pdf_linked')}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleSelectPdfManually}
+                  className="px-3 py-1.5 bg-surface hover:bg-surface-hover border border-border text-slate-200 rounded-xl text-xs font-semibold transition inline-flex items-center gap-1.5 cursor-pointer shadow-sm"
+                >
+                  <FileText className="w-3.5 h-3.5 text-accent" /> {t('preview.link_pdf')}
+                </button>
+              </div>
+            )}
+
+            {activePdfPath && !isPdfJsRendered && !currentSlideImage && !isLoadingSlideImage && (
+              <div className="text-center p-6 text-slate-500 space-y-2">
+                <FileText className="w-8 h-8 mx-auto opacity-40 text-rose-400" />
+                <p className="text-xs text-rose-300">
+                  {t('preview.pdf_no_page', { page: currentSlideIndex + 1 })}
+                </p>
+                <button
+                  type="button"
+                  onClick={handleSelectPdfManually}
+                  className="px-2.5 py-1 bg-surface border border-border text-slate-300 rounded-lg text-xs cursor-pointer"
+                >
+                  {t('preview.choose_other_pdf')}
+                </button>
+              </div>
+            )}
           </div>
         </div>
-      )}
 
-      {/* Anki Flashcard Export & Filter Modal */}
-      <AnkiExportModal
-        isOpen={isAnkiModalOpen}
-        onClose={() => setIsAnkiModalOpen(false)}
-        markdownContent={content}
-        defaultTitle={fileName}
-        onSuccessToast={(msg, path) => {
-          setAnkiExported(true);
-          setSavedToast({ message: msg, path });
-          setTimeout(() => setAnkiExported(false), 4000);
-          setTimeout(() => setSavedToast(null), 6000);
-        }}
-      />
+        {/* Right Column: Synchronized Markdown Text */}
+        <div className="flex flex-col bg-background/80 p-4 rounded-xl border border-border/50 min-h-0 space-y-2">
+          <div className="flex items-center justify-between border-b border-border/60 pb-2 shrink-0">
+            <span className="text-xs font-bold text-slate-200">{t('preview.notes_title')}</span>
+            <button
+              type="button"
+              onClick={async () => {
+                await navigator.clipboard.writeText(currentSlide.content);
+              }}
+              className="text-[10px] font-semibold text-accent hover:text-accent-hover transition flex items-center gap-1 cursor-pointer"
+              title={t('preview.copy_slide')}
+            >
+              <Copy className="w-3 h-3" /> {t('preview.copy_slide')}
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto min-h-0 text-xs font-mono text-slate-300 whitespace-pre-wrap leading-relaxed">
+            {currentSlide.content}
+          </div>
+        </div>
+      </div>
+
+      <div
+        className={
+          activeView === 'flashcards'
+            ? 'flex-1 flex flex-col min-h-0'
+            : 'hidden'
+        }
+      >
+        <FlashcardInspectorTab
+          markdownContent={content}
+          defaultTitle={fileName}
+          activePdfPath={activePdfPath}
+          onLinkPdfRequested={handleSelectPdfManually}
+          onCardCountChange={(cnt) => setFlashcardCount(cnt)}
+          onSuccessToast={(msg, path) => {
+            setAnkiExported(true);
+            setSavedToast({ message: msg, path });
+            setTimeout(() => setAnkiExported(false), 4000);
+            setTimeout(() => setSavedToast(null), 6000);
+          }}
+        />
+      </div>
     </div>
   );
 };

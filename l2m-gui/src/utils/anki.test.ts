@@ -132,4 +132,54 @@ wobei $p$ der parallele Anteil ist.
     expect(hashCodeCard).toBeDefined();
     expect(hashCodeCard?.back).toContain('Hash-Wert');
   });
+
+  it('supports Image Occlusion card types and preserves occlusion masks metadata', () => {
+    const occlusionCard = {
+      id: 'io-slide-4-mask-1',
+      type: 'image_occlusion' as const,
+      front: 'Was verbirgt sich hinter Markierung 1?',
+      back: 'Arteria coronaria dextra',
+      slideNumber: 4,
+      slideTitle: 'Folie 4: Anatomie des Herzens',
+      tags: ['Lecture2Markdown::Medizin', 'Image_Occlusion'],
+      enabled: true,
+      occlusionMasks: [
+        {
+          id: 'mask-1',
+          x: 24.5,
+          y: 40.2,
+          width: 15.0,
+          height: 8.5,
+          label: 'Arteria coronaria dextra',
+        },
+      ],
+      activeMaskId: 'mask-1',
+      occlusionMode: 'hide_one' as const,
+    };
+
+    expect(occlusionCard.type).toBe('image_occlusion');
+    expect(occlusionCard.occlusionMasks?.length).toBe(1);
+    expect(occlusionCard.occlusionMasks?.[0].x).toBe(24.5);
+    expect(occlusionCard.occlusionMode).toBe('hide_one');
+
+    // Verify TSV export handles image occlusion cards gracefully
+    const tsv = exportCardsToAnkiTsv([occlusionCard], 'Medizin');
+    expect(tsv).toContain('Was verbirgt sich hinter Markierung 1?');
+    expect(tsv).toContain('Arteria coronaria dextra');
+    expect(tsv).toContain('Image_Occlusion');
+  });
+
+  it('handles edge cases in tag sanitization robustly', () => {
+    expect(sanitizeTag('Algorithmen & Datenstrukturen / Vorlesung #1')).toBe('Algorithmen_Datenstrukturen_Vorlesung_1');
+    expect(sanitizeTag('   ___test---tag___   ')).toBe('test_tag');
+    expect(sanitizeTag('C++ & C# Grundlagen [2026]')).toBe('C_C_Grundlagen_2026');
+  });
+
+  it('generates fallback cards when lecture markdown has no standard definitions or formulas', () => {
+    const rawNotes = '## [Folie 1: Organisatorisches]\nNur Hinweise zur Klausur und Termine.';
+    const cards = generateAnkiCardsFromMarkdown(rawNotes, 'Organisatorisches');
+    expect(cards.length).toBeGreaterThan(0);
+    expect(cards[0].type).toBe('qa');
+    expect(cards[0].front).toContain('Organisatorisches');
+  });
 });

@@ -1,0 +1,969 @@
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import {
+  ChevronLeft,
+  ChevronRight,
+  Sparkles,
+  Download,
+  Copy,
+  Plus,
+  Trash2,
+  Check,
+  Search,
+  ExternalLink,
+  Zap,
+  Info,
+  Loader2,
+  Layers,
+  FileText,
+  EyeOff,
+  CheckCircle2,
+  AlertCircle,
+  Edit3,
+} from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { save as saveFileDialog } from '@tauri-apps/plugin-dialog';
+import { invoke } from '@tauri-apps/api/core';
+import type { AnkiCard, AnkiCardType, ImageOcclusionMask } from '../utils/anki';
+import {
+  generateAnkiCardsFromMarkdown,
+  exportCardsToAnkiTsv,
+  checkAnkiConnectAvailable,
+  syncCardsToAnkiConnect,
+  exportCardsToNativeApkg,
+  formatAnkiMath,
+} from '../utils/anki';
+import { loadPdfDocument, renderSlideToCanvas } from '../utils/pdfRenderer';
+import { ImageOcclusionCanvas } from './ImageOcclusionCanvas';
+
+interface FlashcardInspectorTabProps {
+  markdownContent: string;
+  defaultTitle: string;
+  activePdfPath: string | null;
+  onLinkPdfRequested: () => void;
+  onSuccessToast?: (msg: string, path?: string) => void;
+  onCardCountChange?: (count: number) => void;
+}
+
+export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
+  markdownContent,
+  defaultTitle,
+  activePdfPath,
+  onLinkPdfRequested,
+  onSuccessToast,
+  onCardCountChange,
+}) => {
+  const { t } = useTranslation();
+
+  // Slide browsing state
+  const [currentSlideNumber, setCurrentSlideNumber] = useState<number>(1);
+  const [totalSlideCount, setTotalSlideCount] = useState<number>(1);
+  const [currentSlideTitle, setCurrentSlideTitle] = useState<string>('Vorlesung');
+
+  // PDF.js Canvas state
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [isPdfLoading, setIsPdfLoading] = useState<boolean>(false);
+  const [pdfRenderedOk, setPdfRenderedOk] = useState<boolean>(false);
+  const [currentSlideFallbackImage, setCurrentSlideFallbackImage] = useState<string | null>(null);
+  const [renderedSlideImages, setRenderedSlideImages] = useState<Record<string, string>>({});
+
+  // Cards state
+  const [cards, setCards] = useState<AnkiCard[]>([]);
+  const [deckName, setDeckName] = useState<string>('');
+
+  // Image Occlusion masks per slide: slideNumber -> ImageOcclusionMask[]
+  const [slideMasks, setSlideMasks] = useState<Record<number, ImageOcclusionMask[]>>({});
+  const [slideOcclusionMode, setSlideOcclusionMode] = useState<Record<number, 'hide_one' | 'hide_all'>>({});
+  const [isOcclusionCanvasActive, setIsOcclusionCanvasActive] = useState<boolean>(false);
+  const [selectedMaskId, setSelectedMaskId] = useState<string | null>(null);
+
+  // Filtering & Search
+  const [scopeFilter, setScopeFilter] = useState<'current_slide' | 'all'>('all');
+  const [typeFilter, setTypeFilter] = useState<'all' | AnkiCardType>('all');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+
+  // Export & sync loading states
+  const [isExportingApkg, setIsExportingApkg] = useState<boolean>(false);
+  const [isOpeningInAnki, setIsOpeningInAnki] = useState<boolean>(false);
+  const [isSyncingAnkiConnect, setIsSyncingAnkiConnect] = useState<boolean>(false);
+  const [isAnkiConnectOnline, setIsAnkiConnectOnline] = useState<boolean>(false);
+  const [copiedTsv, setCopiedTsv] = useState<boolean>(false);
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  // Initialize generated cards from markdown once
+  useEffect(() => {
+    const cleanTitle = defaultTitle.replace(/\.md|\.pdf$/i, '').trim() || 'Vorlesung';
+    setDeckName(cleanTitle);
+
+    const generated = generateAnkiCardsFromMarkdown(markdownContent, cleanTitle);
+    setCards(generated);
+
+    // Calculate maximum slide number from parsed cards or markdown headers
+    const slideMatches = markdownContent.match(/##\s*\[?Folie\s*(\d+)\]?/gi);
+    if (slideMatches && slideMatches.length > 0) {
+      setTotalSlideCount(Math.max(1, slideMatches.length));
+    } else {
+      const maxSlideFromCards = generated.reduce((max, c) => Math.max(max, c.slideNumber), 1);
+      setTotalSlideCount(maxSlideFromCards);
+    }
+
+    checkAnkiConnectAvailable().then(setIsAnkiConnectOnline);
+  }, [markdownContent, defaultTitle]);
+
+  // Notify parent of active card count
+  useEffect(() => {
+    if (onCardCountChange) {
+      onCardCountChange(cards.filter((c) => c.enabled).length);
+    }
+  }, [cards, onCardCountChange]);
+
+  // Update slide title when slide changes
+  useEffect(() => {
+    const cardForSlide = cards.find((c) => c.slideNumber === currentSlideNumber);
+    if (cardForSlide) {
+      setCurrentSlideTitle(cardForSlide.slideTitle);
+    } else {
+      setCurrentSlideTitle(`Folie ${currentSlideNumber}`);
+    }
+  }, [currentSlideNumber, cards]);
+
+  // Synchronize image occlusion cards whenever slideMasks or slideOcclusionMode change
+  const syncOcclusionCards = (
+    newMasksMap: Record<number, ImageOcclusionMask[]>,
+    newModesMap: Record<number, 'hide_one' | 'hide_all'>
+  ) => {
+    setCards((prevCards) => {
+      // Map existing occlusion cards to preserve inline edits and enabled states
+      const existingMap = new Map<string, AnkiCard>();
+      prevCards.forEach((c) => {
+        if (c.type === 'image_occlusion') {
+          existingMap.set(c.id, c);
+        }
+      });
+
+      const nonOcclusionCards = prevCards.filter((c) => c.type !== 'image_occlusion');
+      const newOcclusionCards: AnkiCard[] = [];
+
+      Object.entries(newMasksMap).forEach(([slideNumStr, masks]) => {
+        const slideNum = parseInt(slideNumStr, 10);
+        if (!masks || masks.length === 0) return;
+
+        const mode = newModesMap[slideNum] || 'hide_one';
+
+        masks.forEach((mask, maskIdx) => {
+          const cardId = `io-${slideNum}-${mask.id}`;
+          const existing = existingMap.get(cardId);
+
+          const frontPrompt = mask.label
+            ? `Was verbirgt sich hinter Markierung ${maskIdx + 1}?`
+            : `Welcher Begriff ist auf Folie ${slideNum} verdeckt?`;
+
+          const backAnswer = mask.label || `Struktur #${maskIdx + 1}`;
+
+          newOcclusionCards.push({
+            id: cardId,
+            type: 'image_occlusion',
+            front: existing?.front || frontPrompt,
+            back: mask.label || existing?.back || backAnswer,
+            slideNumber: slideNum,
+            slideTitle: `Folie ${slideNum}: Image Occlusion`,
+            tags: [`Lecture2Markdown::${deckName.replace(/\s+/g, '_')}`, 'Image_Occlusion'],
+            enabled: existing !== undefined ? existing.enabled : true,
+            occlusionMasks: masks,
+            activeMaskId: mask.id,
+            occlusionMode: mode,
+          });
+        });
+      });
+
+      return [...nonOcclusionCards, ...newOcclusionCards];
+    });
+  };
+
+  // Render PDF slide on canvas
+  useEffect(() => {
+    if (!activePdfPath) {
+      setPdfRenderedOk(false);
+      setCurrentSlideFallbackImage(null);
+      return;
+    }
+
+    let isCancelled = false;
+    setIsPdfLoading(true);
+
+    async function renderCurrentSlide() {
+      try {
+        const doc = await loadPdfDocument(activePdfPath!);
+        if (isCancelled) return;
+
+        if (doc.numPages && doc.numPages > 0) {
+          setTotalSlideCount((prev) => Math.max(prev, doc.numPages));
+        }
+
+        if (canvasRef.current) {
+          await renderSlideToCanvas(doc, currentSlideNumber, canvasRef.current, 1.8);
+          setPdfRenderedOk(true);
+          setCurrentSlideFallbackImage(null);
+          try {
+            const dataUrl = canvasRef.current.toDataURL('image/webp', 0.85);
+            setRenderedSlideImages((prev) => ({
+              ...prev,
+              [`slide_${currentSlideNumber}.webp`]: dataUrl,
+            }));
+          } catch {
+            // Ignore canvas toDataURL error
+          }
+        }
+      } catch {
+        // Fallback to native backend renderer
+        if (!isCancelled) {
+          try {
+            const b64 = await invoke<string>('get_slide_image_native', {
+              pdfPath: activePdfPath,
+              pageIndex: currentSlideNumber - 1,
+            });
+            if (!isCancelled && b64) {
+              const fullDataUrl = `data:image/webp;base64,${b64}`;
+              setCurrentSlideFallbackImage(fullDataUrl);
+              setPdfRenderedOk(false);
+              setRenderedSlideImages((prev) => ({
+                ...prev,
+                [`slide_${currentSlideNumber}.webp`]: fullDataUrl,
+              }));
+            }
+          } catch {
+            if (!isCancelled) {
+              setPdfRenderedOk(false);
+              setCurrentSlideFallbackImage(null);
+            }
+          }
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsPdfLoading(false);
+        }
+      }
+    }
+
+    renderCurrentSlide();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [activePdfPath, currentSlideNumber]);
+
+  // Mask management handlers
+  const currentSlideMasks = slideMasks[currentSlideNumber] || [];
+  const currentMode = slideOcclusionMode[currentSlideNumber] || 'hide_one';
+
+  const handleAddMask = (newMask: ImageOcclusionMask) => {
+    const updated = [...currentSlideMasks, newMask];
+    const newMap = { ...slideMasks, [currentSlideNumber]: updated };
+    setSlideMasks(newMap);
+    syncOcclusionCards(newMap, slideOcclusionMode);
+  };
+
+  const handleUpdateMask = (updatedMask: ImageOcclusionMask) => {
+    const updated = currentSlideMasks.map((m) => (m.id === updatedMask.id ? updatedMask : m));
+    const newMap = { ...slideMasks, [currentSlideNumber]: updated };
+    setSlideMasks(newMap);
+    syncOcclusionCards(newMap, slideOcclusionMode);
+  };
+
+  const handleDeleteMask = (maskId: string) => {
+    const updated = currentSlideMasks.filter((m) => m.id !== maskId);
+    const newMap = { ...slideMasks, [currentSlideNumber]: updated };
+    setSlideMasks(newMap);
+    syncOcclusionCards(newMap, slideOcclusionMode);
+    if (selectedMaskId === maskId) {
+      setSelectedMaskId(null);
+    }
+  };
+
+  const handleClearSlideMasks = () => {
+    const newMap = { ...slideMasks, [currentSlideNumber]: [] };
+    setSlideMasks(newMap);
+    syncOcclusionCards(newMap, slideOcclusionMode);
+    setSelectedMaskId(null);
+  };
+
+  const handleChangeMode = (mode: 'hide_one' | 'hide_all') => {
+    const newModes = { ...slideOcclusionMode, [currentSlideNumber]: mode };
+    setSlideOcclusionMode(newModes);
+    syncOcclusionCards(slideMasks, newModes);
+  };
+
+  // Card modifications
+  const handleToggleCard = (cardId: string) => {
+    setCards((prev) =>
+      prev.map((c) => (c.id === cardId ? { ...c, enabled: !c.enabled } : c))
+    );
+  };
+
+  const handleDeleteCard = (cardId: string) => {
+    setCards((prev) => prev.filter((c) => c.id !== cardId));
+  };
+
+  const handleUpdateCardField = (cardId: string, field: 'front' | 'back', value: string) => {
+    setCards((prev) =>
+      prev.map((c) => (c.id === cardId ? { ...c, [field]: value } : c))
+    );
+  };
+
+  const handleAddNewCard = () => {
+    const newCard: AnkiCard = {
+      id: `manual-${Date.now()}`,
+      type: 'definition',
+      front: `Neue Frage zu Folie ${currentSlideNumber}...`,
+      back: 'Antwort hier eingeben...',
+      slideNumber: currentSlideNumber,
+      slideTitle: currentSlideTitle,
+      tags: [`Lecture2Markdown::${deckName.replace(/\s+/g, '_')}`],
+      enabled: true,
+    };
+    setCards((prev) => [newCard, ...prev]);
+  };
+
+  // Filtered Cards List
+  const filteredCards = useMemo(() => {
+    return cards.filter((card) => {
+      if (scopeFilter === 'current_slide' && card.slideNumber !== currentSlideNumber) {
+        return false;
+      }
+      if (typeFilter !== 'all' && card.type !== typeFilter) {
+        return false;
+      }
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const matchesFront = card.front.toLowerCase().includes(q);
+        const matchesBack = card.back.toLowerCase().includes(q);
+        const matchesTitle = card.slideTitle.toLowerCase().includes(q);
+        return matchesFront || matchesBack || matchesTitle;
+      }
+      return true;
+    });
+  }, [cards, scopeFilter, currentSlideNumber, typeFilter, searchQuery]);
+
+  const counts = useMemo(() => {
+    return {
+      all: cards.length,
+      currentSlide: cards.filter((c) => c.slideNumber === currentSlideNumber).length,
+      enabled: cards.filter((c) => c.enabled).length,
+      definition: cards.filter((c) => c.type === 'definition').length,
+      formula: cards.filter((c) => c.type === 'formula').length,
+      cloze: cards.filter((c) => c.type === 'cloze').length,
+      qa: cards.filter((c) => c.type === 'qa').length,
+      image_occlusion: cards.filter((c) => c.type === 'image_occlusion').length,
+    };
+  }, [cards, currentSlideNumber]);
+
+  // 1. Export as Native .apkg File
+  const handleSaveApkgFile = async () => {
+    const activeCards = cards.filter((c) => c.enabled);
+    if (activeCards.length === 0) {
+      setFeedback({ type: 'error', message: 'Keine aktiven Lernkarten ausgewählt.' });
+      return;
+    }
+
+    try {
+      setIsExportingApkg(true);
+      setFeedback(null);
+      const safeDeck = deckName.trim() || 'Vorlesung';
+      const defaultFileName = `${safeDeck.replace(/[\/\\?%*:|"<>]/g, '_')}.apkg`;
+
+      const targetPath = await saveFileDialog({
+        defaultPath: defaultFileName,
+        filters: [{ name: 'Anki Deck Package (*.apkg)', extensions: ['apkg'] }],
+      });
+
+      if (targetPath) {
+        const savedPath = await exportCardsToNativeApkg(cards, safeDeck, {
+          slideImages: renderedSlideImages,
+          pdfPath: activePdfPath,
+          outputPath: targetPath,
+        });
+
+        const successMsg = `Erfolgreich als .apkg gespeichert (${activeCards.length} Karten)`;
+        setFeedback({ type: 'success', message: successMsg });
+        if (onSuccessToast) onSuccessToast(successMsg, savedPath);
+      }
+    } catch (err) {
+      console.error('APKG Export Error:', err);
+      setFeedback({
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Fehler beim Erstellen der .apkg-Datei.',
+      });
+    } finally {
+      setIsExportingApkg(false);
+    }
+  };
+
+  // 2. Open directly in Anki Desktop (1-Click Native OS Launch)
+  const handleOpenInAnki = async () => {
+    const activeCards = cards.filter((c) => c.enabled);
+    if (activeCards.length === 0) {
+      setFeedback({ type: 'error', message: 'Keine aktiven Lernkarten ausgewählt.' });
+      return;
+    }
+
+    try {
+      setIsOpeningInAnki(true);
+      setFeedback(null);
+      const safeDeck = deckName.trim() || 'Vorlesung';
+
+      const apkgPath = await exportCardsToNativeApkg(cards, safeDeck, {
+        slideImages: renderedSlideImages,
+        pdfPath: activePdfPath,
+        outputPath: '', // Empty path triggers temp file creation + OS launcher (open -a Anki / cmd start)
+      });
+
+      const msg = `In Anki geöffnet! (${activeCards.length} Karten importiert)`;
+      setFeedback({ type: 'success', message: msg });
+      if (onSuccessToast) onSuccessToast(msg, apkgPath);
+    } catch (err) {
+      console.error('Open in Anki Error:', err);
+      setFeedback({
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Anki konnte nicht automatisch geöffnet werden.',
+      });
+    } finally {
+      setIsOpeningInAnki(false);
+    }
+  };
+
+  // 3. Copy TSV
+  const handleCopyTsv = async () => {
+    const activeCards = cards.filter((c) => c.enabled);
+    if (activeCards.length === 0) {
+      setFeedback({ type: 'error', message: 'Keine Karten ausgewählt.' });
+      return;
+    }
+
+    const tsv = exportCardsToAnkiTsv(cards, deckName);
+    await navigator.clipboard.writeText(tsv);
+    setCopiedTsv(true);
+    setTimeout(() => setCopiedTsv(false), 2500);
+  };
+
+  // 4. AnkiConnect Sync
+  const handleAnkiConnectSync = async () => {
+    const activeCards = cards.filter((c) => c.enabled);
+    if (activeCards.length === 0) {
+      setFeedback({ type: 'error', message: 'Keine Karten ausgewählt.' });
+      return;
+    }
+
+    try {
+      setIsSyncingAnkiConnect(true);
+      setFeedback(null);
+      const res = await syncCardsToAnkiConnect(cards, deckName);
+      if (res.success) {
+        const msg = `${res.count} Karten direkt via AnkiConnect synchronisiert!`;
+        setFeedback({ type: 'success', message: msg });
+        if (onSuccessToast) onSuccessToast(msg);
+      } else {
+        setFeedback({ type: 'error', message: res.error || 'AnkiConnect Fehler.' });
+      }
+    } catch (err) {
+      setFeedback({
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Verbindungsfehler zu AnkiConnect.',
+      });
+    } finally {
+      setIsSyncingAnkiConnect(false);
+    }
+  };
+
+  const getBadgeStyle = (type: AnkiCardType) => {
+    switch (type) {
+      case 'definition':
+        return 'bg-blue-500/15 text-blue-400 border-blue-500/30';
+      case 'formula':
+        return 'bg-purple-500/15 text-purple-400 border-purple-500/30';
+      case 'cloze':
+        return 'bg-amber-500/15 text-amber-400 border-amber-500/30';
+      case 'qa':
+        return 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30';
+      case 'image_occlusion':
+        return 'bg-rose-500/15 text-rose-400 border-rose-500/30';
+    }
+  };
+
+  const getTypeLabel = (type: AnkiCardType) => {
+    switch (type) {
+      case 'definition':
+        return 'Definition';
+      case 'formula':
+        return 'Formel';
+      case 'cloze':
+        return 'Lückentext';
+      case 'qa':
+        return 'Konzept / Q&A';
+      case 'image_occlusion':
+        return 'Image Occlusion';
+    }
+  };
+
+  return (
+    <div className="flex-1 flex flex-col min-h-0 space-y-3">
+      {/* Alert banner if message */}
+      {feedback && (
+        <div
+          className={`flex items-center justify-between px-4 py-2.5 rounded-xl border text-xs font-medium animate-fade-in shrink-0 ${
+            feedback.type === 'success'
+              ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
+              : 'bg-rose-500/15 border-rose-500/30 text-rose-300'
+          }`}
+        >
+          <div className="flex items-center space-x-2 truncate">
+            {feedback.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            ) : (
+              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+            )}
+            <span>{feedback.message}</span>
+          </div>
+          <button
+            onClick={() => setFeedback(null)}
+            className="text-slate-400 hover:text-slate-200 ml-2 cursor-pointer font-bold"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* Main Split Grid */}
+      <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4 min-h-0">
+        {/* Left Column: Visual PDF Slide + Interactive Image Occlusion Overlay */}
+        <div className="flex flex-col bg-background/80 p-4 rounded-xl border border-border/50 min-h-0 space-y-3">
+          {/* Slide Navigator Toolbar */}
+          <div className="flex items-center justify-between border-b border-border/60 pb-2 shrink-0">
+            <div className="flex items-center space-x-2">
+              <span className="text-xs font-bold text-slate-200">
+                Folie {currentSlideNumber} von {totalSlideCount}
+              </span>
+              <span className="text-[10px] text-slate-400 truncate max-w-[150px]">
+                {currentSlideTitle}
+              </span>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              {/* Image Occlusion Toggle */}
+              <button
+                type="button"
+                onClick={() => setIsOcclusionCanvasActive(!isOcclusionCanvasActive)}
+                className={`px-2.5 py-1 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition cursor-pointer border ${
+                  isOcclusionCanvasActive
+                    ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                    : 'bg-surface hover:bg-surface-hover border-border text-slate-300'
+                }`}
+                title="Visual Image Occlusion Masken zeichnen"
+              >
+                <EyeOff className="w-3.5 h-3.5 text-rose-400" />
+                <span>Masken {currentSlideMasks.length > 0 ? `(${currentSlideMasks.length})` : ''}</span>
+              </button>
+
+              {/* Prev / Next Slide */}
+              <div className="flex items-center space-x-1">
+                <button
+                  type="button"
+                  onClick={() => setCurrentSlideNumber((prev) => Math.max(1, prev - 1))}
+                  disabled={currentSlideNumber <= 1}
+                  className="p-1.5 bg-surface hover:bg-surface-hover border border-border text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition cursor-pointer"
+                  title="Vorherige Folie"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCurrentSlideNumber((prev) => Math.min(totalSlideCount, prev + 1))}
+                  disabled={currentSlideNumber >= totalSlideCount}
+                  className="p-1.5 bg-surface hover:bg-surface-hover border border-border text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition cursor-pointer"
+                  title="Nächste Folie"
+                >
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Slide Visual Container */}
+          <div className="flex-1 flex items-center justify-center bg-black/40 rounded-lg border border-border/30 overflow-hidden min-h-0 relative p-2">
+            {isPdfLoading && (
+              <div className="absolute inset-0 bg-background/70 backdrop-blur-xs flex flex-col items-center justify-center space-y-2 text-slate-300 z-30">
+                <Loader2 className="w-6 h-6 animate-spin text-accent" />
+                <span className="text-xs">Lade Folie {currentSlideNumber}...</span>
+              </div>
+            )}
+
+            {/* Relative wrapper holding both the slide canvas and the ImageOcclusionCanvas overlay */}
+            <div className="relative inline-flex items-center justify-center max-w-full max-h-full">
+              <canvas
+                ref={canvasRef}
+                className={`max-w-full max-h-full object-contain rounded shadow-md ${
+                  activePdfPath && pdfRenderedOk ? 'block' : 'hidden'
+                }`}
+              />
+
+              {!pdfRenderedOk && currentSlideFallbackImage && (
+                <img
+                  src={currentSlideFallbackImage}
+                  alt={`Folie ${currentSlideNumber}`}
+                  className="max-w-full max-h-full object-contain rounded shadow-md"
+                />
+              )}
+
+              {/* Image Occlusion Overlay */}
+              {isOcclusionCanvasActive && (
+                <ImageOcclusionCanvas
+                  masks={currentSlideMasks}
+                  activeMaskId={selectedMaskId}
+                  mode={currentMode}
+                  isDrawingMode={isOcclusionCanvasActive}
+                  onAddMask={handleAddMask}
+                  onUpdateMask={handleUpdateMask}
+                  onDeleteMask={handleDeleteMask}
+                  onSelectMask={setSelectedMaskId}
+                  onChangeMode={handleChangeMode}
+                  onToggleDrawingMode={() => setIsOcclusionCanvasActive(!isOcclusionCanvasActive)}
+                  onClearSlideMasks={handleClearSlideMasks}
+                />
+              )}
+            </div>
+
+            {!activePdfPath && (
+              <div className="text-center p-6 text-slate-500 space-y-3">
+                <FileText className="w-10 h-10 mx-auto opacity-40 text-accent" />
+                <div>
+                  <p className="text-xs font-semibold text-slate-300">
+                    Folie {currentSlideNumber}: {currentSlideTitle}
+                  </p>
+                  <p className="text-[11px] text-slate-400 mt-1">Keine Original-PDF verknüpft</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={onLinkPdfRequested}
+                  className="px-3 py-1.5 bg-surface hover:bg-surface-hover border border-border text-slate-200 rounded-xl text-xs font-semibold transition inline-flex items-center gap-1.5 cursor-pointer shadow-sm"
+                >
+                  <FileText className="w-3.5 h-3.5 text-accent" /> PDF verknüpfen
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Right Column: Flashcard Inspector & Inline Editor */}
+        <div className="flex flex-col bg-background/80 p-4 rounded-xl border border-border/50 min-h-0 space-y-3">
+          {/* Header & Filter Controls */}
+          <div className="space-y-2 border-b border-border/60 pb-3 shrink-0">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              {/* Scope Switch: Nur diese Folie vs Alle */}
+              <div className="flex items-center bg-slate-900/80 p-1 rounded-xl border border-slate-700/80 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setScopeFilter('current_slide')}
+                  className={`px-2.5 py-1 rounded-lg font-semibold transition cursor-pointer ${
+                    scopeFilter === 'current_slide'
+                      ? 'bg-accent text-white shadow-xs'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  Folie {currentSlideNumber} ({counts.currentSlide})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setScopeFilter('all')}
+                  className={`px-2.5 py-1 rounded-lg font-semibold transition cursor-pointer ${
+                    scopeFilter === 'all'
+                      ? 'bg-accent text-white shadow-xs'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  Alle ({counts.all})
+                </button>
+              </div>
+
+              {/* Add Card to current slide Button */}
+              <button
+                type="button"
+                onClick={handleAddNewCard}
+                className="px-3 py-1 bg-surface hover:bg-surface-hover border border-border hover:border-accent text-slate-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5 text-accent" /> + Karte hinzufügen
+              </button>
+            </div>
+
+            {/* Live Search & Type Filters */}
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative flex-1 min-w-[160px]">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Karten durchsuchen..."
+                  className="w-full pl-8 pr-3 py-1.5 text-xs bg-surface border border-border rounded-lg text-slate-100 focus:outline-none focus:border-accent transition"
+                />
+              </div>
+
+              {/* Type Filter Pills */}
+              <div className="flex flex-wrap items-center gap-1 text-[11px]">
+                <button
+                  type="button"
+                  onClick={() => setTypeFilter('all')}
+                  className={`px-2 py-0.5 rounded-md font-medium border transition cursor-pointer ${
+                    typeFilter === 'all'
+                      ? 'bg-accent/20 border-accent/40 text-accent font-semibold'
+                      : 'bg-surface border-border text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  Alle ({counts.all})
+                </button>
+                {counts.definition > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setTypeFilter('definition')}
+                    className={`px-2 py-0.5 rounded-md font-medium border transition cursor-pointer ${
+                      typeFilter === 'definition'
+                        ? 'bg-blue-500/20 border-blue-500/40 text-blue-400 font-semibold'
+                        : 'bg-surface border-border text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    Def ({counts.definition})
+                  </button>
+                )}
+                {counts.formula > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setTypeFilter('formula')}
+                    className={`px-2 py-0.5 rounded-md font-medium border transition cursor-pointer ${
+                      typeFilter === 'formula'
+                        ? 'bg-purple-500/20 border-purple-500/40 text-purple-400 font-semibold'
+                        : 'bg-surface border-border text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    Formeln ({counts.formula})
+                  </button>
+                )}
+                {counts.cloze > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setTypeFilter('cloze')}
+                    className={`px-2 py-0.5 rounded-md font-medium border transition cursor-pointer ${
+                      typeFilter === 'cloze'
+                        ? 'bg-amber-500/20 border-amber-500/40 text-amber-400 font-semibold'
+                        : 'bg-surface border-border text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    Lückentext ({counts.cloze})
+                  </button>
+                )}
+                {counts.image_occlusion > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setTypeFilter('image_occlusion')}
+                    className={`px-2 py-0.5 rounded-md font-medium border transition cursor-pointer ${
+                      typeFilter === 'image_occlusion'
+                        ? 'bg-rose-500/20 border-rose-500/40 text-rose-400 font-semibold'
+                        : 'bg-surface border-border text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    Occlusion ({counts.image_occlusion})
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Cards Scrollable List with Inline Editing */}
+          <div className="flex-1 overflow-y-auto space-y-3 min-h-0 custom-scrollbar pr-1">
+            {filteredCards.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-48 text-slate-400 space-y-2">
+                <Layers className="w-8 h-8 text-slate-600" />
+                <p className="text-sm font-medium">Keine Lernkarten gefunden</p>
+                <p className="text-xs text-slate-500">
+                  {scopeFilter === 'current_slide'
+                    ? 'Zu dieser Folie gibt es noch keine Karten. Klicke auf "+ Karte hinzufügen" oder aktiviere den Image Occlusion Builder.'
+                    : 'Passe Suchfilter oder Suchbegriff an.'}
+                </p>
+              </div>
+            ) : (
+              filteredCards.map((card) => (
+                <div
+                  key={card.id}
+                  className={`p-3.5 rounded-xl border transition flex items-start space-x-3 ${
+                    card.enabled
+                      ? 'bg-surface border-border/80 hover:border-accent/40 shadow-xs'
+                      : 'bg-surface/30 border-border/40 opacity-50'
+                  }`}
+                >
+                  {/* Enable / Disable Toggle */}
+                  <input
+                    type="checkbox"
+                    checked={card.enabled}
+                    onChange={() => handleToggleCard(card.id)}
+                    className="mt-1 h-4 w-4 rounded border-border text-accent focus:ring-accent cursor-pointer"
+                    title={card.enabled ? 'Karte aktiv (wird exportiert)' : 'Karte deaktiviert'}
+                  />
+
+                  {/* Card Content & Inline Editing */}
+                  <div className="flex-1 min-w-0 space-y-2 text-xs">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <span
+                          className={`text-[10px] px-2 py-0.5 rounded-md font-semibold border ${getBadgeStyle(
+                            card.type
+                          )}`}
+                        >
+                          {getTypeLabel(card.type)}
+                        </span>
+                        <span className="text-[11px] text-slate-400 truncate">
+                          Folie {card.slideNumber}: {card.slideTitle}
+                        </span>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteCard(card.id)}
+                        className="p-1 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition cursor-pointer"
+                        title="Karte löschen"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    {/* Front & Back Editable inputs */}
+                    <div className="space-y-2">
+                      <div className="space-y-1">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                          {card.type === 'image_occlusion' ? 'Frage / Prompt (Vorderseite):' : 'Vorderseite:'}
+                        </span>
+                        <textarea
+                          rows={2}
+                          value={card.front}
+                          onChange={(e) => handleUpdateCardField(card.id, 'front', e.target.value)}
+                          className="w-full p-2 text-xs bg-slate-950/60 border border-border/60 rounded-lg text-slate-200 focus:outline-none focus:border-accent resize-y font-mono leading-relaxed"
+                          placeholder="Vorderseite der Karte..."
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                          {card.type === 'image_occlusion' ? 'Antwort / Begriff (Rückseite):' : 'Rückseite:'}
+                        </span>
+                        <textarea
+                          rows={2}
+                          value={card.back}
+                          onChange={(e) => handleUpdateCardField(card.id, 'back', e.target.value)}
+                          className="w-full p-2 text-xs bg-slate-950/60 border border-border/60 rounded-lg text-slate-300 focus:outline-none focus:border-accent resize-y font-mono leading-relaxed"
+                          placeholder="Rückseite der Karte..."
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Bottom Export & Sync Bar */}
+      <div className="p-3.5 bg-surface/70 border border-border/80 rounded-xl flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 shrink-0">
+        {/* Left: Deck Name & Status */}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center space-x-2">
+            <span className="text-xs font-semibold text-slate-300">Deck:</span>
+            <input
+              type="text"
+              value={deckName}
+              onChange={(e) => setDeckName(e.target.value)}
+              className="px-2.5 py-1 text-xs bg-surface border border-border rounded-lg text-slate-100 focus:outline-none focus:border-accent max-w-[200px]"
+              placeholder="Deck-Name..."
+            />
+          </div>
+
+          <span className="text-xs text-slate-400">
+            <strong className="text-slate-200">{counts.enabled}</strong> von {counts.all} Karten aktiv
+          </span>
+
+          {/* AnkiConnect Status Indicator */}
+          <div className="flex items-center space-x-1.5 text-xs text-slate-400">
+            <span
+              className={`w-2 h-2 rounded-full ${
+                isAnkiConnectOnline ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'
+              }`}
+            />
+            <span className="text-[11px]">
+              {isAnkiConnectOnline ? 'AnkiConnect aktiv' : 'AnkiConnect optional'}
+            </span>
+          </div>
+        </div>
+
+        {/* Right: Export Action Buttons */}
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {/* Copy TSV */}
+          <button
+            type="button"
+            onClick={handleCopyTsv}
+            className="flex items-center space-x-1.5 px-3 py-1.5 bg-surface hover:bg-surface-hover border border-border text-slate-300 rounded-xl text-xs font-semibold transition cursor-pointer"
+            title="TSV für Notion, Obsidian oder Web-Tools kopieren"
+          >
+            {copiedTsv ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+            <span>{copiedTsv ? 'Kopiert!' : 'Kopieren (TSV)'}</span>
+          </button>
+
+          {/* Save .apkg File */}
+          <button
+            type="button"
+            onClick={handleSaveApkgFile}
+            disabled={isExportingApkg || counts.enabled === 0}
+            className="flex items-center space-x-1.5 px-3.5 py-1.5 bg-surface hover:bg-surface-hover border border-border text-slate-200 rounded-xl text-xs font-semibold transition cursor-pointer disabled:opacity-50"
+            title="Echtes Anki .apkg Deck mit SQLite und WebP-Folienbildern speichern"
+          >
+            {isExportingApkg ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Download className="w-3.5 h-3.5 text-amber-400" />
+            )}
+            <span>Als .apkg speichern</span>
+          </button>
+
+          {/* Open in Anki (Native 1-Click) */}
+          <button
+            type="button"
+            onClick={handleOpenInAnki}
+            disabled={isOpeningInAnki || counts.enabled === 0}
+            className="flex items-center space-x-1.5 px-4 py-1.5 bg-accent hover:bg-accent/90 text-white rounded-xl text-xs font-semibold transition shadow-lg shadow-accent/25 cursor-pointer disabled:opacity-50"
+            title="Direkt in Anki Desktop öffnen und importieren"
+          >
+            {isOpeningInAnki ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <ExternalLink className="w-3.5 h-3.5" />
+            )}
+            <span>In Anki öffnen</span>
+          </button>
+
+          {/* AnkiConnect Direct Sync Button if running */}
+          {isAnkiConnectOnline && (
+            <button
+              type="button"
+              onClick={handleAnkiConnectSync}
+              disabled={isSyncingAnkiConnect || counts.enabled === 0}
+              className="flex items-center space-x-1.5 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold transition shadow-lg shadow-emerald-600/20 cursor-pointer disabled:opacity-50"
+            >
+              {isSyncingAnkiConnect ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Zap className="w-3.5 h-3.5 text-emerald-200" />
+              )}
+              <span>1-Klick Sync</span>
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default FlashcardInspectorTab;

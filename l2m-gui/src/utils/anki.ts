@@ -4,9 +4,19 @@
  * from structured lecture markdown and provides 1-Click AnkiConnect Sync + Anki TSV export.
  */
 
+import { invoke } from '@tauri-apps/api/core';
 import { parseMarkdownSlides } from './slideParser';
 
-export type AnkiCardType = 'definition' | 'formula' | 'cloze' | 'qa';
+export type AnkiCardType = 'definition' | 'formula' | 'cloze' | 'qa' | 'image_occlusion';
+
+export interface ImageOcclusionMask {
+  id: string;
+  x: number;      // percentage 0..100
+  y: number;      // percentage 0..100
+  width: number;  // percentage 0..100
+  height: number; // percentage 0..100
+  label?: string; // optional hint/answer label
+}
 
 export interface AnkiCard {
   id: string;
@@ -17,6 +27,10 @@ export interface AnkiCard {
   slideTitle: string;
   tags: string[];
   enabled: boolean;
+  // Image occlusion metadata
+  occlusionMasks?: ImageOcclusionMask[];
+  activeMaskId?: string;
+  occlusionMode?: 'hide_one' | 'hide_all';
 }
 
 /**
@@ -430,9 +444,35 @@ export function formatAnkiMath(text: string): string {
  */
 export function sanitizeTag(tag?: string): string {
   if (!tag || typeof tag !== 'string') return 'Vorlesung';
-  return tag
-    .replace(/[\s\(\)\[\]\{\}\/\\:\.\,\;\=\+\*\?\&]/g, '_')
-    .replace(/-+/g, '_')
+  const cleaned = tag
+    .replace(/[^a-zA-Z0-9äöüÄÖÜß_]/g, '_')
     .replace(/_+/g, '_')
     .replace(/^_|_$/g, '');
+  return cleaned || 'Vorlesung';
+}
+
+/**
+ * Native .apkg export using Rust backend (creates valid SQLite col/notes/cards + media archive).
+ */
+export async function exportCardsToNativeApkg(
+  cards: AnkiCard[],
+  deckName: string,
+  options?: {
+    slideImages?: Record<string, string>;
+    pdfPath?: string | null;
+    outputPath?: string | null;
+  }
+): Promise<string> {
+  const activeCards = cards.filter((c) => c.enabled);
+  if (activeCards.length === 0) {
+    throw new Error('Keine aktiven Lernkarten ausgewählt.');
+  }
+
+  return await invoke<string>('export_anki_apkg_native', {
+    deckName: deckName.trim() || 'Lecture2Markdown',
+    cards: activeCards,
+    slideImages: options?.slideImages || {},
+    pdfPath: options?.pdfPath || null,
+    outputPath: options?.outputPath || null,
+  });
 }
