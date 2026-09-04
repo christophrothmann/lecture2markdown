@@ -4,7 +4,6 @@ import {
   Save,
   Check,
   FileText,
-  PlusCircle,
   Trash2,
   BookOpen,
   ChevronLeft,
@@ -280,15 +279,6 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
               </span>
             </button>
           </div>
-
-          <button
-            type="button"
-            onClick={onNewConversion}
-            className="px-3 py-1.5 bg-surface hover:bg-surface-hover border border-border text-slate-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
-            title={t('preview.new_conversion')}
-          >
-            <PlusCircle className="w-3.5 h-3.5 text-accent" /> {t('preview.new_conversion')}
-          </button>
 
           {/* Anki Deck Export Button */}
           <button

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
-import { BookOpen, Settings, Sparkles, Zap, Loader2 } from 'lucide-react';
+import { BookOpen, Settings, Sparkles, Zap, Loader2, PlusCircle } from 'lucide-react';
 import { save as saveFileDialog, open as openFileDialog } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
@@ -254,6 +254,14 @@ export function App() {
     setMarkdownResult(null);
     setPreviewFileName('');
     setSelectedHistoryId(null);
+  };
+
+  const handleNewConversion = () => {
+    setMarkdownResult(null);
+    setPreviewFileName('');
+    setPreviewPdfPath(null);
+    setSelectedHistoryId(null);
+    setQueue([]);
   };
 
   // Add multiple files to the batch queue
@@ -532,6 +540,18 @@ export function App() {
             </button>
           )}
 
+          {/* New Conversion Button (Visible in Detail View, left of Quick-Drop) */}
+          {markdownResult && (
+            <button
+              onClick={handleNewConversion}
+              className="flex items-center space-x-1.5 px-3 py-1.5 bg-surface hover:bg-surface-hover border border-border text-slate-200 rounded-xl text-xs font-semibold transition cursor-pointer shadow-sm"
+              title={t('preview.new_conversion')}
+            >
+              <PlusCircle className="w-3.5 h-3.5 text-accent" />
+              <span className="hidden sm:inline">{t('preview.new_conversion')}</span>
+            </button>
+          )}
+
           {/* Quick-Drop Spotlight Button */}
           <button
             onClick={() => setIsQuickDropOpen(true)}
@@ -600,13 +620,7 @@ export function App() {
                 fileName={previewFileName}
                 pdfPath={previewPdfPath}
                 onSaveFile={handleSaveFileLocally}
-                onNewConversion={() => {
-                  setMarkdownResult(null);
-                  setPreviewFileName('');
-                  setPreviewPdfPath(null);
-                  setSelectedHistoryId(null);
-                  setQueue([]);
-                }}
+                onNewConversion={handleNewConversion}
                 onDelete={selectedHistoryId ? handleDeleteCurrentHistoryItem : undefined}
               />
             </Suspense>
