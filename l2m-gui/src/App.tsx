@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
-import { BookOpen, Settings, Sparkles, Zap, Loader2, PlusCircle } from 'lucide-react';
+import { BookOpen, Settings, Sparkles, Zap, Loader2, PlusCircle, History } from 'lucide-react';
 import { save as saveFileDialog, open as openFileDialog } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
@@ -60,6 +60,7 @@ export function App() {
   const [providerKeys, setProviderKeys] = useState<Record<string, string>>({});
   const [isKeyModalOpen, setIsKeyModalOpen] = useState<boolean>(false);
   const [isQuickDropOpen, setIsQuickDropOpen] = useState<boolean>(false);
+  const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(true);
 
   // Background Auto-Update State
   const [updateAvailable, setUpdateAvailable] = useState<boolean>(false);
@@ -571,6 +572,19 @@ export function App() {
             <span className="text-slate-200">{PROVIDER_NAMES[activeProvider]}</span>
           </div>
 
+          {/* History Sidebar Toggle */}
+          <button
+            onClick={() => setIsHistoryOpen((prev) => !prev)}
+            className={`p-2 border rounded-xl transition cursor-pointer ${
+              isHistoryOpen
+                ? 'bg-surface hover:bg-surface-hover border-border text-slate-200'
+                : 'bg-surface/50 hover:bg-surface border-border/50 text-slate-400'
+            }`}
+            title={isHistoryOpen ? t('history.hide_sidebar', { defaultValue: 'Verlauf ausblenden' }) : t('history.show_sidebar', { defaultValue: 'Verlauf einblenden' })}
+          >
+            <History className="w-4 h-4" />
+          </button>
+
           <button
             onClick={() => setIsKeyModalOpen(true)}
             className="p-2 bg-surface hover:bg-surface-hover border border-border text-slate-300 rounded-xl transition cursor-pointer"
@@ -581,10 +595,10 @@ export function App() {
         </div>
       </header>
 
-      {/* Main Content Layout */}
-      <main className="flex-1 p-6 grid grid-cols-1 lg:grid-cols-4 gap-6 max-w-7xl mx-auto w-full items-stretch h-[calc(100vh-80px)]">
-        {/* Left Column: Dropzone & Active Progress / Preview */}
-        <div className="lg:col-span-3 flex flex-col h-full min-h-0 space-y-6">
+      {/* Main Content Layout - Full window width with flexible sidebar */}
+      <main className="flex-1 px-6 py-5 flex flex-col lg:flex-row gap-6 w-full items-stretch h-[calc(100vh-76px)] min-h-0">
+        {/* Left / Main Column: Dropzone & Active Progress / Preview (Full remaining width) */}
+        <div className="flex-1 min-w-0 flex flex-col h-full space-y-6">
           {/* State 1: Dropzone (No files in queue and no preview) */}
           {queue.length === 0 && !markdownResult && (
             <Dropzone onFilesSelected={handleFilesSelected} disabled={!currentActiveKey} />
@@ -605,7 +619,7 @@ export function App() {
             />
           )}
 
-          {/* State 3: Finished Markdown Preview */}
+          {/* State 3: Finished Markdown Preview (Full window width) */}
           {markdownResult && previewFileName && (
             <Suspense
               fallback={
@@ -627,20 +641,22 @@ export function App() {
           )}
         </div>
 
-        {/* Right Column: History Sidebar */}
-        <div className="lg:col-span-1 flex flex-col h-full min-h-0">
-          <HistorySidebar
-            items={history}
-            selectedItemId={selectedHistoryId}
-            onSelect={(item) => {
-              setSelectedHistoryId(item.id);
-              setPreviewFileName(item.fileName.replace('.pdf', '.md'));
-              setMarkdownResult(item.content);
-              setPreviewPdfPath(item.filePath || null);
-            }}
-            onClear={handleClearHistory}
-          />
-        </div>
+        {/* Right Column: History Sidebar (Pinned to right, responsive fixed width) */}
+        {isHistoryOpen && (
+          <div className="w-full lg:w-80 shrink-0 flex flex-col h-full min-h-0">
+            <HistorySidebar
+              items={history}
+              selectedItemId={selectedHistoryId}
+              onSelect={(item) => {
+                setSelectedHistoryId(item.id);
+                setPreviewFileName(item.fileName.replace('.pdf', '.md'));
+                setMarkdownResult(item.content);
+                setPreviewPdfPath(item.filePath || null);
+              }}
+              onClear={handleClearHistory}
+            />
+          </div>
+        )}
       </main>
 
       {/* Multi-Provider API Key Modal */}
