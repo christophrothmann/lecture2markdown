@@ -14,9 +14,9 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
-import { save as saveFileDialog, open as openFileDialog } from '@tauri-apps/plugin-dialog';
+import { open as openFileDialog } from '@tauri-apps/plugin-dialog';
 import { useTranslation } from 'react-i18next';
-import { generateAnkiCardsFromMarkdown, exportCardsToAnkiTsv } from '../utils/anki';
+import { AnkiExportModal } from './AnkiExportModal';
 import { loadPdfDocument, renderSlideToCanvas } from '../utils/pdfRenderer';
 import { parseMarkdownSlides, type SlideSection } from '../utils/slideParser';
 
@@ -40,6 +40,7 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   const [ankiExported, setAnkiExported] = useState(false);
+  const [isAnkiModalOpen, setIsAnkiModalOpen] = useState(false);
   const [activeView, setActiveView] = useState<'markdown' | 'split'>('markdown');
   const [savedToast, setSavedToast] = useState<{ message: string; path?: string } | null>(null);
   const [activePdfPath, setActivePdfPath] = useState<string | null>(pdfPath || null);
@@ -175,44 +176,8 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
     }
   };
 
-  const handleExportAnki = async () => {
-    try {
-      const cleanTitle = (fileName ? fileName.replace(/\.md|\.pdf$/i, '') : 'Vorlesung');
-      const defaultName = `${cleanTitle}_anki_deck.txt`;
-      const cards = generateAnkiCardsFromMarkdown(content, cleanTitle);
-
-      if (cards.length === 0) {
-        setSavedToast({
-          message: t('preview.anki_no_cards') || 'Keine Lernkarten im Markdown gefunden.',
-        });
-        setTimeout(() => setSavedToast(null), 4000);
-        return;
-      }
-
-      const tsvContent = exportCardsToAnkiTsv(cards);
-
-      const filePath = await saveFileDialog({
-        defaultPath: defaultName,
-        filters: [{ name: 'Anki Flashcard Deck', extensions: ['txt', 'tsv'] }],
-      });
-
-      if (filePath) {
-        await invoke('save_text_file_native', {
-          filePath,
-          content: tsvContent,
-        });
-
-        setAnkiExported(true);
-        setSavedToast({
-          message: t('preview.anki_success'),
-          path: filePath,
-        });
-        setTimeout(() => setAnkiExported(false), 4000);
-        setTimeout(() => setSavedToast(null), 6000);
-      }
-    } catch (err) {
-      console.error('Anki Export fehlgeschlagen:', err);
-    }
+  const handleExportAnki = () => {
+    setIsAnkiModalOpen(true);
   };
 
   const handleDragStart = (e: React.DragEvent) => {
@@ -505,6 +470,20 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
           </div>
         </div>
       )}
+
+      {/* Anki Flashcard Export & Filter Modal */}
+      <AnkiExportModal
+        isOpen={isAnkiModalOpen}
+        onClose={() => setIsAnkiModalOpen(false)}
+        markdownContent={content}
+        defaultTitle={fileName}
+        onSuccessToast={(msg, path) => {
+          setAnkiExported(true);
+          setSavedToast({ message: msg, path });
+          setTimeout(() => setAnkiExported(false), 4000);
+          setTimeout(() => setSavedToast(null), 6000);
+        }}
+      />
     </div>
   );
 };
