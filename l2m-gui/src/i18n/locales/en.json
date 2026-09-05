@@ -110,7 +110,14 @@
     "loaded_count": "{{current}} of {{total}} loaded",
     "slide_1_preview": "Slide 1 (Title Slide)",
     "loading_preview": "Loading preview...",
-    "click_to_open": "Click to open"
+    "click_to_open": "Click to open",
+    "select_mode": "Select",
+    "cancel_selection": "Done",
+    "select_all": "Select all",
+    "deselect_all": "Deselect all",
+    "delete_selected": "Delete ({{count}})",
+    "delete_selected_confirm": "Do you really want to delete the {{count}} selected lectures from history?",
+    "selected_count": "{{count}} selected"
   },
   "settings": {
     "title": "AI Providers & Settings",

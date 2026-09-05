@@ -110,7 +110,14 @@
     "loaded_count": "{{current}} von {{total}} geladen",
     "slide_1_preview": "Folie 1 (Deckblatt)",
     "loading_preview": "Lade Vorschau...",
-    "click_to_open": "Klicken zum Öffnen"
+    "click_to_open": "Klicken zum Öffnen",
+    "select_mode": "Auswählen",
+    "cancel_selection": "Fertig",
+    "select_all": "Alle auswählen",
+    "deselect_all": "Alle abwählen",
+    "delete_selected": "Löschen ({{count}})",
+    "delete_selected_confirm": "Möchtest du die {{count}} ausgewählten Vorlesungen wirklich aus dem Verlauf löschen?",
+    "selected_count": "{{count}} ausgewählt"
   },
   "settings": {
     "title": "KI-Provider & Einstellungen",

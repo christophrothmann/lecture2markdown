@@ -246,6 +246,26 @@ export function App() {
     setSelectedHistoryId(null);
   };
 
+  const handleDeleteHistoryItems = (itemIds: string[]) => {
+    if (itemIds.length === 0) return;
+    const idsSet = new Set(itemIds);
+    for (const id of itemIds) {
+      deleteHistoryItemContent(id);
+    }
+    const updated = history.filter((h) => !idsSet.has(h.id));
+    setHistory(updated);
+    saveHistoryMeta(updated);
+    if (selectedHistoryId && idsSet.has(selectedHistoryId)) {
+      setMarkdownResult(null);
+      setPreviewFileName('');
+      setPreviewPdfPath(null);
+      setSelectedHistoryId(null);
+    }
+    if (updated.length === 0) {
+      clearAllHistoryStorage();
+    }
+  };
+
   const handleNewConversion = () => {
     setMarkdownResult(null);
     setPreviewFileName('');
@@ -662,6 +682,7 @@ export function App() {
             setIsHistoryOpen(false);
           }}
           onClear={handleClearHistory}
+          onDeleteItems={handleDeleteHistoryItems}
           onResolveContent={(item) => loadHistoryItemContent(item)}
           onClose={() => setIsHistoryOpen(false)}
         />

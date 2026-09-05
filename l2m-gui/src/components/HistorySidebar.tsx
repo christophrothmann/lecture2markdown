@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
-import { History, Trash2, Loader2, Copy, Check, X, FileText } from 'lucide-react';
+import { History, Trash2, Loader2, Copy, Check, X, FileText, ListChecks, CheckSquare, Square } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { HistoryItem } from '../utils/historyStorage';
 import { parseMarkdownSlides } from '../utils/slideParser';
@@ -11,6 +11,7 @@ interface HistorySidebarProps {
   selectedItemId?: string | null;
   onSelect: (item: HistoryItem) => void | Promise<void>;
   onClear: () => void;
+  onDeleteItems?: (itemIds: string[]) => void;
   onResolveContent?: (item: HistoryItem) => Promise<string>;
   onClose?: () => void;
 }
@@ -23,10 +24,15 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
   selectedItemId,
   onSelect,
   onClear,
+  onDeleteItems,
   onResolveContent,
   onClose,
 }) => {
   const { t } = useTranslation();
+
+  // Multi-Selection State for Selective Deletion
+  const [isSelectMode, setIsSelectMode] = useState<boolean>(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   // Incremental Lazy-Rendering (Virtual / Infinite Window)
   const [visibleLimit, setVisibleLimit] = useState<number>(INITIAL_BATCH_SIZE);
@@ -81,6 +87,20 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
     };
   }, []);
 
+  // Reset or prune selection if items change
+  useEffect(() => {
+    if (items.length === 0) {
+      if (isSelectMode) setIsSelectMode(false);
+      if (selectedIds.size > 0) setSelectedIds(new Set());
+    } else if (selectedIds.size > 0) {
+      const validIds = new Set(items.map((it) => it.id));
+      const filtered = new Set(Array.from(selectedIds).filter((id) => validIds.has(id)));
+      if (filtered.size !== selectedIds.size) {
+        setSelectedIds(filtered);
+      }
+    }
+  }, [items, isSelectMode, selectedIds]);
+
   // Keep visibleLimit bounded if items count decreases
   useEffect(() => {
     if (items.length === 0) {
@@ -129,8 +149,45 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
     }
   };
 
+  const allSelected = items.length > 0 && selectedIds.size === items.length;
+
+  const handleToggleSelectAll = () => {
+    if (allSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(items.map((it) => it.id)));
+    }
+  };
+
+  const handleToggleItemSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const handleDeleteSelected = () => {
+    if (selectedIds.size === 0) return;
+    const count = selectedIds.size;
+    if (window.confirm(t('history.delete_selected_confirm', { count }))) {
+      const idsToDelete = Array.from(selectedIds);
+      if (onDeleteItems) {
+        onDeleteItems(idsToDelete);
+      } else if (count === items.length) {
+        onClear();
+      }
+      setSelectedIds(new Set());
+      setIsSelectMode(false);
+    }
+  };
+
   const handleItemMouseEnter = (e: React.MouseEvent<HTMLDivElement>, item: HistoryItem) => {
-    if (item.status === 'processing') return;
+    if (isSelectMode || item.status === 'processing') return;
 
     if (hoverTimerRef.current) {
       clearTimeout(hoverTimerRef.current);
@@ -241,43 +298,87 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
   return (
     <div className="glass-card rounded-2xl p-5 space-y-4 flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-border pb-3 shrink-0">
-        <div className="flex items-center space-x-2 text-slate-200">
-          <History className="w-4 h-4 text-accent" />
-          <h3 className="text-xs font-bold uppercase tracking-wider">{t('history.title')}</h3>
-          {items.length > 0 && (
-            <span className="text-[10px] text-slate-400 bg-surface px-1.5 py-0.5 rounded-full border border-border">
-              {items.length}
-            </span>
-          )}
-        </div>
+      {!isSelectMode ? (
+        <div className="flex items-center justify-between border-b border-border pb-3 shrink-0">
+          <div className="flex items-center space-x-2 text-slate-200">
+            <History className="w-4 h-4 text-accent" />
+            <h3 className="text-xs font-bold uppercase tracking-wider">{t('history.title')}</h3>
+            {items.length > 0 && (
+              <span className="text-[10px] text-slate-400 bg-surface px-1.5 py-0.5 rounded-full border border-border">
+                {items.length}
+              </span>
+            )}
+          </div>
 
-        <div className="flex items-center space-x-1.5">
-          {items.length > 0 && (
+          <div className="flex items-center space-x-1.5">
+            {items.length > 0 && (
+              <button
+                onClick={() => setIsSelectMode(true)}
+                className="inline-flex items-center space-x-1 text-xs text-slate-400 hover:text-slate-100 px-2 py-1 hover:bg-surface-hover rounded-lg transition cursor-pointer border border-transparent hover:border-border"
+                title={t('history.select_mode')}
+              >
+                <ListChecks className="w-3.5 h-3.5 text-accent" />
+                <span>{t('history.select_mode')}</span>
+              </button>
+            )}
+
+            {onClose && (
+              <button
+                onClick={onClose}
+                className="text-slate-400 hover:text-slate-200 p-1 hover:bg-surface-hover rounded-lg transition cursor-pointer"
+                title={t('common.close', { defaultValue: 'Schließen' })}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-center justify-between border-b border-border pb-3 shrink-0">
+          <button
+            onClick={handleToggleSelectAll}
+            className="flex items-center space-x-1.5 text-xs text-slate-200 hover:text-white transition cursor-pointer font-medium"
+            title={allSelected ? t('history.deselect_all') : t('history.select_all')}
+          >
+            {allSelected ? (
+              <CheckSquare className="w-4 h-4 text-accent" />
+            ) : (
+              <Square className="w-4 h-4 text-slate-400" />
+            )}
+            <span className="text-xs">
+              {selectedIds.size > 0
+                ? t('history.selected_count', { count: selectedIds.size })
+                : t('history.select_all')}
+            </span>
+          </button>
+
+          <div className="flex items-center space-x-1.5">
             <button
-              onClick={() => {
-                if (window.confirm(t('history.clear_confirm'))) {
-                  onClear();
-                }
-              }}
-              className="text-slate-500 hover:text-rose-400 p-1 hover:bg-rose-500/10 rounded-lg transition cursor-pointer"
-              title={t('history.clear_history')}
+              onClick={handleDeleteSelected}
+              disabled={selectedIds.size === 0}
+              className={`inline-flex items-center space-x-1 text-xs px-2.5 py-1 rounded-lg transition cursor-pointer font-medium ${
+                selectedIds.size > 0
+                  ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-rose-500/30'
+                  : 'bg-surface text-slate-500 border border-border cursor-not-allowed opacity-50'
+              }`}
+              title={t('history.delete_selected', { count: selectedIds.size })}
             >
               <Trash2 className="w-3.5 h-3.5" />
+              <span>{t('history.delete_selected', { count: selectedIds.size })}</span>
             </button>
-          )}
 
-          {onClose && (
             <button
-              onClick={onClose}
-              className="text-slate-400 hover:text-slate-200 p-1 hover:bg-surface-hover rounded-lg transition cursor-pointer"
-              title={t('common.close', { defaultValue: 'Schließen' })}
+              onClick={() => {
+                setIsSelectMode(false);
+                setSelectedIds(new Set());
+              }}
+              className="text-xs text-slate-400 hover:text-slate-200 px-2 py-1 hover:bg-surface-hover rounded-lg transition cursor-pointer border border-border"
             >
-              <X className="w-4 h-4" />
+              {t('history.cancel_selection')}
             </button>
-          )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Scrollable Items List with Lazy Loading Window */}
       <div
@@ -294,26 +395,56 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
             {visibleItems.map((item) => {
               const isProcessing = item.status === 'processing';
               const isSelected = selectedItemId === item.id;
+              const isChecked = selectedIds.has(item.id);
               const isCopying = isCopyingId === item.id;
               const isCopied = copiedId === item.id;
 
               return (
                 <div
                   key={item.id}
-                  onClick={() => !isProcessing && onSelect(item)}
+                  onClick={() => {
+                    if (isProcessing) return;
+                    if (isSelectMode) {
+                      handleToggleItemSelect(item.id);
+                    } else {
+                      onSelect(item);
+                    }
+                  }}
                   onMouseEnter={(e) => handleItemMouseEnter(e, item)}
                   onMouseLeave={handleItemMouseLeave}
-                  className={`p-3 border rounded-xl transition group flex items-center justify-between ${isProcessing
-                    ? 'border-accent/40 bg-accent/5 cursor-default'
-                    : isSelected
-                      ? 'bg-accent/15 border-accent shadow-sm cursor-pointer'
-                      : 'bg-card/80 hover:bg-surface-hover border-border/70 cursor-pointer'
-                    }`}
+                  className={`p-3 border rounded-xl transition group flex items-center justify-between ${
+                    isProcessing
+                      ? 'border-accent/40 bg-accent/5 cursor-default'
+                      : isSelectMode
+                        ? isChecked
+                          ? 'bg-accent/15 border-accent shadow-sm cursor-pointer'
+                          : 'bg-card/80 hover:bg-surface-hover border-border/70 cursor-pointer'
+                        : isSelected
+                          ? 'bg-accent/15 border-accent shadow-sm cursor-pointer'
+                          : 'bg-card/80 hover:bg-surface-hover border-border/70 cursor-pointer'
+                  }`}
                 >
+                  {isSelectMode && (
+                    <div className="mr-2.5 shrink-0 flex items-center">
+                      <div
+                        className={`w-4 h-4 rounded border flex items-center justify-center transition ${
+                          isChecked
+                            ? 'bg-accent border-accent text-white'
+                            : 'border-slate-500 group-hover:border-slate-300 bg-background/50'
+                        }`}
+                      >
+                        {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
+                      </div>
+                    </div>
+                  )}
+
                   <div className="space-y-1.5 min-w-0 pr-2 flex-1">
                     <p
-                      className={`text-xs font-semibold truncate transition ${isProcessing || isSelected ? 'text-accent font-bold' : 'text-slate-200 group-hover:text-accent'
-                        }`}
+                      className={`text-xs font-semibold truncate transition ${
+                        isProcessing || (!isSelectMode && isSelected) || (isSelectMode && isChecked)
+                          ? 'text-accent font-bold'
+                          : 'text-slate-200 group-hover:text-accent'
+                      }`}
                     >
                       {item.fileName}
                     </p>
@@ -337,14 +468,15 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
                     )}
                   </div>
 
-                  {!isProcessing && (
+                  {!isProcessing && !isSelectMode && (
                     <button
                       onClick={(e) => handleCopyItem(e, item)}
                       disabled={isCopying}
-                      className={`p-1.5 rounded-lg border transition shrink-0 cursor-pointer ${isCopied
-                        ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
-                        : 'bg-background text-slate-400 hover:text-slate-100 border-border hover:border-accent/40'
-                        }`}
+                      className={`p-1.5 rounded-lg border transition shrink-0 cursor-pointer ${
+                        isCopied
+                          ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
+                          : 'bg-background text-slate-400 hover:text-slate-100 border-border hover:border-accent/40'
+                      }`}
                       title={isCopied ? t('history.copy_success') : t('history.copy_item')}
                     >
                       {isCopying ? (
