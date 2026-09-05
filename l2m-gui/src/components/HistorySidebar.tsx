@@ -43,36 +43,30 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
   }
   const [previewInfo, setPreviewInfo] = useState<PreviewInfo | null>(null);
   const [isPreviewLoading, setIsPreviewLoading] = useState<boolean>(false);
-  const [cardTop, setCardTop] = useState<number | null>(null);
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cacheRef = useRef<Map<string, { title: string; slideContent: string; totalSlides: number }>>(new Map());
   const previewCardRef = useRef<HTMLDivElement | null>(null);
 
-  // Dynamically clamp preview card position with generous bottom margin (56px)
+  // Dynamically clamp preview card position with generous bottom margin (56px) directly via DOM style (no re-render loop)
   useLayoutEffect(() => {
-    if (!previewInfo) {
-      setCardTop(null);
-      return;
-    }
-    if (previewCardRef.current) {
-      const cardEl = previewCardRef.current;
-      const cardHeight = cardEl.offsetHeight;
-      const windowHeight = window.innerHeight;
-      const BOTTOM_PADDING = 56; // 56px (~3.5rem) - generous margin above the bottom window edge/dock
-      const TOP_PADDING = 24;    // 24px (~1.5rem) - comfortable top margin
+    if (!previewInfo || !previewCardRef.current) return;
+    const cardEl = previewCardRef.current;
+    const cardHeight = cardEl.offsetHeight;
+    const windowHeight = window.innerHeight;
+    const BOTTOM_PADDING = 56; // 56px (~3.5rem) - generous margin above the bottom window edge/dock
+    const TOP_PADDING = 24;    // 24px (~1.5rem) - comfortable top margin
 
-      let top = previewInfo.targetTop;
-      // Clamp bottom: ensure the preview card stays well above the bottom edge
-      if (top + cardHeight > windowHeight - BOTTOM_PADDING) {
-        top = Math.max(TOP_PADDING, windowHeight - BOTTOM_PADDING - cardHeight);
-      }
-      // Clamp top: ensure the preview card never overflows the top margin
-      if (top < TOP_PADDING) {
-        top = TOP_PADDING;
-      }
-
-      setCardTop(top);
+    let top = previewInfo.targetTop;
+    // Clamp bottom: ensure the preview card stays well above the bottom edge
+    if (top + cardHeight > windowHeight - BOTTOM_PADDING) {
+      top = Math.max(TOP_PADDING, windowHeight - BOTTOM_PADDING - cardHeight);
     }
+    // Clamp top: ensure the preview card never overflows the top margin
+    if (top < TOP_PADDING) {
+      top = TOP_PADDING;
+    }
+
+    cardEl.style.top = `${top}px`;
   }, [previewInfo, isPreviewLoading]);
 
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -384,7 +378,7 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
         <div
           ref={previewCardRef}
           style={{
-            top: cardTop !== null ? `${cardTop}px` : `${Math.max(24, Math.min(previewInfo.targetTop, window.innerHeight - 450))}px`,
+            top: `${Math.max(24, Math.min(previewInfo.targetTop, window.innerHeight - 450))}px`,
           }}
           className="fixed right-[calc(24rem+1rem)] w-[28rem] max-w-[calc(100vw-26rem)] max-h-[calc(100vh-6rem)] z-50 pointer-events-none transition-all duration-150 flex flex-col"
         >
