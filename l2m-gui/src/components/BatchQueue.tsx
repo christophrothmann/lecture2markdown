@@ -176,11 +176,16 @@ export const BatchQueue: React.FC<BatchQueueProps> = ({
           return (
             <div
               key={item.id}
+              onClick={() => {
+                if (item.status === 'completed' && onPreviewItem) {
+                  onPreviewItem(item);
+                }
+              }}
               className={`p-4 rounded-xl border transition-all ${
                 item.status === 'processing'
                   ? 'bg-accent/5 border-accent shadow-md shadow-accent/5'
                   : item.status === 'completed'
-                  ? 'bg-emerald-500/5 border-emerald-500/20'
+                  ? 'bg-emerald-500/5 border-emerald-500/20 hover:border-emerald-500/40 hover:bg-emerald-500/10 cursor-pointer group'
                   : item.status === 'error'
                   ? 'bg-rose-500/5 border-rose-500/20'
                   : 'bg-card/70 border-border hover:border-slate-600'

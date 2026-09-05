@@ -722,9 +722,13 @@ export function App() {
                 onSaveFile={handleSaveFileLocally}
                 onNewConversion={handleNewConversion}
                 onDelete={selectedHistoryId ? handleDeleteCurrentHistoryItem : undefined}
-                onReturnToBatch={queue.length > 0 ? () => setActiveMainView('batch') : undefined}
+                onReturnToBatch={
+                  (isBatchRunning || queue.some((q) => q.status === 'pending' || q.status === 'processing'))
+                    ? () => setActiveMainView('batch')
+                    : undefined
+                }
                 queueProgress={
-                  queue.length > 0
+                  (isBatchRunning || queue.some((q) => q.status === 'pending' || q.status === 'processing'))
                     ? {
                         completed: queue.filter((q) => q.status === 'completed').length,
                         total: queue.length,
