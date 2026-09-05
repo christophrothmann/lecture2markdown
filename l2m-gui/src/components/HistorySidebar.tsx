@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { History, Trash2, Loader2, Copy, Check, X, FileText } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { HistoryItem } from '../utils/historyStorage';
@@ -39,12 +39,34 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
     title: string;
     slideContent: string;
     totalSlides: number;
-    top: number;
+    targetTop: number;
   }
   const [previewInfo, setPreviewInfo] = useState<PreviewInfo | null>(null);
   const [isPreviewLoading, setIsPreviewLoading] = useState<boolean>(false);
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cacheRef = useRef<Map<string, { title: string; slideContent: string; totalSlides: number }>>(new Map());
+  const previewCardRef = useRef<HTMLDivElement | null>(null);
+
+  // Dynamically clamp preview card position so it never bleeds beyond window edges
+  useLayoutEffect(() => {
+    if (!previewInfo || !previewCardRef.current) return;
+    const cardEl = previewCardRef.current;
+    const cardHeight = cardEl.offsetHeight;
+    const windowHeight = window.innerHeight;
+    const PADDING = 16; // 16px (1rem) - matches p-4 of the drawer exactly
+
+    let top = previewInfo.targetTop;
+    // Clamp bottom: ensure the preview card never overflows the bottom margin of the window
+    if (top + cardHeight > windowHeight - PADDING) {
+      top = windowHeight - PADDING - cardHeight;
+    }
+    // Clamp top: ensure the preview card never overflows the top margin of the window
+    if (top < PADDING) {
+      top = PADDING;
+    }
+
+    cardEl.style.top = `${top}px`;
+  }, [previewInfo, isPreviewLoading]);
 
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -117,8 +139,7 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
 
     hoverTimerRef.current = setTimeout(async () => {
       const rect = target.getBoundingClientRect();
-      // Ensure preview card stays comfortably in viewport
-      const top = Math.min(Math.max(rect.top - 10, 16), window.innerHeight - 340);
+      const targetTop = rect.top;
 
       // Check cache first for 0ms response
       if (cacheRef.current.has(item.id)) {
@@ -128,7 +149,7 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
           title: cached.title,
           slideContent: cached.slideContent,
           totalSlides: cached.totalSlides,
-          top,
+          targetTop,
         });
         return;
       }
@@ -140,7 +161,7 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
         title: item.fileName.replace(/\.(pdf|md)$/i, ''),
         slideContent: '',
         totalSlides: item.totalPages || 1,
-        top,
+        targetTop,
       });
 
       try {
@@ -175,7 +196,7 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
             title,
             slideContent,
             totalSlides,
-            top,
+            targetTop,
           };
         });
       } catch (err) {
@@ -281,19 +302,17 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
                   onClick={() => !isProcessing && onSelect(item)}
                   onMouseEnter={(e) => handleItemMouseEnter(e, item)}
                   onMouseLeave={handleItemMouseLeave}
-                  className={`p-3 border rounded-xl transition group flex items-center justify-between ${
-                    isProcessing
-                      ? 'border-accent/40 bg-accent/5 cursor-default'
-                      : isSelected
+                  className={`p-3 border rounded-xl transition group flex items-center justify-between ${isProcessing
+                    ? 'border-accent/40 bg-accent/5 cursor-default'
+                    : isSelected
                       ? 'bg-accent/15 border-accent shadow-sm cursor-pointer'
                       : 'bg-card/80 hover:bg-surface-hover border-border/70 cursor-pointer'
-                  }`}
+                    }`}
                 >
                   <div className="space-y-1.5 min-w-0 pr-2 flex-1">
                     <p
-                      className={`text-xs font-semibold truncate transition ${
-                        isProcessing || isSelected ? 'text-accent font-bold' : 'text-slate-200 group-hover:text-accent'
-                      }`}
+                      className={`text-xs font-semibold truncate transition ${isProcessing || isSelected ? 'text-accent font-bold' : 'text-slate-200 group-hover:text-accent'
+                        }`}
                     >
                       {item.fileName}
                     </p>
@@ -321,11 +340,10 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
                     <button
                       onClick={(e) => handleCopyItem(e, item)}
                       disabled={isCopying}
-                      className={`p-1.5 rounded-lg border transition shrink-0 cursor-pointer ${
-                        isCopied
-                          ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
-                          : 'bg-background text-slate-400 hover:text-slate-100 border-border hover:border-accent/40'
-                      }`}
+                      className={`p-1.5 rounded-lg border transition shrink-0 cursor-pointer ${isCopied
+                        ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
+                        : 'bg-background text-slate-400 hover:text-slate-100 border-border hover:border-accent/40'
+                        }`}
                       title={isCopied ? t('history.copy_success') : t('history.copy_item')}
                     >
                       {isCopying ? (
@@ -357,12 +375,13 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
       {/* Floating Teaser Hover Preview for Slide 1 (Deckblatt) */}
       {previewInfo && (
         <div
-          style={{ top: `${previewInfo.top}px` }}
-          className="fixed right-[calc(24rem+1.5rem)] w-[28rem] max-w-[calc(100vw-27rem)] z-50 pointer-events-none transition-all duration-200"
+          ref={previewCardRef}
+          style={{ top: `${Math.max(16, Math.min(previewInfo.targetTop, window.innerHeight - 450))}px` }}
+          className="fixed right-[calc(24rem+1rem)] w-[28rem] max-w-[calc(100vw-26rem)] max-h-[calc(100vh-2rem)] z-50 pointer-events-none transition-all duration-150 flex flex-col"
         >
-          <div className="bg-card rounded-2xl p-5 border border-border shadow-2xl space-y-3.5 pointer-events-auto overflow-hidden">
-            {/* Top Bar: Slide 1 Badge & File Info */}
-            <div className="flex items-center justify-between gap-3 border-b border-border/60 pb-3">
+          <div className="bg-card rounded-2xl p-5 border border-border shadow-2xl space-y-3.5 pointer-events-auto overflow-hidden flex flex-col max-h-full">
+            {/* Top Bar: File Info */}
+            <div className="flex items-center justify-between gap-3 border-b border-border/60 pb-3 shrink-0">
               <div className="flex items-center space-x-2 min-w-0 flex-1">
                 <span className="p-1.5 bg-accent/15 text-accent rounded-lg shrink-0">
                   <FileText className="w-3.5 h-3.5" />
@@ -371,9 +390,6 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
                   {previewInfo.item.fileName}
                 </span>
               </div>
-              <span className="text-[10px] font-semibold text-accent bg-accent/10 px-2.5 py-1 rounded-full border border-accent/30 shrink-0 whitespace-nowrap">
-                {t('history.slide_1_preview')}
-              </span>
             </div>
 
             {/* Slide Content */}
@@ -385,18 +401,18 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
                 </span>
               </div>
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-2 flex-1 min-h-0 flex flex-col">
                 {previewInfo.title && (
-                  <h4 className="text-xs font-bold text-slate-200 line-clamp-2 leading-snug px-0.5">
+                  <h4 className="text-xs font-bold text-slate-200 line-clamp-2 leading-snug px-0.5 shrink-0">
                     {previewInfo.title}
                   </h4>
                 )}
                 {previewInfo.slideContent ? (
-                  <div className="text-[11px] font-mono text-slate-300 bg-background p-3.5 rounded-xl border border-border/60 max-h-56 overflow-y-auto custom-scrollbar whitespace-pre-wrap leading-relaxed break-words shadow-inner">
+                  <div className="text-[11px] font-mono text-slate-300 bg-background p-3.5 rounded-xl border border-border/60 flex-1 min-h-0 max-h-56 overflow-y-auto custom-scrollbar whitespace-pre-wrap leading-relaxed break-words shadow-inner">
                     {previewInfo.slideContent}
                   </div>
                 ) : (
-                  <div className="text-[11px] italic text-slate-400 bg-background p-3 rounded-xl border border-border/50">
+                  <div className="text-[11px] italic text-slate-400 bg-background p-3 rounded-xl border border-border/50 shrink-0">
                     {previewInfo.item.fileName}
                   </div>
                 )}
@@ -404,9 +420,8 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
             )}
 
             {/* Footer: Quick Hint */}
-            <div className="flex items-center justify-between text-[10px] text-slate-400 pt-2 border-t border-border/40 px-0.5">
+            <div className="flex items-center justify-between text-[10px] text-slate-400 pt-2 border-t border-border/40 px-0.5 shrink-0">
               <span>{t('history.slides_label', { count: previewInfo.totalSlides })}</span>
-              <span className="text-accent font-medium">{t('history.click_to_open')}</span>
             </div>
           </div>
         </div>
