@@ -360,7 +360,7 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
           style={{ top: `${previewInfo.top}px` }}
           className="fixed right-[calc(24rem+1.5rem)] w-[28rem] max-w-[calc(100vw-27rem)] z-50 pointer-events-none transition-all duration-200"
         >
-          <div className="glass-card rounded-2xl p-5 border border-border/80 shadow-2xl space-y-3.5 bg-card/95 backdrop-blur-xl pointer-events-auto overflow-hidden">
+          <div className="bg-card rounded-2xl p-5 border border-border shadow-2xl space-y-3.5 pointer-events-auto overflow-hidden">
             {/* Top Bar: Slide 1 Badge & File Info */}
             <div className="flex items-center justify-between gap-3 border-b border-border/60 pb-3">
               <div className="flex items-center space-x-2 min-w-0 flex-1">
@@ -392,11 +392,11 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
                   </h4>
                 )}
                 {previewInfo.slideContent ? (
-                  <div className="text-[11px] font-mono text-slate-300 bg-background/90 p-3.5 rounded-xl border border-border/60 max-h-56 overflow-y-auto custom-scrollbar whitespace-pre-wrap leading-relaxed break-words shadow-inner">
+                  <div className="text-[11px] font-mono text-slate-300 bg-background p-3.5 rounded-xl border border-border/60 max-h-56 overflow-y-auto custom-scrollbar whitespace-pre-wrap leading-relaxed break-words shadow-inner">
                     {previewInfo.slideContent}
                   </div>
                 ) : (
-                  <div className="text-[11px] italic text-slate-400 bg-background/90 p-3 rounded-xl border border-border/50">
+                  <div className="text-[11px] italic text-slate-400 bg-background p-3 rounded-xl border border-border/50">
                     {previewInfo.item.fileName}
                   </div>
                 )}
