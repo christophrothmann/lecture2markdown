@@ -2,30 +2,14 @@ import React, { useState, useEffect, useMemo, useRef, useDeferredValue } from 'r
 import {
   ChevronLeft,
   ChevronRight,
-  Sparkles,
-  Download,
-  Copy,
-  Plus,
-  Trash2,
-  Check,
-  Search,
-  ExternalLink,
-  Zap,
-  Info,
-  Loader2,
-  Layers,
-  FileText,
   EyeOff,
   CheckCircle2,
   AlertCircle,
-  Edit3,
-  Columns,
-  Maximize2,
-  LayoutList,
-  Target,
-  Eye,
+  Loader2,
+  FileText,
+  Layers,
 } from 'lucide-react';
-import { useTranslation, Trans } from 'react-i18next';
+import { useTranslation } from 'react-i18next';
 import { save as saveFileDialog } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import type { AnkiCard, AnkiCardType, ImageOcclusionMask } from '../utils/anki';
@@ -35,10 +19,15 @@ import {
   checkAnkiConnectAvailable,
   syncCardsToAnkiConnect,
   exportCardsToNativeApkg,
-  formatAnkiMath,
 } from '../utils/anki';
 import { loadPdfDocument, renderSlideToCanvas } from '../utils/pdfRenderer';
 import { ImageOcclusionCanvas } from './ImageOcclusionCanvas';
+import {
+  FlashcardToolbar,
+  FlashcardListRow,
+  FlashcardFocusEditor,
+  FlashcardExportBar,
+} from './flashcards';
 
 interface FlashcardInspectorTabProps {
   markdownContent: string;
@@ -200,7 +189,6 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
     newModesMap: Record<number, 'hide_one' | 'hide_all'>
   ) => {
     setCards((prevCards) => {
-      // Map existing occlusion cards to preserve inline edits and enabled states
       const existingMap = new Map<string, AnkiCard>();
       prevCards.forEach((c) => {
         if (c.type === 'image_occlusion') {
@@ -273,7 +261,6 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
           setCurrentSlideFallbackImage(null);
         }
       } catch {
-        // Fallback to native backend renderer
         if (!isCancelled) {
           try {
             const b64 = await invoke<string>('get_slide_image_native', {
@@ -450,11 +437,11 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
       enabled: true,
     };
     setCards((prev) => [newCard, ...prev]);
-    setEditingCardId(newId);
     setSelectedCardId(newId);
+    setEditingCardId(newId);
   };
 
-  // Filtered Cards List (using deferredSearchQuery for 60 FPS typing)
+  // Filtered Cards Memo
   const filteredCards = useMemo(() => {
     return cards.filter((card) => {
       if (scopeFilter === 'current_slide' && card.slideNumber !== currentSlideNumber) {
@@ -463,24 +450,26 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
       if (typeFilter !== 'all' && card.type !== typeFilter) {
         return false;
       }
-      if (deferredSearchQuery.trim()) {
+      if (deferredSearchQuery.trim() !== '') {
         const q = deferredSearchQuery.toLowerCase();
-        const matchesFront = card.front.toLowerCase().includes(q);
-        const matchesBack = card.back.toLowerCase().includes(q);
-        const matchesTitle = card.slideTitle.toLowerCase().includes(q);
-        return matchesFront || matchesBack || matchesTitle;
+        const matchFront = card.front.toLowerCase().includes(q);
+        const matchBack = card.back.toLowerCase().includes(q);
+        const matchTitle = card.slideTitle.toLowerCase().includes(q);
+        return matchFront || matchBack || matchTitle;
       }
       return true;
     });
   }, [cards, scopeFilter, currentSlideNumber, typeFilter, deferredSearchQuery]);
 
-  // Reset batch limits when search, slide, or filters change
+  // Reset lazy-loading limits when filters change
   useEffect(() => {
     setVisibleLimit(INITIAL_CARDS_BATCH_SIZE);
     setMasterVisibleLimit(INITIAL_MASTER_BATCH_SIZE);
-  }, [scopeFilter, typeFilter, deferredSearchQuery, currentSlideNumber, cards.length]);
+    if (cardsScrollContainerRef.current) cardsScrollContainerRef.current.scrollTop = 0;
+    if (masterScrollContainerRef.current) masterScrollContainerRef.current.scrollTop = 0;
+  }, [scopeFilter, typeFilter, deferredSearchQuery]);
 
-  // Keep selectedCardId pointing to a valid card in Focus Mode
+  // Ensure selectedCardId defaults to the first available card
   useEffect(() => {
     if (filteredCards.length > 0) {
       if (!selectedCardId || !filteredCards.some((c) => c.id === selectedCardId)) {
@@ -491,7 +480,7 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
     }
   }, [filteredCards, selectedCardId]);
 
-  // Ensure selected card is within the rendered slice for master list
+  // Expand visible limits if selected or editing card is beyond current batch
   useEffect(() => {
     if (selectedCardId) {
       const idx = filteredCards.findIndex((c) => c.id === selectedCardId);
@@ -506,7 +495,6 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
     }
   }, [selectedCardId, filteredCards, masterVisibleLimit, visibleLimit]);
 
-  // Ensure editing card is within the rendered slice for cards list
   useEffect(() => {
     if (editingCardId) {
       const idx = filteredCards.findIndex((c) => c.id === editingCardId);
@@ -516,7 +504,7 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
     }
   }, [editingCardId, filteredCards, visibleLimit]);
 
-  // IntersectionObserver for Option 1 (Card list lazy loading)
+  // IntersectionObserver for Option 1
   useEffect(() => {
     const sentinel = cardsSentinelRef.current;
     if (!sentinel) return;
@@ -534,7 +522,7 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
     return () => observer.disconnect();
   }, [filteredCards.length]);
 
-  // IntersectionObserver for Option 2 (Master list lazy loading)
+  // IntersectionObserver for Option 2
   useEffect(() => {
     const sentinel = masterSentinelRef.current;
     if (!sentinel) return;
@@ -552,7 +540,6 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
     return () => observer.disconnect();
   }, [filteredCards.length]);
 
-  // Fallback scroll handler for Option 1
   const handleCardsScroll = () => {
     const el = cardsScrollContainerRef.current;
     if (!el) return;
@@ -561,7 +548,6 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
     }
   };
 
-  // Fallback scroll handler for Option 2
   const handleMasterScroll = () => {
     const el = masterScrollContainerRef.current;
     if (!el) return;
@@ -606,7 +592,7 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
     };
   }, [cards, currentSlideNumber]);
 
-  // 1. Export as Native .apkg File
+  // Export handlers
   const handleSaveApkgFile = async () => {
     const activeCards = cards.filter((c) => c.enabled);
     if (activeCards.length === 0) {
@@ -646,7 +632,6 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
     }
   };
 
-  // 2. Open directly in Anki Desktop (1-Click Native OS Launch)
   const handleOpenInAnki = async () => {
     const activeCards = cards.filter((c) => c.enabled);
     if (activeCards.length === 0) {
@@ -661,7 +646,7 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
 
       const apkgPath = await exportCardsToNativeApkg(cards, safeDeck, {
         pdfPath: activePdfPath,
-        outputPath: '', // Empty path triggers temp file creation + OS launcher (open -a Anki / cmd start)
+        outputPath: '',
       });
 
       const msg = t('flashcards.open_success', { count: activeCards.length });
@@ -678,7 +663,6 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
     }
   };
 
-  // 3. Copy TSV
   const handleCopyTsv = async () => {
     const activeCards = cards.filter((c) => c.enabled);
     if (activeCards.length === 0) {
@@ -692,7 +676,6 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
     setTimeout(() => setCopiedTsv(false), 2500);
   };
 
-  // 4. AnkiConnect Sync
   const handleAnkiConnectSync = async () => {
     const activeCards = cards.filter((c) => c.enabled);
     if (activeCards.length === 0) {
@@ -908,191 +891,23 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
 
         {/* Right Column: Flashcard Inspector & Inline Editor */}
         <div className="flex-1 flex flex-col bg-background/80 p-4 rounded-xl border border-border/50 min-h-0 space-y-3">
-          {/* Header & Filter Controls */}
-          <div className="space-y-2 border-b border-border/60 pb-3 shrink-0">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              {/* Scope Switch: Nur diese Folie vs Alle */}
-              <div className="flex items-center bg-slate-900/80 p-1 rounded-xl border border-slate-700/80 text-xs">
-                <button
-                  type="button"
-                  onClick={() => setScopeFilter('current_slide')}
-                  className={`px-2.5 py-1 rounded-lg font-semibold transition cursor-pointer ${
-                    scopeFilter === 'current_slide'
-                      ? 'bg-accent text-white shadow-xs'
-                      : 'text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  {t('flashcards.scope_current_slide', { current: currentSlideNumber })} ({counts.currentSlide})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setScopeFilter('all')}
-                  className={`px-2.5 py-1 rounded-lg font-semibold transition cursor-pointer ${
-                    scopeFilter === 'all'
-                      ? 'bg-accent text-white shadow-xs'
-                      : 'text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  {t('flashcards.scope_all')} ({counts.all})
-                </button>
-              </div>
-
-              <div className="flex items-center gap-2">
-                {/* View Mode: List (Option 1) vs Focus Editor (Option 2) */}
-                <div className="flex items-center bg-slate-900/80 p-1 rounded-xl border border-slate-700/80 text-xs">
-                  <button
-                    type="button"
-                    onClick={() => setCardViewMode('list')}
-                    className={`px-2 py-1 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1.5 ${
-                      cardViewMode === 'list'
-                        ? 'bg-accent text-white shadow-xs'
-                        : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                    title={t('flashcards.view_list')}
-                  >
-                    <LayoutList className="w-3.5 h-3.5" />
-                    <span className="hidden sm:inline">{t('flashcards.view_list')}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCardViewMode('focus')}
-                    className={`px-2 py-1 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1.5 ${
-                      cardViewMode === 'focus'
-                        ? 'bg-accent text-white shadow-xs'
-                        : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                    title={t('flashcards.view_focus')}
-                  >
-                    <Target className="w-3.5 h-3.5" />
-                    <span className="hidden sm:inline">{t('flashcards.view_focus')}</span>
-                  </button>
-                </div>
-
-                {/* Layout Switcher: Split vs Cards Only */}
-                <div className="flex items-center bg-slate-900/80 p-1 rounded-xl border border-slate-700/80 text-xs">
-                  <button
-                    type="button"
-                    onClick={() => setLayoutMode('split')}
-                    className={`px-2 py-1 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1.5 ${
-                      layoutMode === 'split'
-                        ? 'bg-accent text-white shadow-xs'
-                        : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                    title={t('flashcards.layout_split')}
-                  >
-                    <Columns className="w-3.5 h-3.5" />
-                    <span className="hidden sm:inline">{t('flashcards.layout_split')}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setLayoutMode('cards_only')}
-                    className={`px-2 py-1 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1.5 ${
-                      layoutMode === 'cards_only'
-                        ? 'bg-accent text-white shadow-xs'
-                        : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                    title={t('flashcards.layout_cards_only')}
-                  >
-                    <Maximize2 className="w-3.5 h-3.5" />
-                    <span className="hidden sm:inline">{t('flashcards.layout_cards_only')}</span>
-                  </button>
-                </div>
-
-                {/* Add Card to current slide Button */}
-                <button
-                  type="button"
-                  onClick={handleAddNewCard}
-                  className="px-3 py-1 bg-surface hover:bg-surface-hover border border-border hover:border-accent text-slate-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
-                >
-                  <Plus className="w-3.5 h-3.5 text-accent" /> {t('flashcards.add_card')}
-                </button>
-              </div>
-            </div>
-
-            {/* Live Search & Type Filters */}
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="relative flex-1 min-w-[160px]">
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder={t('flashcards.search_placeholder')}
-                  className="w-full pl-8 pr-3 py-1.5 text-xs bg-surface border border-border rounded-lg text-slate-100 focus:outline-none focus:border-accent transition"
-                />
-              </div>
-
-              {/* Type Filter Pills */}
-              <div className="flex flex-wrap items-center gap-1 text-[11px]">
-                <button
-                  type="button"
-                  onClick={() => setTypeFilter('all')}
-                  className={`px-2 py-0.5 rounded-md font-medium border transition cursor-pointer ${
-                    typeFilter === 'all'
-                      ? 'bg-accent/20 border-accent/40 text-accent font-semibold'
-                      : 'bg-surface border-border text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  {t('flashcards.filter_all')} ({counts.all})
-                </button>
-                {counts.definition > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setTypeFilter('definition')}
-                    className={`px-2 py-0.5 rounded-md font-medium border transition cursor-pointer ${
-                      typeFilter === 'definition'
-                        ? 'bg-blue-500/20 border-blue-500/40 text-blue-400 font-semibold'
-                        : 'bg-surface border-border text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    {t('flashcards.filter_definition')} ({counts.definition})
-                  </button>
-                )}
-                {counts.formula > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setTypeFilter('formula')}
-                    className={`px-2 py-0.5 rounded-md font-medium border transition cursor-pointer ${
-                      typeFilter === 'formula'
-                        ? 'bg-purple-500/20 border-purple-500/40 text-purple-400 font-semibold'
-                        : 'bg-surface border-border text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    {t('flashcards.filter_formula')} ({counts.formula})
-                  </button>
-                )}
-                {counts.cloze > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setTypeFilter('cloze')}
-                    className={`px-2 py-0.5 rounded-md font-medium border transition cursor-pointer ${
-                      typeFilter === 'cloze'
-                        ? 'bg-amber-500/20 border-amber-500/40 text-amber-400 font-semibold'
-                        : 'bg-surface border-border text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    {t('flashcards.filter_cloze')} ({counts.cloze})
-                  </button>
-                )}
-                {counts.image_occlusion > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setTypeFilter('image_occlusion')}
-                    className={`px-2 py-0.5 rounded-md font-medium border transition cursor-pointer ${
-                      typeFilter === 'image_occlusion'
-                        ? 'bg-rose-500/20 border-rose-500/40 text-rose-400 font-semibold'
-                        : 'bg-surface border-border text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    {t('flashcards.filter_occlusion')} ({counts.image_occlusion})
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
+          <FlashcardToolbar
+            scopeFilter={scopeFilter}
+            setScopeFilter={setScopeFilter}
+            currentSlideNumber={currentSlideNumber}
+            counts={counts}
+            cardViewMode={cardViewMode}
+            setCardViewMode={setCardViewMode}
+            layoutMode={layoutMode}
+            setLayoutMode={setLayoutMode}
+            onAddNewCard={handleAddNewCard}
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+            typeFilter={typeFilter}
+            setTypeFilter={setTypeFilter}
+          />
 
           {cardViewMode === 'list' ? (
-            /* Option 1: Scrollable Cards List with Inline Editing */
             <div
               ref={cardsScrollContainerRef}
               onScroll={handleCardsScroll}
@@ -1110,211 +925,32 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
                 </div>
               ) : (
                 <>
-                  {visibleCards.map((card) => {
-                    const isEditing = editingCardId === card.id;
-
-                    if (isEditing) {
-                      return (
-                        <div
-                          key={card.id}
-                          className="p-4 rounded-xl border-2 border-accent/70 bg-surface/95 shadow-lg space-y-3 transition"
-                        >
-                          {/* Active Edit Mode Header */}
-                          <div className="flex items-center justify-between gap-2 border-b border-border/60 pb-2.5">
-                            <div className="flex items-center space-x-2">
-                              <span
-                                className={`text-[10px] px-2 py-0.5 rounded-md font-semibold border ${getBadgeStyle(
-                                  card.type
-                                )}`}
-                              >
-                                {getTypeLabel(card.type)}
-                              </span>
-                              <span className="text-[11px] text-slate-300 font-medium truncate">
-                                {t('flashcards.slide_prefix', { number: card.slideNumber })}: {card.slideTitle}
-                              </span>
-                            </div>
-
-                            <div className="flex items-center space-x-2">
-                              {/* Cloze Helper Button */}
-                              <button
-                                type="button"
-                                onClick={() => handleInsertCloze(card.id)}
-                                className="px-2.5 py-1 text-xs bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 rounded-lg transition cursor-pointer font-medium flex items-center gap-1.5 shadow-xs"
-                                title={t('flashcards.insert_cloze_tooltip', { index: getNextClozeIndex(card) })}
-                              >
-                                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                                <span>{t('flashcards.insert_cloze', { index: getNextClozeIndex(card) })}</span>
-                              </button>
-
-                              {/* Done Button */}
-                              <button
-                                type="button"
-                                onClick={() => setEditingCardId(null)}
-                                className="px-3 py-1 text-xs bg-accent hover:bg-accent-hover text-white rounded-lg transition cursor-pointer font-bold flex items-center gap-1 shadow-sm"
-                              >
-                                <Check className="w-3.5 h-3.5" />
-                                <span>{t('flashcards.done_editing')}</span>
-                              </button>
-                            </div>
-                          </div>
-
-                          {/* Editable Inputs with Auto-Grow */}
-                          <div className="space-y-3 text-xs">
-                            <div className="space-y-1">
-                              <div className="flex items-center justify-between">
-                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                                  {card.type === 'image_occlusion'
-                                    ? t('flashcards.front_occlusion_label')
-                                    : t('flashcards.question_label')}
-                                </span>
-                                <span className="text-[10px] text-slate-500 font-mono">Markdown / MathJax</span>
-                              </div>
-                              <textarea
-                                ref={(el) => {
-                                  frontTextareaRefs.current[card.id] = el;
-                                  if (el) autoGrowTextarea(el);
-                                }}
-                                value={card.front}
-                                onChange={(e) => {
-                                  handleUpdateCardField(card.id, 'front', e.target.value);
-                                  autoGrowTextarea(e.currentTarget);
-                                }}
-                                onFocus={(e) => {
-                                  setActiveTextareaField({ cardId: card.id, field: 'front' });
-                                  autoGrowTextarea(e.currentTarget);
-                                }}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Escape') setEditingCardId(null);
-                                }}
-                                className="w-full p-3 text-xs bg-background border border-border/80 rounded-xl text-slate-100 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent leading-relaxed resize-y font-sans transition"
-                                placeholder={t('flashcards.front_placeholder')}
-                                style={{ minHeight: '70px' }}
-                              />
-                            </div>
-
-                            <div className="space-y-1">
-                              <div className="flex items-center justify-between">
-                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                                  {card.type === 'image_occlusion'
-                                    ? t('flashcards.back_occlusion_label')
-                                    : t('flashcards.answer_label')}
-                                </span>
-                                <span className="text-[10px] text-slate-500 font-mono">Markdown / MathJax</span>
-                              </div>
-                              <textarea
-                                ref={(el) => {
-                                  backTextareaRefs.current[card.id] = el;
-                                  if (el) autoGrowTextarea(el);
-                                }}
-                                value={card.back}
-                                onChange={(e) => {
-                                  handleUpdateCardField(card.id, 'back', e.target.value);
-                                  autoGrowTextarea(e.currentTarget);
-                                }}
-                                onFocus={(e) => {
-                                  setActiveTextareaField({ cardId: card.id, field: 'back' });
-                                  autoGrowTextarea(e.currentTarget);
-                                }}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Escape') setEditingCardId(null);
-                                }}
-                                className="w-full p-3 text-xs bg-background border border-border/80 rounded-xl text-slate-100 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent leading-relaxed resize-y font-sans transition"
-                                placeholder={t('flashcards.back_placeholder')}
-                                style={{ minHeight: '70px' }}
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    }
-
-                    // Default: Preview-First Read Mode
-                    return (
-                      <div
-                        key={card.id}
-                        onClick={() => setEditingCardId(card.id)}
-                        className={`p-4 rounded-xl border transition group cursor-pointer ${
-                          card.enabled
-                            ? 'bg-surface/80 hover:bg-surface border-border/70 hover:border-accent/40 shadow-xs'
-                            : 'bg-surface/30 border-border/40 opacity-50'
-                        }`}
-                      >
-                        {/* Header Bar */}
-                        <div className="flex items-center justify-between gap-2 border-b border-border/40 pb-2.5">
-                          <div className="flex items-center space-x-2.5 min-w-0">
-                            <input
-                              type="checkbox"
-                              checked={card.enabled}
-                              onChange={(e) => {
-                                e.stopPropagation();
-                                handleToggleCard(card.id);
-                              }}
-                              className="h-4 w-4 rounded border-border text-accent focus:ring-accent cursor-pointer shrink-0"
-                              title={card.enabled ? t('flashcards.card_active') : t('flashcards.card_disabled')}
-                            />
-                            <span
-                              className={`text-[10px] px-2 py-0.5 rounded-md font-semibold border shrink-0 ${getBadgeStyle(
-                                card.type
-                              )}`}
-                            >
-                              {getTypeLabel(card.type)}
-                            </span>
-                            <span className="text-[11px] text-slate-400 truncate">
-                              {t('flashcards.slide_prefix', { number: card.slideNumber })}: {card.slideTitle}
-                            </span>
-                          </div>
-
-                          <div className="flex items-center space-x-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                            <button
-                              type="button"
-                              onClick={() => setEditingCardId(card.id)}
-                              className="px-2 py-1 text-xs text-slate-400 hover:text-slate-100 hover:bg-surface-hover rounded-lg transition cursor-pointer flex items-center gap-1 border border-transparent hover:border-border"
-                              title={t('flashcards.edit_card')}
-                            >
-                              <Edit3 className="w-3.5 h-3.5 text-accent" />
-                              <span className="hidden sm:inline text-[11px]">{t('flashcards.edit_card')}</span>
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteCard(card.id)}
-                              className="p-1 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition cursor-pointer"
-                              title={t('flashcards.delete_card')}
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* Content Presentation */}
-                        <div className="space-y-2.5 pt-2.5 text-xs">
-                          {/* Front */}
-                          <div className="space-y-1">
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                              {card.type === 'image_occlusion'
-                                ? t('flashcards.front_occlusion_label')
-                                : t('flashcards.question_label')}
-                            </span>
-                            <div className="text-xs font-semibold text-slate-100 whitespace-pre-wrap leading-relaxed">
-                              {card.front || <span className="italic text-slate-500">{t('flashcards.front_placeholder')}</span>}
-                            </div>
-                          </div>
-
-                          {/* Back */}
-                          <div className="space-y-1">
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                              {card.type === 'image_occlusion'
-                                ? t('flashcards.back_occlusion_label')
-                                : t('flashcards.answer_label')}
-                            </span>
-                            <div className="text-xs text-slate-200 bg-background/60 p-3 rounded-xl border border-border/50 whitespace-pre-wrap leading-relaxed shadow-inner">
-                              {card.back || <span className="italic text-slate-500">{t('flashcards.back_placeholder')}</span>}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
+                  {visibleCards.map((card) => (
+                    <FlashcardListRow
+                      key={card.id}
+                      card={card}
+                      isEditing={editingCardId === card.id}
+                      onStartEditing={(id) => setEditingCardId(id)}
+                      onDoneEditing={() => setEditingCardId(null)}
+                      onToggleCard={handleToggleCard}
+                      onDeleteCard={handleDeleteCard}
+                      onUpdateField={handleUpdateCardField}
+                      onInsertCloze={handleInsertCloze}
+                      nextClozeIndex={getNextClozeIndex(card)}
+                      getBadgeStyle={getBadgeStyle}
+                      getTypeLabel={getTypeLabel}
+                      frontRef={(el) => {
+                        frontTextareaRefs.current[card.id] = el;
+                      }}
+                      backRef={(el) => {
+                        backTextareaRefs.current[card.id] = el;
+                      }}
+                      onFocusTextarea={(field) => {
+                        setActiveTextareaField({ cardId: card.id, field });
+                      }}
+                      autoGrowTextarea={autoGrowTextarea}
+                    />
+                  ))}
                   {visibleLimit < filteredCards.length && (
                     <div
                       ref={cardsSentinelRef}
@@ -1333,375 +969,65 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
               )}
             </div>
           ) : (
-            /* Option 2: Master-Detail Focus Editor */
-            <div className="flex-1 grid grid-cols-1 md:grid-cols-12 gap-3 min-h-0">
-              {/* Left Column: Master Cards List (compact) */}
-              <div className="md:col-span-5 flex flex-col min-h-0 bg-background/50 rounded-xl border border-border/60 p-2 overflow-hidden">
-                {filteredCards.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-48 text-slate-400 space-y-2">
-                    <Layers className="w-6 h-6 text-slate-600" />
-                    <p className="text-xs text-slate-500">{t('flashcards.empty_title')}</p>
-                  </div>
-                ) : (
-                  <div
-                    ref={masterScrollContainerRef}
-                    onScroll={handleMasterScroll}
-                    className="flex-1 overflow-y-auto space-y-1.5 min-h-0 custom-scrollbar pr-1"
-                  >
-                    {visibleMasterCards.map((card) => {
-                      const isSelected = card.id === selectedCardId;
-                      return (
-                        <div
-                          key={card.id}
-                          onClick={() => setSelectedCardId(card.id)}
-                          className={`p-2.5 rounded-lg border transition cursor-pointer flex items-center justify-between text-xs group ${
-                            isSelected
-                              ? 'bg-accent/15 border-accent text-white shadow-xs'
-                              : 'bg-surface/60 hover:bg-surface border-border/50 text-slate-300'
-                          }`}
-                        >
-                          <div className="flex items-center space-x-2 min-w-0 flex-1">
-                            <input
-                              type="checkbox"
-                              checked={card.enabled}
-                              onChange={(e) => {
-                                e.stopPropagation();
-                                handleToggleCard(card.id);
-                              }}
-                              className="h-3.5 w-3.5 rounded border-border text-accent focus:ring-accent cursor-pointer shrink-0"
-                              title={card.enabled ? t('flashcards.card_active') : t('flashcards.card_disabled')}
-                            />
-                            <span
-                              className={`text-[9px] px-1.5 py-0.5 rounded font-bold border shrink-0 ${getBadgeStyle(
-                                card.type
-                              )}`}
-                            >
-                              {getTypeLabel(card.type)}
-                            </span>
-                            <span className="truncate text-xs font-medium text-slate-200 group-hover:text-white">
-                              {card.front || card.slideTitle}
-                            </span>
-                          </div>
-                          <span className="text-[10px] text-slate-500 shrink-0 ml-1.5 font-mono">
-                            #{card.slideNumber}
-                          </span>
-                        </div>
-                      );
-                    })}
-                    {masterVisibleLimit < filteredCards.length && (
-                      <div
-                        ref={masterSentinelRef}
-                        className="py-2.5 flex flex-col items-center justify-center text-[11px] text-slate-400 gap-1"
-                      >
-                        <Loader2 className="w-3.5 h-3.5 animate-spin text-accent" />
-                        <span>
-                          {t('flashcards.loaded_count', {
-                            current: visibleMasterCards.length,
-                            total: filteredCards.length,
-                          })}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Right Column: Detail Focus Editor */}
-              <div className="md:col-span-7 flex flex-col min-h-0 bg-surface/90 rounded-xl border border-border/80 p-4 space-y-3 overflow-y-auto custom-scrollbar shadow-md">
-                {currentSelectedCard ? (
-                  <>
-                    {/* Focus Editor Top Bar */}
-                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 pb-3 shrink-0">
-                      <div className="flex items-center space-x-2">
-                        {/* Prev / Next Card */}
-                        <div className="flex items-center space-x-1">
-                          <button
-                            type="button"
-                            onClick={handlePrevCard}
-                            disabled={currentCardIndex <= 0}
-                            className="p-1 bg-background hover:bg-surface-hover border border-border text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg transition cursor-pointer"
-                            title={t('flashcards.prev_card')}
-                          >
-                            <ChevronLeft className="w-3.5 h-3.5" />
-                          </button>
-                          <span className="text-xs text-slate-400 font-mono px-1">
-                            {currentCardIndex + 1} / {filteredCards.length}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={handleNextCard}
-                            disabled={currentCardIndex >= filteredCards.length - 1}
-                            className="p-1 bg-background hover:bg-surface-hover border border-border text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg transition cursor-pointer"
-                            title={t('flashcards.next_card')}
-                          >
-                            <ChevronRight className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-
-                        {/* Card Type Selector */}
-                        <select
-                          value={currentSelectedCard.type}
-                          onChange={(e) => {
-                            const newType = e.target.value as AnkiCardType;
-                            setCards((prev) =>
-                              prev.map((c) =>
-                                c.id === currentSelectedCard.id ? { ...c, type: newType } : c
-                              )
-                            );
-                          }}
-                          className={`text-xs px-2 py-1 rounded-lg font-semibold border bg-background focus:outline-none focus:border-accent cursor-pointer ${getBadgeStyle(
-                            currentSelectedCard.type
-                          )}`}
-                        >
-                          <option value="definition">{t('flashcards.type_definition')}</option>
-                          <option value="formula">{t('flashcards.type_formula')}</option>
-                          <option value="cloze">{t('flashcards.type_cloze')}</option>
-                          <option value="qa">{t('flashcards.type_qa')}</option>
-                          <option value="image_occlusion">{t('flashcards.type_occlusion')}</option>
-                        </select>
-
-                        {/* Slide Indicator */}
-                        <span className="text-xs text-slate-400 bg-background/80 px-2 py-0.5 rounded-md border border-border/60">
-                          {t('flashcards.slide_prefix', { number: currentSelectedCard.slideNumber })}
-                        </span>
-                      </div>
-
-                      <div className="flex items-center space-x-2">
-                        {/* Cloze Helper Button */}
-                        <button
-                          type="button"
-                          onClick={() => handleInsertCloze(currentSelectedCard.id)}
-                          className="px-2.5 py-1 text-xs bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 rounded-lg transition cursor-pointer font-medium flex items-center gap-1.5 shadow-xs"
-                          title={t('flashcards.insert_cloze_tooltip', { index: getNextClozeIndex(currentSelectedCard) })}
-                        >
-                          <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                          <span>{t('flashcards.insert_cloze', { index: getNextClozeIndex(currentSelectedCard) })}</span>
-                        </button>
-
-                        {/* Live Preview Toggle Button */}
-                        <button
-                          type="button"
-                          onClick={() => setIsPreviewInFocus(!isPreviewInFocus)}
-                          className={`px-2.5 py-1 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition cursor-pointer border ${
-                            isPreviewInFocus
-                              ? 'bg-accent/20 text-accent border-accent/40'
-                              : 'bg-background hover:bg-surface-hover border-border text-slate-300'
-                          }`}
-                          title={t('flashcards.preview_toggle')}
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                          <span>{isPreviewInFocus ? t('flashcards.edit_toggle') : t('flashcards.preview_toggle')}</span>
-                        </button>
-
-                        {/* Delete Card */}
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteCard(currentSelectedCard.id)}
-                          className="p-1 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition cursor-pointer"
-                          title={t('flashcards.delete_card')}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Main Focus Content: Edit Mode or Rendered Preview */}
-                    {!isPreviewInFocus ? (
-                      <div className="space-y-4 flex-1 flex flex-col min-h-0">
-                        {/* Front / Question Editor */}
-                        <div className="space-y-1.5 flex flex-col flex-1 min-h-0">
-                          <div className="flex items-center justify-between">
-                            <label className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
-                              <span className="w-2 h-2 rounded-full bg-accent" />
-                              {currentSelectedCard.type === 'image_occlusion'
-                                ? t('flashcards.front_occlusion_label')
-                                : t('flashcards.question_label')}
-                            </label>
-                            <span className="text-[10px] text-slate-500 font-mono">Markdown / MathJax</span>
-                          </div>
-                          <textarea
-                            ref={(el) => {
-                              frontTextareaRefs.current[currentSelectedCard.id] = el;
-                              if (el) autoGrowTextarea(el);
-                            }}
-                            value={currentSelectedCard.front}
-                            onChange={(e) => {
-                              handleUpdateCardField(currentSelectedCard.id, 'front', e.target.value);
-                              autoGrowTextarea(e.currentTarget);
-                            }}
-                            onFocus={(e) => {
-                              setActiveTextareaField({ cardId: currentSelectedCard.id, field: 'front' });
-                              autoGrowTextarea(e.currentTarget);
-                            }}
-                            className="w-full p-3 text-xs bg-background border border-border/80 rounded-xl text-slate-100 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent leading-relaxed resize-y font-sans transition flex-1 min-h-[90px]"
-                            placeholder={t('flashcards.front_placeholder')}
-                          />
-                        </div>
-
-                        {/* Back / Answer Editor */}
-                        <div className="space-y-1.5 flex flex-col flex-1 min-h-0">
-                          <div className="flex items-center justify-between">
-                            <label className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
-                              <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                              {currentSelectedCard.type === 'image_occlusion'
-                                ? t('flashcards.back_occlusion_label')
-                                : t('flashcards.answer_label')}
-                            </label>
-                            <span className="text-[10px] text-slate-500 font-mono">Markdown / MathJax</span>
-                          </div>
-                          <textarea
-                            ref={(el) => {
-                              backTextareaRefs.current[currentSelectedCard.id] = el;
-                              if (el) autoGrowTextarea(el);
-                            }}
-                            value={currentSelectedCard.back}
-                            onChange={(e) => {
-                              handleUpdateCardField(currentSelectedCard.id, 'back', e.target.value);
-                              autoGrowTextarea(e.currentTarget);
-                            }}
-                            onFocus={(e) => {
-                              setActiveTextareaField({ cardId: currentSelectedCard.id, field: 'back' });
-                              autoGrowTextarea(e.currentTarget);
-                            }}
-                            className="w-full p-3 text-xs bg-background border border-border/80 rounded-xl text-slate-100 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent leading-relaxed resize-y font-sans transition flex-1 min-h-[110px]"
-                            placeholder={t('flashcards.back_placeholder')}
-                          />
-                        </div>
-                      </div>
-                    ) : (
-                      /* Live Rendered Card Preview */
-                      <div className="space-y-4 flex-1 flex flex-col min-h-0">
-                        <div className="p-4 rounded-xl bg-background/80 border border-border/80 space-y-2">
-                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                            {t('flashcards.question_label')}
-                          </span>
-                          <div className="text-sm font-semibold text-slate-100 whitespace-pre-wrap leading-relaxed">
-                            {currentSelectedCard.front}
-                          </div>
-                        </div>
-
-                        <div className="p-4 rounded-xl bg-background/90 border border-border/80 space-y-2 flex-1 shadow-inner">
-                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                            {t('flashcards.answer_label')}
-                          </span>
-                          <div className="text-xs text-slate-200 whitespace-pre-wrap leading-relaxed">
-                            {currentSelectedCard.back}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <div className="flex flex-col items-center justify-center h-64 text-slate-500 space-y-2">
-                    <Target className="w-8 h-8 opacity-40 text-accent" />
-                    <p className="text-xs">{t('flashcards.select_card_prompt')}</p>
-                  </div>
-                )}
-              </div>
-            </div>
+            <FlashcardFocusEditor
+              filteredCards={filteredCards}
+              visibleMasterCards={visibleMasterCards}
+              currentSelectedCard={currentSelectedCard}
+              currentCardIndex={currentCardIndex}
+              selectedCardId={selectedCardId}
+              onSelectCardId={setSelectedCardId}
+              onToggleCard={handleToggleCard}
+              onDeleteCard={handleDeleteCard}
+              onChangeCardType={(id, newType) => {
+                setCards((prev) =>
+                  prev.map((c) => (c.id === id ? { ...c, type: newType } : c))
+                );
+              }}
+              onUpdateField={handleUpdateCardField}
+              onInsertCloze={handleInsertCloze}
+              nextClozeIndex={currentSelectedCard ? getNextClozeIndex(currentSelectedCard) : 1}
+              onPrevCard={handlePrevCard}
+              onNextCard={handleNextCard}
+              isPreviewInFocus={isPreviewInFocus}
+              onTogglePreview={() => setIsPreviewInFocus(!isPreviewInFocus)}
+              getBadgeStyle={getBadgeStyle}
+              getTypeLabel={getTypeLabel}
+              masterScrollContainerRef={masterScrollContainerRef}
+              onMasterScroll={handleMasterScroll}
+              masterSentinelRef={masterSentinelRef}
+              masterVisibleLimit={masterVisibleLimit}
+              frontRef={(el) => {
+                if (currentSelectedCard) frontTextareaRefs.current[currentSelectedCard.id] = el;
+              }}
+              backRef={(el) => {
+                if (currentSelectedCard) backTextareaRefs.current[currentSelectedCard.id] = el;
+              }}
+              onFocusTextarea={(field) => {
+                if (currentSelectedCard) {
+                  setActiveTextareaField({ cardId: currentSelectedCard.id, field });
+                }
+              }}
+              autoGrowTextarea={autoGrowTextarea}
+            />
           )}
         </div>
       </div>
 
       {/* Bottom Export & Sync Bar */}
-      <div className="p-3.5 bg-surface/70 border border-border/80 rounded-xl flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 shrink-0">
-        {/* Left: Deck Name & Status */}
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center space-x-2">
-            <span className="text-xs font-semibold text-slate-300">{t('flashcards.deck_label')}</span>
-            <input
-              type="text"
-              value={deckName}
-              onChange={(e) => setDeckName(e.target.value)}
-              className="px-2.5 py-1 text-xs bg-surface border border-border rounded-lg text-slate-100 focus:outline-none focus:border-accent max-w-[200px]"
-              placeholder={t('flashcards.deck_placeholder')}
-            />
-          </div>
-
-          <span className="text-xs text-slate-400">
-            <Trans
-              i18nKey="flashcards.active_count"
-              values={{ enabled: counts.enabled, total: counts.all }}
-              components={[<strong className="text-slate-200" key="0" />]}
-            />
-          </span>
-
-          {/* AnkiConnect Status Indicator */}
-          <div className="flex items-center space-x-1.5 text-xs text-slate-400">
-            <span
-              className={`w-2 h-2 rounded-full ${
-                isAnkiConnectOnline ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'
-              }`}
-            />
-            <span className="text-[11px]">
-              {isAnkiConnectOnline ? t('flashcards.ankiconnect_active') : t('flashcards.ankiconnect_optional')}
-            </span>
-          </div>
-        </div>
-
-        {/* Right: Export Action Buttons */}
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          {/* Copy TSV */}
-          <button
-            type="button"
-            onClick={handleCopyTsv}
-            className="flex items-center space-x-1.5 px-3 py-1.5 bg-surface hover:bg-surface-hover border border-border text-slate-300 rounded-xl text-xs font-semibold transition cursor-pointer"
-            title={t('flashcards.copy_tsv_tooltip')}
-          >
-            {copiedTsv ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-            <span>{copiedTsv ? t('flashcards.copied_tsv') : t('flashcards.copy_tsv')}</span>
-          </button>
-
-          {/* Save .apkg File */}
-          <button
-            type="button"
-            onClick={handleSaveApkgFile}
-            disabled={isExportingApkg || counts.enabled === 0}
-            className="flex items-center space-x-1.5 px-3.5 py-1.5 bg-surface hover:bg-surface-hover border border-border text-slate-200 rounded-xl text-xs font-semibold transition cursor-pointer disabled:opacity-50"
-            title={t('flashcards.save_apkg_tooltip')}
-          >
-            {isExportingApkg ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <Download className="w-3.5 h-3.5 text-amber-400" />
-            )}
-            <span>{t('flashcards.save_apkg')}</span>
-          </button>
-
-          {/* Open in Anki (Native 1-Click) */}
-          <button
-            type="button"
-            onClick={handleOpenInAnki}
-            disabled={isOpeningInAnki || counts.enabled === 0}
-            className="flex items-center space-x-1.5 px-4 py-1.5 bg-accent hover:bg-accent/90 text-white rounded-xl text-xs font-semibold transition shadow-lg shadow-accent/25 cursor-pointer disabled:opacity-50"
-            title={t('flashcards.open_in_anki_tooltip')}
-          >
-            {isOpeningInAnki ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <ExternalLink className="w-3.5 h-3.5" />
-            )}
-            <span>{t('flashcards.open_in_anki')}</span>
-          </button>
-
-          {/* AnkiConnect Direct Sync Button if running */}
-          {isAnkiConnectOnline && (
-            <button
-              type="button"
-              onClick={handleAnkiConnectSync}
-              disabled={isSyncingAnkiConnect || counts.enabled === 0}
-              className="flex items-center space-x-1.5 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold transition shadow-lg shadow-emerald-600/20 cursor-pointer disabled:opacity-50"
-            >
-              {isSyncingAnkiConnect ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Zap className="w-3.5 h-3.5 text-emerald-200" />
-              )}
-              <span>{t('flashcards.sync_ankiconnect')}</span>
-            </button>
-          )}
-        </div>
-      </div>
+      <FlashcardExportBar
+        deckName={deckName}
+        setDeckName={setDeckName}
+        counts={counts}
+        isAnkiConnectOnline={isAnkiConnectOnline}
+        copiedTsv={copiedTsv}
+        isExportingApkg={isExportingApkg}
+        isOpeningInAnki={isOpeningInAnki}
+        isSyncingAnkiConnect={isSyncingAnkiConnect}
+        onCopyTsv={handleCopyTsv}
+        onSaveApkgFile={handleSaveApkgFile}
+        onOpenInAnki={handleOpenInAnki}
+        onAnkiConnectSync={handleAnkiConnectSync}
+      />
     </div>
   );
 };
