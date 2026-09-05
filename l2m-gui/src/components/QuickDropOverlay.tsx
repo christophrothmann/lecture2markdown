@@ -8,7 +8,7 @@ import { sendNotification, isPermissionGranted, requestPermission } from '@tauri
 import { useTranslation } from 'react-i18next';
 import type { ProviderType } from './ApiKeyModal';
 import type { HistoryItem } from './HistorySidebar';
-import { extractPdfSlidesWebp } from '../utils/pdfRenderer';
+import { streamTranscribePdfSlides } from '../utils/pdfRenderer';
 
 interface QuickDropOverlayProps {
   isOpen: boolean;
@@ -135,13 +135,18 @@ export const QuickDropOverlay: React.FC<QuickDropOverlayProps> = ({
     setErrorMessage('');
 
     try {
-      const slides = await extractPdfSlidesWebp(pdfPath);
-      const markdown = await invoke<string>('transcribe_slides_native', {
-        slides,
-        provider: activeProvider,
+      const markdown = await streamTranscribePdfSlides(
+        pdfPath,
+        activeProvider,
         apiKey,
         fileName,
-      });
+        {
+          onSlideCompleted: (completed, total) => {
+            setProgressCurrent(completed);
+            setProgressTotal(total);
+          },
+        }
+      );
 
       // Automatically copy markdown file descriptor to native clipboard
       const cleanName = fileName.replace(/\.pdf$/i, '');

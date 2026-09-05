@@ -82,6 +82,37 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
     setCurrentSlideIndex(0);
   }, [content, t]);
 
+  // Virtualized Markdown Slices for 60 FPS scrolling on large lectures
+  const INITIAL_SLIDES_BATCH = 20;
+  const SLIDES_BATCH_INCREMENT = 15;
+  const [visibleSlideCount, setVisibleSlideCount] = useState<number>(INITIAL_SLIDES_BATCH);
+  const [markdownDisplayMode, setMarkdownDisplayMode] = useState<'structured' | 'raw'>('structured');
+  const markdownScrollRef = useRef<HTMLDivElement | null>(null);
+  const markdownSentinelRef = useRef<HTMLDivElement | null>(null);
+
+  // Reset batch limit when content or display mode changes
+  useEffect(() => {
+    setVisibleSlideCount(INITIAL_SLIDES_BATCH);
+  }, [content, markdownDisplayMode]);
+
+  // Lazy loading observer for structured markdown view
+  useEffect(() => {
+    const sentinel = markdownSentinelRef.current;
+    if (!sentinel || markdownDisplayMode !== 'structured') return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          setVisibleSlideCount((prev) => Math.min(prev + SLIDES_BATCH_INCREMENT, slides.length));
+        }
+      },
+      { root: markdownScrollRef.current, rootMargin: '250px' }
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [slides.length, markdownDisplayMode]);
+
   // Load and render slide with PDF.js (0 Python, 100% Zero-Config client-side)
   useEffect(() => {
     if (activeView !== 'split' || !activePdfPath || slides.length === 0) {
@@ -371,11 +402,99 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
       <div
         className={
           activeView === 'markdown'
-            ? 'flex-1 overflow-y-auto min-h-0 bg-background/80 p-4 rounded-xl border border-border/50 text-xs font-mono text-slate-300 whitespace-pre-wrap leading-relaxed'
+            ? 'flex-1 flex flex-col min-h-0 bg-background/80 rounded-xl border border-border/50 overflow-hidden shadow-sm'
             : 'hidden'
         }
       >
-        {content}
+        {/* Sub-toolbar: Switch between Structured Slides View and Raw Text */}
+        <div className="flex items-center justify-between px-4 py-2 border-b border-border/40 bg-surface/30 shrink-0 text-xs">
+          <div className="flex items-center space-x-2 text-slate-400">
+            <span className="font-semibold text-slate-300">
+              {slides.length} {t('preview.slide_sections', { defaultValue: 'Folienabschnitte' })}
+            </span>
+          </div>
+          <div className="flex items-center space-x-1 bg-background/60 p-0.5 rounded-lg border border-border/60">
+            <button
+              type="button"
+              onClick={() => setMarkdownDisplayMode('structured')}
+              className={`px-2 py-0.5 rounded text-[11px] font-medium transition cursor-pointer ${
+                markdownDisplayMode === 'structured'
+                  ? 'bg-accent/20 text-accent font-semibold shadow-2xs'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              {t('preview.mode_structured', { defaultValue: 'Strukturierte Folien' })}
+            </button>
+            <button
+              type="button"
+              onClick={() => setMarkdownDisplayMode('raw')}
+              className={`px-2 py-0.5 rounded text-[11px] font-medium transition cursor-pointer ${
+                markdownDisplayMode === 'raw'
+                  ? 'bg-accent/20 text-accent font-semibold shadow-2xs'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              {t('preview.mode_raw', { defaultValue: 'Rohtext' })}
+            </button>
+          </div>
+        </div>
+
+        {markdownDisplayMode === 'raw' ? (
+          <div className="flex-1 overflow-y-auto min-h-0 p-4 text-xs font-mono text-slate-300 whitespace-pre-wrap leading-relaxed custom-scrollbar">
+            {content}
+          </div>
+        ) : (
+          <div
+            ref={markdownScrollRef}
+            className="flex-1 overflow-y-auto min-h-0 p-4 space-y-4 custom-scrollbar"
+          >
+            {slides.slice(0, visibleSlideCount).map((slide) => (
+              <div
+                key={slide.slideNumber}
+                className="bg-surface/50 border border-border/60 hover:border-slate-600 rounded-xl p-3.5 space-y-2 transition"
+              >
+                <div className="flex items-center justify-between border-b border-border/40 pb-2">
+                  <div className="flex items-center space-x-2">
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-accent/15 text-accent border border-accent/30 font-mono">
+                      #{slide.slideNumber}
+                    </span>
+                    <span className="text-xs font-semibold text-slate-200">
+                      {slide.title}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(slide.content);
+                      setSavedToast({ message: t('preview.copy_slide') });
+                      setTimeout(() => setSavedToast(null), 3000);
+                    }}
+                    className="p-1 text-slate-400 hover:text-slate-100 hover:bg-surface-hover rounded transition cursor-pointer flex items-center gap-1"
+                    title={t('preview.copy_slide')}
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    <span className="text-[10px] hidden sm:inline">{t('preview.copy_slide')}</span>
+                  </button>
+                </div>
+                <div className="text-xs font-mono text-slate-300 whitespace-pre-wrap leading-relaxed">
+                  {slide.content}
+                </div>
+              </div>
+            ))}
+
+            {visibleSlideCount < slides.length && (
+              <div
+                ref={markdownSentinelRef}
+                className="py-4 flex flex-col items-center justify-center text-xs text-slate-400 gap-1"
+              >
+                <Loader2 className="w-4 h-4 animate-spin text-accent" />
+                <span>
+                  {visibleSlideCount} von {slides.length} Folien geladen
+                </span>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div

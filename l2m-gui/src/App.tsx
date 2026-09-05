@@ -392,19 +392,33 @@ export function App() {
       });
 
       try {
-        const { extractPdfSlidesWebp } = await import('./utils/pdfRenderer');
-        const slides = await extractPdfSlidesWebp(
+        const { streamTranscribePdfSlides } = await import('./utils/pdfRenderer');
+        const markdown = await streamTranscribePdfSlides(
           item.filePath,
-          item.rangeMode === 'custom' ? targetStart : undefined,
-          item.rangeMode === 'custom' ? targetEnd : undefined
+          activeProvider,
+          currentActiveKey,
+          item.fileName,
+          {
+            startPage: item.rangeMode === 'custom' ? targetStart : undefined,
+            endPage: item.rangeMode === 'custom' ? targetEnd : undefined,
+            onSlideCompleted: (completed, total) => {
+              setQueue((prev) =>
+                prev.map((q) =>
+                  q.id === item.id
+                    ? { ...q, progressCurrent: completed, progressTotal: total }
+                    : q
+                )
+              );
+              setHistory((prev) =>
+                prev.map((h) =>
+                  h.id === item.id
+                    ? { ...h, progressCurrent: completed, progressTotal: total }
+                    : h
+                )
+              );
+            },
+          }
         );
-
-        const markdown = await invoke<string>('transcribe_slides_native', {
-          slides,
-          provider: activeProvider,
-          apiKey: currentActiveKey,
-          fileName: item.fileName,
-        });
 
         // Automatically save Markdown file next to PDF!
         const autoSavePath = item.filePath.replace(/\.pdf$/i, '.md');

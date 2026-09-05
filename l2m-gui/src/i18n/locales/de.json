@@ -88,6 +88,9 @@
     "no_pdf_linked": "Keine Original-PDF-Datei verknüpft",
     "character_count": "Zeichen",
     "line_count": "Zeilen",
+    "mode_structured": "Strukturierte Folien",
+    "mode_raw": "Rohtext",
+    "slide_sections": "Folienabschnitte",
     "loading_preview": "Lade Dokument-Vorschau..."
   },
   "history": {

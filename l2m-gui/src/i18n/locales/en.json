@@ -88,6 +88,9 @@
     "no_pdf_linked": "No original PDF file linked",
     "character_count": "characters",
     "line_count": "lines",
+    "mode_structured": "Structured Slides",
+    "mode_raw": "Raw Text",
+    "slide_sections": "Slide sections",
     "loading_preview": "Loading document preview..."
   },
   "history": {
