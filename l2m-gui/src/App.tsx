@@ -10,6 +10,15 @@ import type { ProviderType } from './components/ApiKeyModal';
 import { Dropzone, type SelectedFileInfo } from './components/Dropzone';
 import { BatchQueue, type BatchQueueItem } from './components/BatchQueue';
 import { HistorySidebar, type HistoryItem } from './components/HistorySidebar';
+import {
+  loadHistoryMeta,
+  saveHistoryMeta,
+  loadHistoryItemContent,
+  saveHistoryItemContent,
+  deleteHistoryItemContent,
+  clearAllHistoryStorage,
+  deduplicateHistory,
+} from './utils/historyStorage';
 import { extractPdfSlidesWebp, loadPdfDocument } from './utils/pdfRenderer';
 
 // Lazy-loaded heavy components for instant startup (0ms initial bundle delay)
@@ -32,25 +41,6 @@ const PROVIDER_NAMES: Record<ProviderType, string> = {
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPod|iPad/i.test(navigator.userAgent || '');
 const quickDropShortcut = isMac ? '⌘ + ⇧ + L' : 'Ctrl + Shift + L';
-
-function deduplicateHistory(items: any[]): HistoryItem[] {
-  if (!Array.isArray(items)) return [];
-  const seen = new Set<string>();
-  const result: HistoryItem[] = [];
-
-  for (const item of items) {
-    if (!item || typeof item !== 'object') continue;
-    const name = typeof item.fileName === 'string' ? item.fileName : '';
-    const path = typeof item.filePath === 'string' ? item.filePath : '';
-    const key = (path || name.replace(/\.(pdf|md)$/i, '') || item.id || '').toLowerCase().trim();
-    if (key && !seen.has(key)) {
-      seen.add(key);
-      result.push(item);
-    }
-  }
-
-  return result;
-}
 
 export function App() {
   const { t } = useTranslation();
@@ -77,14 +67,7 @@ export function App() {
   const [previewPdfPath, setPreviewPdfPath] = useState<string | null>(null);
   const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
 
-  const [history, setHistory] = useState<HistoryItem[]>(() => {
-    try {
-      const parsed = JSON.parse(localStorage.getItem('conversion_history') || '[]');
-      return deduplicateHistory(parsed);
-    } catch {
-      return [];
-    }
-  });
+  const [history, setHistory] = useState<HistoryItem[]>(() => loadHistoryMeta());
 
   const cancelBatchRef = useRef<boolean>(false);
   const activeJobIdRef = useRef<string | null>(null);
@@ -224,22 +207,25 @@ export function App() {
   };
 
   const handleQuickDropSuccess = (item: HistoryItem) => {
+    if (item.content) {
+      saveHistoryItemContent(item.id, item.content);
+    }
     setHistory((prev) => {
       const itemKey = (item.filePath || item.fileName.replace(/\.(pdf|md)$/i, '')).toLowerCase().trim();
       const filtered = prev.filter((h) => {
         const hKey = (h.filePath || h.fileName.replace(/\.(pdf|md)$/i, '')).toLowerCase().trim();
         return hKey !== itemKey;
       });
-      const updated = [item, ...filtered];
-      const toPersist = updated.filter((h) => h.status === 'completed' || !h.status).slice(0, 100);
-      localStorage.setItem('conversion_history', JSON.stringify(toPersist));
+      const leanItem: HistoryItem = { ...item, content: '' };
+      const updated = [leanItem, ...filtered];
+      saveHistoryMeta(updated);
       return updated;
     });
   };
 
   const handleClearHistory = () => {
     setHistory([]);
-    localStorage.removeItem('conversion_history');
+    clearAllHistoryStorage();
     if (selectedHistoryId) {
       setMarkdownResult(null);
       setPreviewFileName('');
@@ -249,9 +235,10 @@ export function App() {
 
   const handleDeleteCurrentHistoryItem = () => {
     if (!selectedHistoryId) return;
+    deleteHistoryItemContent(selectedHistoryId);
     const updated = history.filter((h) => h.id !== selectedHistoryId);
     setHistory(updated);
-    localStorage.setItem('conversion_history', JSON.stringify(updated.slice(0, 100)));
+    saveHistoryMeta(updated);
     setMarkdownResult(null);
     setPreviewFileName('');
     setSelectedHistoryId(null);
@@ -410,21 +397,21 @@ export function App() {
         );
 
         // Update history with strict deduplication
+        saveHistoryItemContent(jobId, markdown);
         setHistory((prev) => {
           const updated = prev.map((h) =>
             h.id === jobId
               ? {
                   ...h,
                   status: 'completed' as const,
-                  content: markdown,
+                  content: '',
                   totalPages: targetCount,
                   filePath: item.filePath,
                 }
               : h
           );
           const deduped = deduplicateHistory(updated);
-          const toPersist = deduped.filter((h) => h.status === 'completed' || !h.status).slice(0, 100);
-          localStorage.setItem('conversion_history', JSON.stringify(toPersist));
+          saveHistoryMeta(deduped);
           return deduped;
         });
 
@@ -647,13 +634,15 @@ export function App() {
             <HistorySidebar
               items={history}
               selectedItemId={selectedHistoryId}
-              onSelect={(item) => {
+              onSelect={async (item) => {
                 setSelectedHistoryId(item.id);
                 setPreviewFileName(item.fileName.replace('.pdf', '.md'));
-                setMarkdownResult(item.content);
                 setPreviewPdfPath(item.filePath || null);
+                const content = await loadHistoryItemContent(item);
+                setMarkdownResult(content);
               }}
               onClear={handleClearHistory}
+              onResolveContent={(item) => loadHistoryItemContent(item)}
             />
           </div>
         )}

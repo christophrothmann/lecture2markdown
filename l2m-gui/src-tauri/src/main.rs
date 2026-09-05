@@ -663,6 +663,11 @@ async fn read_file_binary_native(file_path: String) -> Result<Vec<u8>, String> {
 }
 
 #[tauri::command]
+fn read_text_file_native(file_path: String) -> Result<String, String> {
+    std::fs::read_to_string(&file_path).map_err(|e| format!("Fehler beim Lesen der Datei '{}': {}", file_path, e))
+}
+
+#[tauri::command]
 fn save_text_file_native(file_path: String, content: String) -> Result<(), String> {
     let path = std::path::Path::new(&file_path);
     if let Some(parent) = path.parent() {
@@ -983,6 +988,7 @@ fn main() {
             get_pdf_page_count_native,
             get_slide_image_native,
             read_file_binary_native,
+            read_text_file_native,
             convert_lecture_native,
             transcribe_slides_native,
             cancel_conversion_native,

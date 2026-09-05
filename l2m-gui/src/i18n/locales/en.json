@@ -106,7 +106,8 @@
     "status_in_progress": "Processing...",
     "cached_badge": "0.00 $ (Cache)",
     "hide_sidebar": "Hide history",
-    "show_sidebar": "Show history"
+    "show_sidebar": "Show history",
+    "loaded_count": "{{current}} of {{total}} loaded"
   },
   "settings": {
     "title": "AI Providers & Settings",

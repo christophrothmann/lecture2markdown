@@ -106,7 +106,8 @@
     "status_in_progress": "Verarbeitung...",
     "cached_badge": "0.00 € (Cache)",
     "hide_sidebar": "Verlauf ausblenden",
-    "show_sidebar": "Verlauf einblenden"
+    "show_sidebar": "Verlauf einblenden",
+    "loaded_count": "{{current}} von {{total}} geladen"
   },
   "settings": {
     "title": "KI-Provider & Einstellungen",
