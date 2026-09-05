@@ -262,7 +262,8 @@
     "next_card": "Nächste Karte",
     "preview_toggle": "Vorschau",
     "edit_toggle": "Bearbeiten",
-    "select_card_prompt": "Wähle links eine Karte aus, um sie im Fokus-Editor zu bearbeiten."
+    "select_card_prompt": "Wähle links eine Karte aus, um sie im Fokus-Editor zu bearbeiten.",
+    "loaded_count": "{{current}} von {{total}} Karten geladen"
   },
   "occlusion": {
     "draw_active": "Maske zeichnen: Aktiv",

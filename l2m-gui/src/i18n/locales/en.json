@@ -262,7 +262,8 @@
     "next_card": "Next Card",
     "preview_toggle": "Preview",
     "edit_toggle": "Edit",
-    "select_card_prompt": "Select a card on the left to edit in the Focus Editor."
+    "select_card_prompt": "Select a card on the left to edit in the Focus Editor.",
+    "loaded_count": "{{current}} of {{total}} cards loaded"
   },
   "occlusion": {
     "draw_active": "Draw mask: Active",
