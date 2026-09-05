@@ -65,8 +65,14 @@ export function App() {
   const [previewFileName, setPreviewFileName] = useState<string>('');
   const [previewPdfPath, setPreviewPdfPath] = useState<string | null>(null);
   const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
-
   const [history, setHistory] = useState<HistoryItem[]>(() => loadHistoryMeta());
+
+  // Main View Navigation State
+  const [activeMainView, setActiveMainView] = useState<'dropzone' | 'batch' | 'preview'>('dropzone');
+  const queueRef = useRef<BatchQueueItem[]>([]);
+  useEffect(() => {
+    queueRef.current = queue;
+  }, [queue]);
 
   const cancelBatchRef = useRef<boolean>(false);
   const activeJobIdRef = useRef<string | null>(null);
@@ -210,7 +216,13 @@ export function App() {
   const handleQuickDropSuccess = (item: HistoryItem) => {
     if (item.content) {
       saveHistoryItemContent(item.id, item.content);
+      setMarkdownResult(item.content);
     }
+    setPreviewFileName(item.fileName.replace(/\.pdf$/i, '.md'));
+    setPreviewPdfPath(item.filePath || null);
+    setSelectedHistoryId(item.id);
+    setActiveMainView('preview');
+
     setHistory((prev) => {
       const itemKey = (item.filePath || item.fileName.replace(/\.(pdf|md)$/i, '')).toLowerCase().trim();
       const filtered = prev.filter((h) => {
@@ -231,6 +243,9 @@ export function App() {
       setMarkdownResult(null);
       setPreviewFileName('');
       setSelectedHistoryId(null);
+      if (activeMainView === 'preview') {
+        setActiveMainView('dropzone');
+      }
     }
   };
 
@@ -243,6 +258,9 @@ export function App() {
     setMarkdownResult(null);
     setPreviewFileName('');
     setSelectedHistoryId(null);
+    if (activeMainView === 'preview') {
+      setActiveMainView(queue.length > 0 ? 'batch' : 'dropzone');
+    }
   };
 
   const handleDeleteHistoryItems = (itemIds: string[]) => {
@@ -259,6 +277,9 @@ export function App() {
       setPreviewFileName('');
       setPreviewPdfPath(null);
       setSelectedHistoryId(null);
+      if (activeMainView === 'preview') {
+        setActiveMainView(queue.length > 0 ? 'batch' : 'dropzone');
+      }
     }
     if (updated.length === 0) {
       clearAllHistoryStorage();
@@ -271,12 +292,14 @@ export function App() {
     setPreviewPdfPath(null);
     setSelectedHistoryId(null);
     setQueue([]);
+    setActiveMainView('dropzone');
   };
 
   // Add multiple files to the batch queue
   const handleFilesSelected = async (selectedFiles: SelectedFileInfo[]) => {
     setMarkdownResult(null);
     setSelectedHistoryId(null);
+    setActiveMainView('batch');
     const newItems: BatchQueueItem[] = [];
 
     for (const file of selectedFiles) {
@@ -324,6 +347,27 @@ export function App() {
 
   const handleClearQueue = () => {
     setQueue([]);
+    if (activeMainView === 'batch') {
+      setActiveMainView(markdownResult && previewFileName ? 'preview' : 'dropzone');
+    }
+  };
+
+  const handleOpenQueueItemPreview = async (item: BatchQueueItem) => {
+    let content = item.markdownResult || '';
+    if (!content && item.filePath) {
+      try {
+        const autoSavePath = item.filePath.replace(/\.pdf$/i, '.md');
+        content = await invoke<string>('read_text_file_native', { filePath: autoSavePath });
+      } catch (e) {
+        console.warn('Auto-Save Datei konnte nicht geladen werden:', e);
+      }
+    }
+    if (content) {
+      setMarkdownResult(content);
+      setPreviewFileName(item.fileName.replace(/\.pdf$/i, '.md'));
+      setPreviewPdfPath(item.filePath);
+      setActiveMainView('preview');
+    }
   };
 
   const handleCancelBatch = async () => {
@@ -347,21 +391,26 @@ export function App() {
     if (queue.length === 0 || !currentActiveKey) return;
     setIsBatchRunning(true);
     cancelBatchRef.current = false;
+    setActiveMainView('batch');
 
-    for (const item of queue) {
+    for (let i = 0; i < queue.length; i++) {
       if (cancelBatchRef.current) break;
-      if (item.status === 'completed') continue;
+      const itemSnapshot = queue[i];
 
-      setActiveQueueId(item.id);
+      // Check if item was deleted from queue while loop was running
+      const currentItem = queueRef.current.find((q) => q.id === itemSnapshot.id);
+      if (!currentItem || currentItem.status === 'completed') continue;
 
-      const targetStart = item.rangeMode === 'custom' ? item.startPage : 1;
-      const targetEnd = item.rangeMode === 'custom' ? item.endPage : item.totalPages;
+      setActiveQueueId(currentItem.id);
+
+      const targetStart = currentItem.rangeMode === 'custom' ? currentItem.startPage : 1;
+      const targetEnd = currentItem.rangeMode === 'custom' ? currentItem.endPage : currentItem.totalPages;
       const targetCount = Math.max(1, targetEnd - targetStart + 1);
 
       // Update queue item status to processing
       setQueue((prev) =>
         prev.map((q) =>
-          q.id === item.id
+          q.id === currentItem.id
             ? { ...q, status: 'processing', progressCurrent: 0, progressTotal: targetCount }
             : q
         )
@@ -372,8 +421,8 @@ export function App() {
 
       const inProgressItem: HistoryItem = {
         id: jobId,
-        fileName: item.fileName,
-        filePath: item.filePath,
+        fileName: currentItem.fileName,
+        filePath: currentItem.filePath,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         content: '',
         totalPages: targetCount,
@@ -382,7 +431,7 @@ export function App() {
         progressTotal: targetCount,
       };
 
-      const inProgressKey = (item.filePath || item.fileName.replace(/\.(pdf|md)$/i, '')).toLowerCase().trim();
+      const inProgressKey = (currentItem.filePath || currentItem.fileName.replace(/\.(pdf|md)$/i, '')).toLowerCase().trim();
       setHistory((prev) => {
         const filtered = prev.filter((h) => {
           const hKey = (h.filePath || h.fileName.replace(/\.(pdf|md)$/i, '')).toLowerCase().trim();
@@ -394,24 +443,24 @@ export function App() {
       try {
         const { streamTranscribePdfSlides } = await import('./utils/pdfRenderer');
         const markdown = await streamTranscribePdfSlides(
-          item.filePath,
+          currentItem.filePath,
           activeProvider,
           currentActiveKey,
-          item.fileName,
+          currentItem.fileName,
           {
-            startPage: item.rangeMode === 'custom' ? targetStart : undefined,
-            endPage: item.rangeMode === 'custom' ? targetEnd : undefined,
+            startPage: currentItem.rangeMode === 'custom' ? targetStart : undefined,
+            endPage: currentItem.rangeMode === 'custom' ? targetEnd : undefined,
             onSlideCompleted: (completed, total) => {
               setQueue((prev) =>
                 prev.map((q) =>
-                  q.id === item.id
+                  q.id === currentItem.id
                     ? { ...q, progressCurrent: completed, progressTotal: total }
                     : q
                 )
               );
               setHistory((prev) =>
                 prev.map((h) =>
-                  h.id === item.id
+                  h.id === currentItem.id
                     ? { ...h, progressCurrent: completed, progressTotal: total }
                     : h
                 )
@@ -421,7 +470,7 @@ export function App() {
         );
 
         // Automatically save Markdown file next to PDF!
-        const autoSavePath = item.filePath.replace(/\.pdf$/i, '.md');
+        const autoSavePath = currentItem.filePath.replace(/\.pdf$/i, '.md');
         try {
           await invoke('save_text_file_native', {
             filePath: autoSavePath,
@@ -434,7 +483,7 @@ export function App() {
         // Update queue item
         setQueue((prev) =>
           prev.map((q) =>
-            q.id === item.id
+            q.id === currentItem.id
               ? { ...q, status: 'completed', markdownResult: markdown }
               : q
           )
@@ -450,7 +499,7 @@ export function App() {
                   status: 'completed' as const,
                   content: '',
                   totalPages: targetCount,
-                  filePath: item.filePath,
+                  filePath: currentItem.filePath,
                 }
               : h
           );
@@ -459,26 +508,26 @@ export function App() {
           return deduped;
         });
 
-        // Set last result for optional live preview
+        // Set last result for optional live preview without prematurely unmounting batch queue!
         setMarkdownResult(markdown);
-        setPreviewFileName(item.fileName.replace('.pdf', '.md'));
-        setPreviewPdfPath(item.filePath);
+        setPreviewFileName(currentItem.fileName.replace('.pdf', '.md'));
+        setPreviewPdfPath(currentItem.filePath);
         setSelectedHistoryId(jobId);
       } catch (err: any) {
         if (cancelBatchRef.current || (err && err.includes('abgebrochen'))) {
           setQueue((prev) =>
-            prev.map((q) => (q.id === item.id ? { ...q, status: 'pending' } : q))
+            prev.map((q) => (q.id === currentItem.id ? { ...q, status: 'pending' } : q))
           );
           break;
         } else {
           setQueue((prev) =>
             prev.map((q) =>
-              q.id === item.id
+              q.id === currentItem.id
                 ? { ...q, status: 'error', error: String(err) }
                 : q
             )
           );
-          alert(`Fehler bei "${item.fileName}":\n${err}`);
+          alert(`Fehler bei "${currentItem.fileName}":\n${err}`);
         }
       }
     }
@@ -636,12 +685,12 @@ export function App() {
       <main className="flex-1 px-6 py-5 flex flex-col w-full items-stretch h-[calc(100vh-76px)] min-h-0">
         <div className="flex-1 min-w-0 flex flex-col h-full space-y-6">
           {/* State 1: Dropzone (No files in queue and no preview) */}
-          {queue.length === 0 && !markdownResult && (
+          {activeMainView === 'dropzone' && (
             <Dropzone onFilesSelected={handleFilesSelected} disabled={!currentActiveKey} />
           )}
 
           {/* State 2: Batch Queue Dashboard */}
-          {queue.length > 0 && !markdownResult && (
+          {activeMainView === 'batch' && queue.length > 0 && (
             <BatchQueue
               items={queue}
               isConverting={isBatchRunning}
@@ -652,11 +701,12 @@ export function App() {
               onClearQueue={handleClearQueue}
               onStartBatch={handleStartBatch}
               onCancelBatch={handleCancelBatch}
+              onPreviewItem={handleOpenQueueItemPreview}
             />
           )}
 
           {/* State 3: Finished Markdown Preview (Full window width) */}
-          {markdownResult && previewFileName && (
+          {activeMainView === 'preview' && markdownResult && previewFileName && (
             <Suspense
               fallback={
                 <div className="glass-card rounded-2xl p-12 flex flex-col items-center justify-center space-y-3 min-h-[400px]">
@@ -672,6 +722,16 @@ export function App() {
                 onSaveFile={handleSaveFileLocally}
                 onNewConversion={handleNewConversion}
                 onDelete={selectedHistoryId ? handleDeleteCurrentHistoryItem : undefined}
+                onReturnToBatch={queue.length > 0 ? () => setActiveMainView('batch') : undefined}
+                queueProgress={
+                  queue.length > 0
+                    ? {
+                        completed: queue.filter((q) => q.status === 'completed').length,
+                        total: queue.length,
+                        isRunning: isBatchRunning,
+                      }
+                    : undefined
+                }
               />
             </Suspense>
           )}
@@ -694,6 +754,7 @@ export function App() {
       >
         <HistorySidebar
           items={history}
+          queueItems={queue}
           selectedItemId={selectedHistoryId}
           onSelect={async (item) => {
             setSelectedHistoryId(item.id);
@@ -701,11 +762,17 @@ export function App() {
             setPreviewPdfPath(item.filePath || null);
             const content = await loadHistoryItemContent(item);
             setMarkdownResult(content);
+            setActiveMainView('preview');
             setIsHistoryOpen(false);
           }}
           onClear={handleClearHistory}
           onDeleteItems={handleDeleteHistoryItems}
           onResolveContent={(item) => loadHistoryItemContent(item)}
+          onRemoveQueueItem={handleRemoveQueueItem}
+          onOpenBatchQueue={() => {
+            setActiveMainView('batch');
+            setIsHistoryOpen(false);
+          }}
           onClose={() => setIsHistoryOpen(false)}
         />
       </div>

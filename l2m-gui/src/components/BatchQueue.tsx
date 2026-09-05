@@ -11,6 +11,7 @@ import {
   Clock,
   SlidersHorizontal,
   FolderDown,
+  Eye,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
@@ -39,6 +40,7 @@ interface BatchQueueProps {
   onClearQueue: () => void;
   onStartBatch: () => void;
   onCancelBatch: () => void;
+  onPreviewItem?: (item: BatchQueueItem) => void;
 }
 
 export const BatchQueue: React.FC<BatchQueueProps> = ({
@@ -51,6 +53,7 @@ export const BatchQueue: React.FC<BatchQueueProps> = ({
   onClearQueue,
   onStartBatch,
   onCancelBatch,
+  onPreviewItem,
 }) => {
   const { t } = useTranslation();
   const batchStartTimeRef = React.useRef<number>(Date.now());
@@ -230,10 +233,23 @@ export const BatchQueue: React.FC<BatchQueueProps> = ({
                   )}
 
                   {item.status === 'completed' && (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 rounded-lg text-[11px] font-bold">
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>{t('batch.status_completed')}</span>
-                    </span>
+                    <div className="flex items-center space-x-2">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 rounded-lg text-[11px] font-bold">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>{t('batch.status_completed')}</span>
+                      </span>
+                      {onPreviewItem && (
+                        <button
+                          type="button"
+                          onClick={() => onPreviewItem(item)}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-surface hover:bg-surface-hover border border-border hover:border-accent/40 text-slate-200 rounded-lg text-xs font-semibold transition cursor-pointer shadow-xs"
+                          title={t('batch.view_result')}
+                        >
+                          <Eye className="w-3.5 h-3.5 text-accent" />
+                          <span>{t('batch.view_result')}</span>
+                        </button>
+                      )}
+                    </div>
                   )}
 
                   {item.status === 'error' && (
@@ -243,7 +259,7 @@ export const BatchQueue: React.FC<BatchQueueProps> = ({
                     </span>
                   )}
 
-                  {!isConverting && item.status === 'pending' && (
+                  {item.status === 'pending' && (
                     <button
                       onClick={() => onRemoveItem(item.id)}
                       className="p-1.5 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition cursor-pointer"
@@ -334,6 +350,15 @@ export const BatchQueue: React.FC<BatchQueueProps> = ({
               className="px-5 py-2.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-xl text-xs font-bold transition cursor-pointer"
             >
               {t('batch.cancel_batch')}
+            </button>
+          ) : completedItems === items.length && items.length > 0 && onPreviewItem ? (
+            <button
+              type="button"
+              onClick={() => onPreviewItem(items[0])}
+              className="px-6 py-3 bg-accent hover:bg-accent-hover text-white rounded-xl text-xs font-bold flex items-center gap-2 transition cursor-pointer shadow-lg shadow-accent/20"
+            >
+              <Eye className="w-4 h-4" />
+              {t('batch.view_result')} ({items[0].fileName})
             </button>
           ) : (
             <button

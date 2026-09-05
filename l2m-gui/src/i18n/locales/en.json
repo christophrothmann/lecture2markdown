@@ -59,7 +59,9 @@
     "cancel_batch": "Cancel Batch",
     "auto_save_hint": "Markdown files are automatically saved next to the PDFs",
     "eta_batch": "Document {{current}} of {{total}} • ⏱️ ~{{eta}} remaining",
-    "eta_slide": "Slide {{current}} of {{total}} • ⏱️ ~{{eta}} remaining"
+    "eta_slide": "Slide {{current}} of {{total}} • ⏱️ ~{{eta}} remaining",
+    "back_to_queue": "Back to Batch Queue",
+    "view_result": "Preview"
   },
   "preview": {
     "copy_file": "Copy as File",
@@ -107,6 +109,8 @@
     "copy_error": "Copy failed.",
     "slides_label": "{{count}} slides",
     "status_in_progress": "Processing...",
+    "status_queued": "In queue",
+    "status_converting": "Converting",
     "cached_badge": "0.00 $ (Cache)",
     "hide_sidebar": "Hide history",
     "show_sidebar": "Show history",

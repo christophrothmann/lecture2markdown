@@ -11,6 +11,7 @@ import {
   GripVertical,
   Loader2,
   Sparkles,
+  Layers,
 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { open as openFileDialog } from '@tauri-apps/plugin-dialog';
@@ -27,6 +28,8 @@ interface MarkdownPreviewProps {
   onSaveFile: () => void;
   onNewConversion: () => void;
   onDelete?: () => void;
+  onReturnToBatch?: () => void;
+  queueProgress?: { completed: number; total: number; isRunning: boolean };
 }
 
 export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
@@ -36,6 +39,8 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
   onSaveFile,
   onNewConversion,
   onDelete,
+  onReturnToBatch,
+  queueProgress,
 }) => {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
@@ -267,6 +272,25 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
       {/* Top Header Toolbar */}
       <div className="flex flex-wrap items-center justify-between border-b border-border pb-4 gap-3 shrink-0">
         <div className="flex items-center space-x-3">
+          {onReturnToBatch && (
+            <button
+              type="button"
+              onClick={onReturnToBatch}
+              className="flex items-center space-x-1.5 px-3 py-1.5 bg-accent/15 hover:bg-accent/25 border border-accent/40 text-accent rounded-xl text-xs font-semibold transition cursor-pointer shadow-xs"
+              title={t('batch.back_to_queue')}
+            >
+              {queueProgress?.isRunning ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-accent" />
+              ) : (
+                <Layers className="w-3.5 h-3.5" />
+              )}
+              <span>
+                {t('batch.back_to_queue')}
+                {queueProgress ? ` (${queueProgress.completed}/${queueProgress.total})` : ''}
+              </span>
+            </button>
+          )}
+
           {/* Draggable File Pill (Direct-Drag out to ChatGPT/Browser) */}
           <div
             draggable

@@ -59,7 +59,9 @@
     "cancel_batch": "Batch abbrechen",
     "auto_save_hint": "Markdown-Dateien werden automatisch neben den PDFs gespeichert",
     "eta_batch": "Dokument {{current}} von {{total}} • ⏱️ ~{{eta}} verbleibend",
-    "eta_slide": "Folie {{current}} von {{total}} • ⏱️ ~{{eta}} verbleibend"
+    "eta_slide": "Folie {{current}} von {{total}} • ⏱️ ~{{eta}} verbleibend",
+    "back_to_queue": "Zurück zur Batch-Übersicht",
+    "view_result": "Vorschau"
   },
   "preview": {
     "copy_file": "Als Datei kopieren",
@@ -107,6 +109,8 @@
     "copy_error": "Kopieren fehlgeschlagen.",
     "slides_label": "{{count}} Folien",
     "status_in_progress": "Verarbeitung...",
+    "status_queued": "In Warteschlange",
+    "status_converting": "Wird konvertiert",
     "cached_badge": "0.00 € (Cache)",
     "hide_sidebar": "Verlauf ausblenden",
     "show_sidebar": "Verlauf einblenden",
