@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { History, Trash2, Loader2, Copy, Check } from 'lucide-react';
+import { History, Trash2, Loader2, Copy, Check, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { HistoryItem } from '../utils/historyStorage';
 
@@ -11,6 +11,7 @@ interface HistorySidebarProps {
   onSelect: (item: HistoryItem) => void | Promise<void>;
   onClear: () => void;
   onResolveContent?: (item: HistoryItem) => Promise<string>;
+  onClose?: () => void;
 }
 
 const INITIAL_BATCH_SIZE = 12;
@@ -22,6 +23,7 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
   onSelect,
   onClear,
   onResolveContent,
+  onClose,
 }) => {
   const { t } = useTranslation();
 
@@ -110,19 +112,31 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
           )}
         </div>
 
-        {items.length > 0 && (
-          <button
-            onClick={() => {
-              if (window.confirm(t('history.clear_confirm'))) {
-                onClear();
-              }
-            }}
-            className="text-slate-500 hover:text-rose-400 p-1 hover:bg-rose-500/10 rounded-lg transition cursor-pointer"
-            title={t('history.clear_history')}
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
-        )}
+        <div className="flex items-center space-x-1.5">
+          {items.length > 0 && (
+            <button
+              onClick={() => {
+                if (window.confirm(t('history.clear_confirm'))) {
+                  onClear();
+                }
+              }}
+              className="text-slate-500 hover:text-rose-400 p-1 hover:bg-rose-500/10 rounded-lg transition cursor-pointer"
+              title={t('history.clear_history')}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
+
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="text-slate-400 hover:text-slate-200 p-1 hover:bg-surface-hover rounded-lg transition cursor-pointer"
+              title={t('common.close', { defaultValue: 'Schließen' })}
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Scrollable Items List with Lazy Loading Window */}

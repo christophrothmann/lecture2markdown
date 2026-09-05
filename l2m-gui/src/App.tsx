@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
-import { BookOpen, Settings, Sparkles, Zap, Loader2, PlusCircle, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { BookOpen, Settings, Sparkles, Zap, Loader2, PlusCircle, History } from 'lucide-react';
 import { save as saveFileDialog, open as openFileDialog } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
@@ -50,7 +50,7 @@ export function App() {
   const [providerKeys, setProviderKeys] = useState<Record<string, string>>({});
   const [isKeyModalOpen, setIsKeyModalOpen] = useState<boolean>(false);
   const [isQuickDropOpen, setIsQuickDropOpen] = useState<boolean>(false);
-  const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(true);
+  const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(false);
 
   // Background Auto-Update State
   const [updateAvailable, setUpdateAvailable] = useState<boolean>(false);
@@ -133,6 +133,8 @@ export function App() {
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'l' || e.key === 'L')) {
         e.preventDefault();
         setIsQuickDropOpen((prev) => !prev);
+      } else if (e.key === 'Escape') {
+        setIsHistoryOpen(false);
       }
     };
     window.addEventListener('keydown', handleLocalKey);
@@ -503,23 +505,6 @@ export function App() {
       {/* Top Navigation Bar */}
       <header className="glass-card border-b border-border px-6 py-4 flex items-center justify-between">
         <div className="flex items-center space-x-3">
-          {/* Sidebar Toggle (Left Navigation) */}
-          <button
-            onClick={() => setIsHistoryOpen((prev) => !prev)}
-            className={`p-2 border rounded-xl transition cursor-pointer ${
-              isHistoryOpen
-                ? 'bg-surface hover:bg-surface-hover border-border text-slate-200'
-                : 'bg-surface/50 hover:bg-surface border-border/50 text-slate-400'
-            }`}
-            title={isHistoryOpen ? t('history.hide_sidebar') : t('history.show_sidebar')}
-          >
-            {isHistoryOpen ? (
-              <PanelLeftClose className="w-4 h-4 text-slate-300" />
-            ) : (
-              <PanelLeftOpen className="w-4 h-4 text-slate-400" />
-            )}
-          </button>
-
           <div className="p-2 bg-accent text-white rounded-xl shadow-lg">
             <BookOpen className="w-5 h-5" />
           </div>
@@ -567,6 +552,25 @@ export function App() {
             <span className="hidden sm:inline">{t('header.quick_drop')}</span>
           </button>
 
+          {/* History Drawer Trigger Button with Counter Badge */}
+          <button
+            onClick={() => setIsHistoryOpen((prev) => !prev)}
+            className={`flex items-center space-x-2 px-3 py-1.5 border rounded-xl text-xs font-semibold transition cursor-pointer shadow-sm ${
+              isHistoryOpen
+                ? 'bg-accent/20 border-accent text-accent shadow-accent/10'
+                : 'bg-surface hover:bg-surface-hover border-border text-slate-200'
+            }`}
+            title={t('history.title')}
+          >
+            <History className={`w-3.5 h-3.5 ${isHistoryOpen ? 'text-accent' : 'text-slate-400'}`} />
+            <span className="hidden sm:inline">{t('history.title')}</span>
+            {history.length > 0 && (
+              <span className="text-[10px] bg-background/80 px-1.5 py-0.5 rounded-full border border-border text-slate-300 font-mono leading-none">
+                {history.length}
+              </span>
+            )}
+          </button>
+
           {/* Active Provider Status Badge (Informational only) */}
           <div
             className="flex items-center space-x-2 px-3 py-1.5 bg-surface border border-border rounded-xl text-xs font-semibold select-none cursor-default"
@@ -586,28 +590,8 @@ export function App() {
         </div>
       </header>
 
-      {/* Main Content Layout - Full window width with flexible sidebar */}
-      <main className="flex-1 px-6 py-5 flex flex-col lg:flex-row gap-6 w-full items-stretch h-[calc(100vh-76px)] min-h-0">
-        {/* Left Column: History Sidebar (Pinned to left, responsive fixed width) */}
-        {isHistoryOpen && (
-          <div className="w-full lg:w-80 shrink-0 flex flex-col h-full min-h-0">
-            <HistorySidebar
-              items={history}
-              selectedItemId={selectedHistoryId}
-              onSelect={async (item) => {
-                setSelectedHistoryId(item.id);
-                setPreviewFileName(item.fileName.replace('.pdf', '.md'));
-                setPreviewPdfPath(item.filePath || null);
-                const content = await loadHistoryItemContent(item);
-                setMarkdownResult(content);
-              }}
-              onClear={handleClearHistory}
-              onResolveContent={(item) => loadHistoryItemContent(item)}
-            />
-          </div>
-        )}
-
-        {/* Right / Main Column: Dropzone & Active Progress / Preview (Full remaining width) */}
+      {/* Main Content Layout - 100% Full window width workspace */}
+      <main className="flex-1 px-6 py-5 flex flex-col w-full items-stretch h-[calc(100vh-76px)] min-h-0">
         <div className="flex-1 min-w-0 flex flex-col h-full space-y-6">
           {/* State 1: Dropzone (No files in queue and no preview) */}
           {queue.length === 0 && !markdownResult && (
@@ -651,6 +635,37 @@ export function App() {
           )}
         </div>
       </main>
+
+      {/* Slide-Over Drawer: Backdrop */}
+      <div
+        onClick={() => setIsHistoryOpen(false)}
+        className={`fixed inset-0 bg-black/60 backdrop-blur-xs z-40 transition-opacity duration-300 ${
+          isHistoryOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+        }`}
+      />
+
+      {/* Slide-Over Drawer: Panel */}
+      <div
+        className={`fixed top-0 right-0 h-full w-96 max-w-[90vw] z-50 p-4 transition-transform duration-300 ease-in-out transform ${
+          isHistoryOpen ? 'translate-x-0' : 'translate-x-full pointer-events-none'
+        }`}
+      >
+        <HistorySidebar
+          items={history}
+          selectedItemId={selectedHistoryId}
+          onSelect={async (item) => {
+            setSelectedHistoryId(item.id);
+            setPreviewFileName(item.fileName.replace('.pdf', '.md'));
+            setPreviewPdfPath(item.filePath || null);
+            const content = await loadHistoryItemContent(item);
+            setMarkdownResult(content);
+            setIsHistoryOpen(false);
+          }}
+          onClear={handleClearHistory}
+          onResolveContent={(item) => loadHistoryItemContent(item)}
+          onClose={() => setIsHistoryOpen(false)}
+        />
+      </div>
 
       {/* Multi-Provider API Key Modal */}
       {isKeyModalOpen && (
