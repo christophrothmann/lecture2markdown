@@ -358,20 +358,20 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
       {previewInfo && (
         <div
           style={{ top: `${previewInfo.top}px` }}
-          className="fixed right-[calc(24rem+1.5rem)] w-[26rem] max-w-[calc(100vw-27rem)] z-50 pointer-events-none transition-all duration-200"
+          className="fixed right-[calc(24rem+1.5rem)] w-[28rem] max-w-[calc(100vw-27rem)] z-50 pointer-events-none transition-all duration-200"
         >
-          <div className="glass-card rounded-2xl p-4.5 border border-border/80 shadow-2xl space-y-3 bg-card/95 backdrop-blur-xl pointer-events-auto">
+          <div className="glass-card rounded-2xl p-5 border border-border/80 shadow-2xl space-y-3.5 bg-card/95 backdrop-blur-xl pointer-events-auto overflow-hidden">
             {/* Top Bar: Slide 1 Badge & File Info */}
-            <div className="flex items-center justify-between border-b border-border/60 pb-2.5">
-              <div className="flex items-center space-x-2 min-w-0 pr-2">
-                <span className="p-1 bg-accent/15 text-accent rounded-lg shrink-0">
+            <div className="flex items-center justify-between gap-3 border-b border-border/60 pb-3">
+              <div className="flex items-center space-x-2 min-w-0 flex-1">
+                <span className="p-1.5 bg-accent/15 text-accent rounded-lg shrink-0">
                   <FileText className="w-3.5 h-3.5" />
                 </span>
-                <span className="text-xs font-bold text-slate-200 truncate">
+                <span className="text-xs font-bold text-slate-100 truncate" title={previewInfo.item.fileName}>
                   {previewInfo.item.fileName}
                 </span>
               </div>
-              <span className="text-[10px] font-semibold text-accent bg-accent/10 px-2 py-0.5 rounded-full border border-accent/30 shrink-0">
+              <span className="text-[10px] font-semibold text-accent bg-accent/10 px-2.5 py-1 rounded-full border border-accent/30 shrink-0 whitespace-nowrap">
                 {t('history.slide_1_preview')}
               </span>
             </div>
@@ -387,16 +387,16 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
             ) : (
               <div className="space-y-2">
                 {previewInfo.title && (
-                  <h4 className="text-xs font-bold text-slate-100 line-clamp-2">
+                  <h4 className="text-xs font-bold text-slate-200 line-clamp-2 leading-snug px-0.5">
                     {previewInfo.title}
                   </h4>
                 )}
                 {previewInfo.slideContent ? (
-                  <div className="text-[11px] font-mono text-slate-300 bg-background/80 p-3 rounded-xl border border-border/50 max-h-56 overflow-hidden line-clamp-8 whitespace-pre-wrap leading-relaxed">
+                  <div className="text-[11px] font-mono text-slate-300 bg-background/90 p-3.5 rounded-xl border border-border/60 max-h-56 overflow-y-auto custom-scrollbar whitespace-pre-wrap leading-relaxed break-words shadow-inner">
                     {previewInfo.slideContent}
                   </div>
                 ) : (
-                  <div className="text-[11px] italic text-slate-400 bg-background/80 p-3 rounded-xl border border-border/50">
+                  <div className="text-[11px] italic text-slate-400 bg-background/90 p-3 rounded-xl border border-border/50">
                     {previewInfo.item.fileName}
                   </div>
                 )}
@@ -404,7 +404,7 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
             )}
 
             {/* Footer: Quick Hint */}
-            <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-border/40">
+            <div className="flex items-center justify-between text-[10px] text-slate-400 pt-2 border-t border-border/40 px-0.5">
               <span>{t('history.slides_label', { count: previewInfo.totalSlides })}</span>
               <span className="text-accent font-medium">{t('history.click_to_open')}</span>
             </div>
