@@ -69,7 +69,6 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
   const [isPdfLoading, setIsPdfLoading] = useState<boolean>(false);
   const [pdfRenderedOk, setPdfRenderedOk] = useState<boolean>(false);
   const [currentSlideFallbackImage, setCurrentSlideFallbackImage] = useState<string | null>(null);
-  const [renderedSlideImages, setRenderedSlideImages] = useState<Record<string, string>>({});
 
   // Cards state
   const [cards, setCards] = useState<AnkiCard[]>([]);
@@ -272,15 +271,6 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
           await renderSlideToCanvas(doc, currentSlideNumber, canvasRef.current, 1.8);
           setPdfRenderedOk(true);
           setCurrentSlideFallbackImage(null);
-          try {
-            const dataUrl = canvasRef.current.toDataURL('image/webp', 0.85);
-            setRenderedSlideImages((prev) => ({
-              ...prev,
-              [`slide_${currentSlideNumber}.webp`]: dataUrl,
-            }));
-          } catch {
-            // Ignore canvas toDataURL error
-          }
         }
       } catch {
         // Fallback to native backend renderer
@@ -294,10 +284,6 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
               const fullDataUrl = `data:image/webp;base64,${b64}`;
               setCurrentSlideFallbackImage(fullDataUrl);
               setPdfRenderedOk(false);
-              setRenderedSlideImages((prev) => ({
-                ...prev,
-                [`slide_${currentSlideNumber}.webp`]: fullDataUrl,
-              }));
             }
           } catch {
             if (!isCancelled) {
@@ -641,7 +627,6 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
 
       if (targetPath) {
         const savedPath = await exportCardsToNativeApkg(cards, safeDeck, {
-          slideImages: renderedSlideImages,
           pdfPath: activePdfPath,
           outputPath: targetPath,
         });
@@ -675,7 +660,6 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
       const safeDeck = deckName.trim() || t('flashcards.lecture_default');
 
       const apkgPath = await exportCardsToNativeApkg(cards, safeDeck, {
-        slideImages: renderedSlideImages,
         pdfPath: activePdfPath,
         outputPath: '', // Empty path triggers temp file creation + OS launcher (open -a Anki / cmd start)
       });

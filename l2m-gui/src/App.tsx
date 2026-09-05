@@ -19,7 +19,6 @@ import {
   clearAllHistoryStorage,
   deduplicateHistory,
 } from './utils/historyStorage';
-import { extractPdfSlidesWebp, loadPdfDocument } from './utils/pdfRenderer';
 
 // Lazy-loaded heavy components for instant startup (0ms initial bundle delay)
 const MarkdownPreview = lazy(() =>
@@ -284,10 +283,18 @@ export function App() {
       const id = `${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
       let totalPages = 1;
       try {
-        const { numPages } = await loadPdfDocument(file.path);
-        if (numPages && numPages > 0) totalPages = numPages;
-      } catch (e) {
-        console.error('Seitenzahl-Ermittlung fehlgeschlagen für:', file.name, e);
+        const count = await invoke<number>('get_pdf_page_count_native', { pdfPath: file.path });
+        if (count && count > 0) {
+          totalPages = count;
+        }
+      } catch {
+        try {
+          const { loadPdfDocument } = await import('./utils/pdfRenderer');
+          const { numPages } = await loadPdfDocument(file.path);
+          if (numPages && numPages > 0) totalPages = numPages;
+        } catch (e) {
+          console.error('Seitenzahl-Ermittlung fehlgeschlagen für:', file.name, e);
+        }
       }
 
       newItems.push({
@@ -385,6 +392,7 @@ export function App() {
       });
 
       try {
+        const { extractPdfSlidesWebp } = await import('./utils/pdfRenderer');
         const slides = await extractPdfSlidesWebp(
           item.filePath,
           item.rangeMode === 'custom' ? targetStart : undefined,

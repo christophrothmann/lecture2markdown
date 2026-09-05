@@ -18,6 +18,7 @@ import { useTranslation } from 'react-i18next';
 import { FlashcardInspectorTab } from './FlashcardInspectorTab';
 import { loadPdfDocument, renderSlideToCanvas } from '../utils/pdfRenderer';
 import { parseMarkdownSlides, type SlideSection } from '../utils/slideParser';
+import { generateAnkiCardsFromMarkdown } from '../utils/anki';
 
 interface MarkdownPreviewProps {
   content: string;
@@ -40,7 +41,23 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
   const [copied, setCopied] = useState(false);
   const [ankiExported, setAnkiExported] = useState(false);
   const [activeView, setActiveView] = useState<'markdown' | 'split' | 'flashcards'>('markdown');
-  const [flashcardCount, setFlashcardCount] = useState<number>(0);
+  const [hasVisitedFlashcards, setHasVisitedFlashcards] = useState<boolean>(false);
+  const [actualCardCount, setActualCardCount] = useState<number | null>(null);
+
+  // Fast card count estimation without mounting heavy inspector tab
+  const estimatedCardCount = React.useMemo(() => {
+    const cleanTitle = fileName.replace(/\.md|\.pdf$/i, '').trim() || t('flashcards.lecture_default');
+    return generateAnkiCardsFromMarkdown(content, cleanTitle).length;
+  }, [content, fileName, t]);
+
+  const flashcardCount = actualCardCount !== null ? actualCardCount : estimatedCardCount;
+
+  useEffect(() => {
+    if (activeView === 'flashcards') {
+      setHasVisitedFlashcards(true);
+    }
+  }, [activeView]);
+
   const [savedToast, setSavedToast] = useState<{ message: string; path?: string } | null>(null);
   const [activePdfPath, setActivePdfPath] = useState<string | null>(pdfPath || null);
 
@@ -486,27 +503,29 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
         </div>
       </div>
 
-      <div
-        className={
-          activeView === 'flashcards'
-            ? 'flex-1 flex flex-col min-h-0'
-            : 'hidden'
-        }
-      >
-        <FlashcardInspectorTab
-          markdownContent={content}
-          defaultTitle={fileName}
-          activePdfPath={activePdfPath}
-          onLinkPdfRequested={handleSelectPdfManually}
-          onCardCountChange={(cnt) => setFlashcardCount(cnt)}
-          onSuccessToast={(msg, path) => {
-            setAnkiExported(true);
-            setSavedToast({ message: msg, path });
-            setTimeout(() => setAnkiExported(false), 4000);
-            setTimeout(() => setSavedToast(null), 6000);
-          }}
-        />
-      </div>
+      {hasVisitedFlashcards && (
+        <div
+          className={
+            activeView === 'flashcards'
+              ? 'flex-1 flex flex-col min-h-0'
+              : 'hidden'
+          }
+        >
+          <FlashcardInspectorTab
+            markdownContent={content}
+            defaultTitle={fileName}
+            activePdfPath={activePdfPath}
+            onLinkPdfRequested={handleSelectPdfManually}
+            onCardCountChange={(cnt) => setActualCardCount(cnt)}
+            onSuccessToast={(msg, path) => {
+              setAnkiExported(true);
+              setSavedToast({ message: msg, path });
+              setTimeout(() => setAnkiExported(false), 4000);
+              setTimeout(() => setSavedToast(null), 6000);
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 };
