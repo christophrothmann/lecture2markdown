@@ -196,7 +196,7 @@
     "link_pdf": "Link PDF",
     "scope_current_slide": "Slide {{current}}",
     "scope_all": "All",
-    "add_card": "+ Add Card",
+    "add_card": "Add Card",
     "search_placeholder": "Search cards...",
     "filter_all": "All",
     "filter_definition": "Def",
@@ -204,7 +204,7 @@
     "filter_cloze": "Cloze",
     "filter_occlusion": "Occlusion",
     "empty_title": "No flashcards found",
-    "empty_desc_slide": "No cards for this slide yet. Click \"+ Add Card\" or enable the Image Occlusion Builder.",
+    "empty_desc_slide": "No cards for this slide yet. Click \"Add Card\" or enable the Image Occlusion Builder.",
     "empty_desc_all": "Adjust search filters or search query.",
     "card_active": "Card active (will be exported)",
     "card_disabled": "Card disabled",
@@ -255,7 +255,14 @@
     "insert_cloze": "Cloze ({{index}})",
     "insert_cloze_tooltip": "Format selected text as Anki cloze ({{index}})",
     "question_label": "Question / Front",
-    "answer_label": "Answer / Back"
+    "answer_label": "Answer / Back",
+    "view_list": "Card List",
+    "view_focus": "Focus Editor",
+    "prev_card": "Previous Card",
+    "next_card": "Next Card",
+    "preview_toggle": "Preview",
+    "edit_toggle": "Edit",
+    "select_card_prompt": "Select a card on the left to edit in the Focus Editor."
   },
   "occlusion": {
     "draw_active": "Draw mask: Active",

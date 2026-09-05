@@ -196,7 +196,7 @@
     "link_pdf": "PDF verknüpfen",
     "scope_current_slide": "Folie {{current}}",
     "scope_all": "Alle",
-    "add_card": "+ Karte hinzufügen",
+    "add_card": "Karte hinzufügen",
     "search_placeholder": "Karten durchsuchen...",
     "filter_all": "Alle",
     "filter_definition": "Def",
@@ -204,7 +204,7 @@
     "filter_cloze": "Lückentext",
     "filter_occlusion": "Occlusion",
     "empty_title": "Keine Lernkarten gefunden",
-    "empty_desc_slide": "Zu dieser Folie gibt es noch keine Karten. Klicke auf \"+ Karte hinzufügen\" oder aktiviere den Image Occlusion Builder.",
+    "empty_desc_slide": "Zu dieser Folie gibt es noch keine Karten. Klicke auf \"Karte hinzufügen\" oder aktiviere den Image Occlusion Builder.",
     "empty_desc_all": "Passe Suchfilter oder Suchbegriff an.",
     "card_active": "Karte aktiv (wird exportiert)",
     "card_disabled": "Karte deaktiviert",
@@ -255,7 +255,14 @@
     "insert_cloze": "Lücke ({{index}})",
     "insert_cloze_tooltip": "Markierten Text als Anki-Lücke ({{index}}) formatieren",
     "question_label": "Frage / Vorderseite",
-    "answer_label": "Antwort / Rückseite"
+    "answer_label": "Antwort / Rückseite",
+    "view_list": "Kartenliste",
+    "view_focus": "Fokus-Editor",
+    "prev_card": "Vorherige Karte",
+    "next_card": "Nächste Karte",
+    "preview_toggle": "Vorschau",
+    "edit_toggle": "Bearbeiten",
+    "select_card_prompt": "Wähle links eine Karte aus, um sie im Fokus-Editor zu bearbeiten."
   },
   "occlusion": {
     "draw_active": "Maske zeichnen: Aktiv",

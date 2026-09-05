@@ -21,6 +21,9 @@ import {
   Edit3,
   Columns,
   Maximize2,
+  LayoutList,
+  Target,
+  Eye,
 } from 'lucide-react';
 import { useTranslation, Trans } from 'react-i18next';
 import { save as saveFileDialog } from '@tauri-apps/plugin-dialog';
@@ -80,6 +83,10 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
 
   // Layout mode: 'split' (side-by-side) or 'cards_only' (full width cards)
   const [layoutMode, setLayoutMode] = useState<'split' | 'cards_only'>('split');
+  // Card View Mode: 'list' (Option 1) or 'focus' (Option 2)
+  const [cardViewMode, setCardViewMode] = useState<'list' | 'focus'>('focus');
+  const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
+  const [isPreviewInFocus, setIsPreviewInFocus] = useState<boolean>(false);
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
   const [activeTextareaField, setActiveTextareaField] = useState<{ cardId: string; field: 'front' | 'back' } | null>(null);
   const frontTextareaRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
@@ -405,6 +412,7 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
     };
     setCards((prev) => [newCard, ...prev]);
     setEditingCardId(newId);
+    setSelectedCardId(newId);
   };
 
   // Filtered Cards List
@@ -426,6 +434,32 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
       return true;
     });
   }, [cards, scopeFilter, currentSlideNumber, typeFilter, searchQuery]);
+
+  // Keep selectedCardId pointing to a valid card in Focus Mode
+  useEffect(() => {
+    if (filteredCards.length > 0) {
+      if (!selectedCardId || !filteredCards.some((c) => c.id === selectedCardId)) {
+        setSelectedCardId(filteredCards[0].id);
+      }
+    } else {
+      setSelectedCardId(null);
+    }
+  }, [filteredCards, selectedCardId]);
+
+  const currentCardIndex = filteredCards.findIndex((c) => c.id === selectedCardId);
+  const currentSelectedCard = currentCardIndex !== -1 ? filteredCards[currentCardIndex] : null;
+
+  const handlePrevCard = () => {
+    if (currentCardIndex > 0) {
+      setSelectedCardId(filteredCards[currentCardIndex - 1].id);
+    }
+  };
+
+  const handleNextCard = () => {
+    if (currentCardIndex < filteredCards.length - 1) {
+      setSelectedCardId(filteredCards[currentCardIndex + 1].id);
+    }
+  };
 
   const counts = useMemo(() => {
     return {
@@ -774,6 +808,36 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
               </div>
 
               <div className="flex items-center gap-2">
+                {/* View Mode: List (Option 1) vs Focus Editor (Option 2) */}
+                <div className="flex items-center bg-slate-900/80 p-1 rounded-xl border border-slate-700/80 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setCardViewMode('list')}
+                    className={`px-2 py-1 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                      cardViewMode === 'list'
+                        ? 'bg-accent text-white shadow-xs'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                    title={t('flashcards.view_list')}
+                  >
+                    <LayoutList className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">{t('flashcards.view_list')}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCardViewMode('focus')}
+                    className={`px-2 py-1 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                      cardViewMode === 'focus'
+                        ? 'bg-accent text-white shadow-xs'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                    title={t('flashcards.view_focus')}
+                  >
+                    <Target className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">{t('flashcards.view_focus')}</span>
+                  </button>
+                </div>
+
                 {/* Layout Switcher: Split vs Cards Only */}
                 <div className="flex items-center bg-slate-900/80 p-1 rounded-xl border border-slate-700/80 text-xs">
                   <button
@@ -897,226 +961,477 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
             </div>
           </div>
 
-          {/* Cards Scrollable List with Inline Editing */}
-          <div className="flex-1 overflow-y-auto space-y-3 min-h-0 custom-scrollbar pr-1">
-            {filteredCards.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-48 text-slate-400 space-y-2">
-                <Layers className="w-8 h-8 text-slate-600" />
-                <p className="text-sm font-medium">{t('flashcards.empty_title')}</p>
-                <p className="text-xs text-slate-500">
-                  {scopeFilter === 'current_slide'
-                    ? t('flashcards.empty_desc_slide')
-                    : t('flashcards.empty_desc_all')}
-                </p>
-              </div>
-            ) : (
-              filteredCards.map((card) => {
-                const isEditing = editingCardId === card.id;
+          {cardViewMode === 'list' ? (
+            /* Option 1: Scrollable Cards List with Inline Editing */
+            <div className="flex-1 overflow-y-auto space-y-3 min-h-0 custom-scrollbar pr-1">
+              {filteredCards.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-48 text-slate-400 space-y-2">
+                  <Layers className="w-8 h-8 text-slate-600" />
+                  <p className="text-sm font-medium">{t('flashcards.empty_title')}</p>
+                  <p className="text-xs text-slate-500">
+                    {scopeFilter === 'current_slide'
+                      ? t('flashcards.empty_desc_slide')
+                      : t('flashcards.empty_desc_all')}
+                  </p>
+                </div>
+              ) : (
+                filteredCards.map((card) => {
+                  const isEditing = editingCardId === card.id;
 
-                if (isEditing) {
+                  if (isEditing) {
+                    return (
+                      <div
+                        key={card.id}
+                        className="p-4 rounded-xl border-2 border-accent/70 bg-surface/95 shadow-lg space-y-3 transition"
+                      >
+                        {/* Active Edit Mode Header */}
+                        <div className="flex items-center justify-between gap-2 border-b border-border/60 pb-2.5">
+                          <div className="flex items-center space-x-2">
+                            <span
+                              className={`text-[10px] px-2 py-0.5 rounded-md font-semibold border ${getBadgeStyle(
+                                card.type
+                              )}`}
+                            >
+                              {getTypeLabel(card.type)}
+                            </span>
+                            <span className="text-[11px] text-slate-300 font-medium truncate">
+                              {t('flashcards.slide_prefix', { number: card.slideNumber })}: {card.slideTitle}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center space-x-2">
+                            {/* Cloze Helper Button */}
+                            <button
+                              type="button"
+                              onClick={() => handleInsertCloze(card.id)}
+                              className="px-2.5 py-1 text-xs bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 rounded-lg transition cursor-pointer font-medium flex items-center gap-1.5 shadow-xs"
+                              title={t('flashcards.insert_cloze_tooltip', { index: getNextClozeIndex(card) })}
+                            >
+                              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                              <span>{t('flashcards.insert_cloze', { index: getNextClozeIndex(card) })}</span>
+                            </button>
+
+                            {/* Done Button */}
+                            <button
+                              type="button"
+                              onClick={() => setEditingCardId(null)}
+                              className="px-3 py-1 text-xs bg-accent hover:bg-accent-hover text-white rounded-lg transition cursor-pointer font-bold flex items-center gap-1 shadow-sm"
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                              <span>{t('flashcards.done_editing')}</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Editable Inputs with Auto-Grow */}
+                        <div className="space-y-3 text-xs">
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                                {card.type === 'image_occlusion'
+                                  ? t('flashcards.front_occlusion_label')
+                                  : t('flashcards.question_label')}
+                              </span>
+                              <span className="text-[10px] text-slate-500 font-mono">Markdown / MathJax</span>
+                            </div>
+                            <textarea
+                              ref={(el) => {
+                                frontTextareaRefs.current[card.id] = el;
+                                if (el) autoGrowTextarea(el);
+                              }}
+                              value={card.front}
+                              onChange={(e) => {
+                                handleUpdateCardField(card.id, 'front', e.target.value);
+                                autoGrowTextarea(e.currentTarget);
+                              }}
+                              onFocus={(e) => {
+                                setActiveTextareaField({ cardId: card.id, field: 'front' });
+                                autoGrowTextarea(e.currentTarget);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Escape') setEditingCardId(null);
+                              }}
+                              className="w-full p-3 text-xs bg-background border border-border/80 rounded-xl text-slate-100 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent leading-relaxed resize-y font-sans transition"
+                              placeholder={t('flashcards.front_placeholder')}
+                              style={{ minHeight: '70px' }}
+                            />
+                          </div>
+
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                                {card.type === 'image_occlusion'
+                                  ? t('flashcards.back_occlusion_label')
+                                  : t('flashcards.answer_label')}
+                              </span>
+                              <span className="text-[10px] text-slate-500 font-mono">Markdown / MathJax</span>
+                            </div>
+                            <textarea
+                              ref={(el) => {
+                                backTextareaRefs.current[card.id] = el;
+                                if (el) autoGrowTextarea(el);
+                              }}
+                              value={card.back}
+                              onChange={(e) => {
+                                handleUpdateCardField(card.id, 'back', e.target.value);
+                                autoGrowTextarea(e.currentTarget);
+                              }}
+                              onFocus={(e) => {
+                                setActiveTextareaField({ cardId: card.id, field: 'back' });
+                                autoGrowTextarea(e.currentTarget);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Escape') setEditingCardId(null);
+                              }}
+                              className="w-full p-3 text-xs bg-background border border-border/80 rounded-xl text-slate-100 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent leading-relaxed resize-y font-sans transition"
+                              placeholder={t('flashcards.back_placeholder')}
+                              style={{ minHeight: '70px' }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  // Default: Preview-First Read Mode
                   return (
                     <div
                       key={card.id}
-                      className="p-4 rounded-xl border-2 border-accent/70 bg-surface/95 shadow-lg space-y-3 transition"
+                      onClick={() => setEditingCardId(card.id)}
+                      className={`p-4 rounded-xl border transition group cursor-pointer ${
+                        card.enabled
+                          ? 'bg-surface/80 hover:bg-surface border-border/70 hover:border-accent/40 shadow-xs'
+                          : 'bg-surface/30 border-border/40 opacity-50'
+                      }`}
                     >
-                      {/* Active Edit Mode Header */}
-                      <div className="flex items-center justify-between gap-2 border-b border-border/60 pb-2.5">
-                        <div className="flex items-center space-x-2">
+                      {/* Header Bar */}
+                      <div className="flex items-center justify-between gap-2 border-b border-border/40 pb-2.5">
+                        <div className="flex items-center space-x-2.5 min-w-0">
+                          <input
+                            type="checkbox"
+                            checked={card.enabled}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              handleToggleCard(card.id);
+                            }}
+                            className="h-4 w-4 rounded border-border text-accent focus:ring-accent cursor-pointer shrink-0"
+                            title={card.enabled ? t('flashcards.card_active') : t('flashcards.card_disabled')}
+                          />
                           <span
-                            className={`text-[10px] px-2 py-0.5 rounded-md font-semibold border ${getBadgeStyle(
+                            className={`text-[10px] px-2 py-0.5 rounded-md font-semibold border shrink-0 ${getBadgeStyle(
                               card.type
                             )}`}
                           >
                             {getTypeLabel(card.type)}
                           </span>
-                          <span className="text-[11px] text-slate-300 font-medium truncate">
+                          <span className="text-[11px] text-slate-400 truncate">
                             {t('flashcards.slide_prefix', { number: card.slideNumber })}: {card.slideTitle}
                           </span>
                         </div>
 
-                        <div className="flex items-center space-x-2">
-                          {/* Cloze Helper Button */}
+                        <div className="flex items-center space-x-1 shrink-0" onClick={(e) => e.stopPropagation()}>
                           <button
                             type="button"
-                            onClick={() => handleInsertCloze(card.id)}
-                            className="px-2.5 py-1 text-xs bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 rounded-lg transition cursor-pointer font-medium flex items-center gap-1.5 shadow-xs"
-                            title={t('flashcards.insert_cloze_tooltip', { index: getNextClozeIndex(card) })}
+                            onClick={() => setEditingCardId(card.id)}
+                            className="px-2 py-1 text-xs text-slate-400 hover:text-slate-100 hover:bg-surface-hover rounded-lg transition cursor-pointer flex items-center gap-1 border border-transparent hover:border-border"
+                            title={t('flashcards.edit_card')}
                           >
-                            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                            <span>{t('flashcards.insert_cloze', { index: getNextClozeIndex(card) })}</span>
+                            <Edit3 className="w-3.5 h-3.5 text-accent" />
+                            <span className="hidden sm:inline text-[11px]">{t('flashcards.edit_card')}</span>
                           </button>
 
-                          {/* Done Button */}
                           <button
                             type="button"
-                            onClick={() => setEditingCardId(null)}
-                            className="px-3 py-1 text-xs bg-accent hover:bg-accent-hover text-white rounded-lg transition cursor-pointer font-bold flex items-center gap-1 shadow-sm"
+                            onClick={() => handleDeleteCard(card.id)}
+                            className="p-1 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition cursor-pointer"
+                            title={t('flashcards.delete_card')}
                           >
-                            <Check className="w-3.5 h-3.5" />
-                            <span>{t('flashcards.done_editing')}</span>
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       </div>
 
-                      {/* Editable Inputs with Auto-Grow */}
-                      <div className="space-y-3 text-xs">
+                      {/* Content Presentation */}
+                      <div className="space-y-2.5 pt-2.5 text-xs">
+                        {/* Front */}
                         <div className="space-y-1">
-                          <div className="flex items-center justify-between">
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                              {card.type === 'image_occlusion'
-                                ? t('flashcards.front_occlusion_label')
-                                : t('flashcards.question_label')}
-                            </span>
-                            <span className="text-[10px] text-slate-500 font-mono">Markdown / MathJax</span>
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                            {card.type === 'image_occlusion'
+                              ? t('flashcards.front_occlusion_label')
+                              : t('flashcards.question_label')}
+                          </span>
+                          <div className="text-xs font-semibold text-slate-100 whitespace-pre-wrap leading-relaxed">
+                            {card.front || <span className="italic text-slate-500">{t('flashcards.front_placeholder')}</span>}
                           </div>
-                          <textarea
-                            ref={(el) => {
-                              frontTextareaRefs.current[card.id] = el;
-                              if (el) autoGrowTextarea(el);
-                            }}
-                            value={card.front}
-                            onChange={(e) => {
-                              handleUpdateCardField(card.id, 'front', e.target.value);
-                              autoGrowTextarea(e.currentTarget);
-                            }}
-                            onFocus={(e) => {
-                              setActiveTextareaField({ cardId: card.id, field: 'front' });
-                              autoGrowTextarea(e.currentTarget);
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Escape') setEditingCardId(null);
-                            }}
-                            className="w-full p-3 text-xs bg-background border border-border/80 rounded-xl text-slate-100 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent leading-relaxed resize-y font-sans transition"
-                            placeholder={t('flashcards.front_placeholder')}
-                            style={{ minHeight: '70px' }}
-                          />
                         </div>
 
+                        {/* Back */}
                         <div className="space-y-1">
-                          <div className="flex items-center justify-between">
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                              {card.type === 'image_occlusion'
-                                ? t('flashcards.back_occlusion_label')
-                                : t('flashcards.answer_label')}
-                            </span>
-                            <span className="text-[10px] text-slate-500 font-mono">Markdown / MathJax</span>
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                            {card.type === 'image_occlusion'
+                              ? t('flashcards.back_occlusion_label')
+                              : t('flashcards.answer_label')}
+                          </span>
+                          <div className="text-xs text-slate-200 bg-background/60 p-3 rounded-xl border border-border/50 whitespace-pre-wrap leading-relaxed shadow-inner">
+                            {card.back || <span className="italic text-slate-500">{t('flashcards.back_placeholder')}</span>}
                           </div>
-                          <textarea
-                            ref={(el) => {
-                              backTextareaRefs.current[card.id] = el;
-                              if (el) autoGrowTextarea(el);
-                            }}
-                            value={card.back}
-                            onChange={(e) => {
-                              handleUpdateCardField(card.id, 'back', e.target.value);
-                              autoGrowTextarea(e.currentTarget);
-                            }}
-                            onFocus={(e) => {
-                              setActiveTextareaField({ cardId: card.id, field: 'back' });
-                              autoGrowTextarea(e.currentTarget);
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Escape') setEditingCardId(null);
-                            }}
-                            className="w-full p-3 text-xs bg-background border border-border/80 rounded-xl text-slate-100 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent leading-relaxed resize-y font-sans transition"
-                            placeholder={t('flashcards.back_placeholder')}
-                            style={{ minHeight: '70px' }}
-                          />
                         </div>
                       </div>
                     </div>
                   );
-                }
+                })
+              )}
+            </div>
+          ) : (
+            /* Option 2: Master-Detail Focus Editor */
+            <div className="flex-1 grid grid-cols-1 md:grid-cols-12 gap-3 min-h-0">
+              {/* Left Column: Master Cards List (compact) */}
+              <div className="md:col-span-5 flex flex-col min-h-0 bg-background/50 rounded-xl border border-border/60 p-2 overflow-hidden">
+                {filteredCards.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-48 text-slate-400 space-y-2">
+                    <Layers className="w-6 h-6 text-slate-600" />
+                    <p className="text-xs text-slate-500">{t('flashcards.empty_title')}</p>
+                  </div>
+                ) : (
+                  <div className="flex-1 overflow-y-auto space-y-1.5 min-h-0 custom-scrollbar pr-1">
+                    {filteredCards.map((card) => {
+                      const isSelected = card.id === selectedCardId;
+                      return (
+                        <div
+                          key={card.id}
+                          onClick={() => setSelectedCardId(card.id)}
+                          className={`p-2.5 rounded-lg border transition cursor-pointer flex items-center justify-between text-xs group ${
+                            isSelected
+                              ? 'bg-accent/15 border-accent text-white shadow-xs'
+                              : 'bg-surface/60 hover:bg-surface border-border/50 text-slate-300'
+                          }`}
+                        >
+                          <div className="flex items-center space-x-2 min-w-0 flex-1">
+                            <input
+                              type="checkbox"
+                              checked={card.enabled}
+                              onChange={(e) => {
+                                e.stopPropagation();
+                                handleToggleCard(card.id);
+                              }}
+                              className="h-3.5 w-3.5 rounded border-border text-accent focus:ring-accent cursor-pointer shrink-0"
+                              title={card.enabled ? t('flashcards.card_active') : t('flashcards.card_disabled')}
+                            />
+                            <span
+                              className={`text-[9px] px-1.5 py-0.5 rounded font-bold border shrink-0 ${getBadgeStyle(
+                                card.type
+                              )}`}
+                            >
+                              {getTypeLabel(card.type)}
+                            </span>
+                            <span className="truncate text-xs font-medium text-slate-200 group-hover:text-white">
+                              {card.front || card.slideTitle}
+                            </span>
+                          </div>
+                          <span className="text-[10px] text-slate-500 shrink-0 ml-1.5 font-mono">
+                            #{card.slideNumber}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
 
-                // Default: Preview-First Read Mode
-                return (
-                  <div
-                    key={card.id}
-                    onClick={() => setEditingCardId(card.id)}
-                    className={`p-4 rounded-xl border transition group cursor-pointer ${
-                      card.enabled
-                        ? 'bg-surface/80 hover:bg-surface border-border/70 hover:border-accent/40 shadow-xs'
-                        : 'bg-surface/30 border-border/40 opacity-50'
-                    }`}
-                  >
-                    {/* Header Bar */}
-                    <div className="flex items-center justify-between gap-2 border-b border-border/40 pb-2.5">
-                      <div className="flex items-center space-x-2.5 min-w-0">
-                        <input
-                          type="checkbox"
-                          checked={card.enabled}
+              {/* Right Column: Detail Focus Editor */}
+              <div className="md:col-span-7 flex flex-col min-h-0 bg-surface/90 rounded-xl border border-border/80 p-4 space-y-3 overflow-y-auto custom-scrollbar shadow-md">
+                {currentSelectedCard ? (
+                  <>
+                    {/* Focus Editor Top Bar */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 pb-3 shrink-0">
+                      <div className="flex items-center space-x-2">
+                        {/* Prev / Next Card */}
+                        <div className="flex items-center space-x-1">
+                          <button
+                            type="button"
+                            onClick={handlePrevCard}
+                            disabled={currentCardIndex <= 0}
+                            className="p-1 bg-background hover:bg-surface-hover border border-border text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg transition cursor-pointer"
+                            title={t('flashcards.prev_card')}
+                          >
+                            <ChevronLeft className="w-3.5 h-3.5" />
+                          </button>
+                          <span className="text-xs text-slate-400 font-mono px-1">
+                            {currentCardIndex + 1} / {filteredCards.length}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={handleNextCard}
+                            disabled={currentCardIndex >= filteredCards.length - 1}
+                            className="p-1 bg-background hover:bg-surface-hover border border-border text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg transition cursor-pointer"
+                            title={t('flashcards.next_card')}
+                          >
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        {/* Card Type Selector */}
+                        <select
+                          value={currentSelectedCard.type}
                           onChange={(e) => {
-                            e.stopPropagation();
-                            handleToggleCard(card.id);
+                            const newType = e.target.value as AnkiCardType;
+                            setCards((prev) =>
+                              prev.map((c) =>
+                                c.id === currentSelectedCard.id ? { ...c, type: newType } : c
+                              )
+                            );
                           }}
-                          className="h-4 w-4 rounded border-border text-accent focus:ring-accent cursor-pointer shrink-0"
-                          title={card.enabled ? t('flashcards.card_active') : t('flashcards.card_disabled')}
-                        />
-                        <span
-                          className={`text-[10px] px-2 py-0.5 rounded-md font-semibold border shrink-0 ${getBadgeStyle(
-                            card.type
+                          className={`text-xs px-2 py-1 rounded-lg font-semibold border bg-background focus:outline-none focus:border-accent cursor-pointer ${getBadgeStyle(
+                            currentSelectedCard.type
                           )}`}
                         >
-                          {getTypeLabel(card.type)}
-                        </span>
-                        <span className="text-[11px] text-slate-400 truncate">
-                          {t('flashcards.slide_prefix', { number: card.slideNumber })}: {card.slideTitle}
+                          <option value="definition">{t('flashcards.type_definition')}</option>
+                          <option value="formula">{t('flashcards.type_formula')}</option>
+                          <option value="cloze">{t('flashcards.type_cloze')}</option>
+                          <option value="qa">{t('flashcards.type_qa')}</option>
+                          <option value="image_occlusion">{t('flashcards.type_occlusion')}</option>
+                        </select>
+
+                        {/* Slide Indicator */}
+                        <span className="text-xs text-slate-400 bg-background/80 px-2 py-0.5 rounded-md border border-border/60">
+                          {t('flashcards.slide_prefix', { number: currentSelectedCard.slideNumber })}
                         </span>
                       </div>
 
-                      <div className="flex items-center space-x-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center space-x-2">
+                        {/* Cloze Helper Button */}
                         <button
                           type="button"
-                          onClick={() => setEditingCardId(card.id)}
-                          className="px-2 py-1 text-xs text-slate-400 hover:text-slate-100 hover:bg-surface-hover rounded-lg transition cursor-pointer flex items-center gap-1 border border-transparent hover:border-border"
-                          title={t('flashcards.edit_card')}
+                          onClick={() => handleInsertCloze(currentSelectedCard.id)}
+                          className="px-2.5 py-1 text-xs bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 rounded-lg transition cursor-pointer font-medium flex items-center gap-1.5 shadow-xs"
+                          title={t('flashcards.insert_cloze_tooltip', { index: getNextClozeIndex(currentSelectedCard) })}
                         >
-                          <Edit3 className="w-3.5 h-3.5 text-accent" />
-                          <span className="hidden sm:inline text-[11px]">{t('flashcards.edit_card')}</span>
+                          <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                          <span>{t('flashcards.insert_cloze', { index: getNextClozeIndex(currentSelectedCard) })}</span>
                         </button>
 
+                        {/* Live Preview Toggle Button */}
                         <button
                           type="button"
-                          onClick={() => handleDeleteCard(card.id)}
+                          onClick={() => setIsPreviewInFocus(!isPreviewInFocus)}
+                          className={`px-2.5 py-1 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition cursor-pointer border ${
+                            isPreviewInFocus
+                              ? 'bg-accent/20 text-accent border-accent/40'
+                              : 'bg-background hover:bg-surface-hover border-border text-slate-300'
+                          }`}
+                          title={t('flashcards.preview_toggle')}
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>{isPreviewInFocus ? t('flashcards.edit_toggle') : t('flashcards.preview_toggle')}</span>
+                        </button>
+
+                        {/* Delete Card */}
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteCard(currentSelectedCard.id)}
                           className="p-1 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition cursor-pointer"
                           title={t('flashcards.delete_card')}
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
                     </div>
 
-                    {/* Content Presentation */}
-                    <div className="space-y-2.5 pt-2.5 text-xs">
-                      {/* Front */}
-                      <div className="space-y-1">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                          {card.type === 'image_occlusion'
-                            ? t('flashcards.front_occlusion_label')
-                            : t('flashcards.question_label')}
-                        </span>
-                        <div className="text-xs font-semibold text-slate-100 whitespace-pre-wrap leading-relaxed">
-                          {card.front || <span className="italic text-slate-500">{t('flashcards.front_placeholder')}</span>}
+                    {/* Main Focus Content: Edit Mode or Rendered Preview */}
+                    {!isPreviewInFocus ? (
+                      <div className="space-y-4 flex-1 flex flex-col min-h-0">
+                        {/* Front / Question Editor */}
+                        <div className="space-y-1.5 flex flex-col flex-1 min-h-0">
+                          <div className="flex items-center justify-between">
+                            <label className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                              <span className="w-2 h-2 rounded-full bg-accent" />
+                              {currentSelectedCard.type === 'image_occlusion'
+                                ? t('flashcards.front_occlusion_label')
+                                : t('flashcards.question_label')}
+                            </label>
+                            <span className="text-[10px] text-slate-500 font-mono">Markdown / MathJax</span>
+                          </div>
+                          <textarea
+                            ref={(el) => {
+                              frontTextareaRefs.current[currentSelectedCard.id] = el;
+                              if (el) autoGrowTextarea(el);
+                            }}
+                            value={currentSelectedCard.front}
+                            onChange={(e) => {
+                              handleUpdateCardField(currentSelectedCard.id, 'front', e.target.value);
+                              autoGrowTextarea(e.currentTarget);
+                            }}
+                            onFocus={(e) => {
+                              setActiveTextareaField({ cardId: currentSelectedCard.id, field: 'front' });
+                              autoGrowTextarea(e.currentTarget);
+                            }}
+                            className="w-full p-3 text-xs bg-background border border-border/80 rounded-xl text-slate-100 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent leading-relaxed resize-y font-sans transition flex-1 min-h-[90px]"
+                            placeholder={t('flashcards.front_placeholder')}
+                          />
                         </div>
-                      </div>
 
-                      {/* Back */}
-                      <div className="space-y-1">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                          {card.type === 'image_occlusion'
-                            ? t('flashcards.back_occlusion_label')
-                            : t('flashcards.answer_label')}
-                        </span>
-                        <div className="text-xs text-slate-200 bg-background/60 p-3 rounded-xl border border-border/50 whitespace-pre-wrap leading-relaxed shadow-inner">
-                          {card.back || <span className="italic text-slate-500">{t('flashcards.back_placeholder')}</span>}
+                        {/* Back / Answer Editor */}
+                        <div className="space-y-1.5 flex flex-col flex-1 min-h-0">
+                          <div className="flex items-center justify-between">
+                            <label className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                              <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                              {currentSelectedCard.type === 'image_occlusion'
+                                ? t('flashcards.back_occlusion_label')
+                                : t('flashcards.answer_label')}
+                            </label>
+                            <span className="text-[10px] text-slate-500 font-mono">Markdown / MathJax</span>
+                          </div>
+                          <textarea
+                            ref={(el) => {
+                              backTextareaRefs.current[currentSelectedCard.id] = el;
+                              if (el) autoGrowTextarea(el);
+                            }}
+                            value={currentSelectedCard.back}
+                            onChange={(e) => {
+                              handleUpdateCardField(currentSelectedCard.id, 'back', e.target.value);
+                              autoGrowTextarea(e.currentTarget);
+                            }}
+                            onFocus={(e) => {
+                              setActiveTextareaField({ cardId: currentSelectedCard.id, field: 'back' });
+                              autoGrowTextarea(e.currentTarget);
+                            }}
+                            className="w-full p-3 text-xs bg-background border border-border/80 rounded-xl text-slate-100 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent leading-relaxed resize-y font-sans transition flex-1 min-h-[110px]"
+                            placeholder={t('flashcards.back_placeholder')}
+                          />
                         </div>
                       </div>
-                    </div>
+                    ) : (
+                      /* Live Rendered Card Preview */
+                      <div className="space-y-4 flex-1 flex flex-col min-h-0">
+                        <div className="p-4 rounded-xl bg-background/80 border border-border/80 space-y-2">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                            {t('flashcards.question_label')}
+                          </span>
+                          <div className="text-sm font-semibold text-slate-100 whitespace-pre-wrap leading-relaxed">
+                            {currentSelectedCard.front}
+                          </div>
+                        </div>
+
+                        <div className="p-4 rounded-xl bg-background/90 border border-border/80 space-y-2 flex-1 shadow-inner">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                            {t('flashcards.answer_label')}
+                          </span>
+                          <div className="text-xs text-slate-200 whitespace-pre-wrap leading-relaxed">
+                            {currentSelectedCard.back}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-64 text-slate-500 space-y-2">
+                    <Target className="w-8 h-8 opacity-40 text-accent" />
+                    <p className="text-xs">{t('flashcards.select_card_prompt')}</p>
                   </div>
-                );
-              })
-            )}
-          </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
