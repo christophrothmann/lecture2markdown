@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
-import { BookOpen, Settings, Sparkles, Zap, Loader2, PlusCircle, History } from 'lucide-react';
+import { BookOpen, Settings, Sparkles, Zap, Loader2, PlusCircle, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { save as saveFileDialog, open as openFileDialog } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
@@ -503,6 +503,23 @@ export function App() {
       {/* Top Navigation Bar */}
       <header className="glass-card border-b border-border px-6 py-4 flex items-center justify-between">
         <div className="flex items-center space-x-3">
+          {/* Sidebar Toggle (Left Navigation) */}
+          <button
+            onClick={() => setIsHistoryOpen((prev) => !prev)}
+            className={`p-2 border rounded-xl transition cursor-pointer ${
+              isHistoryOpen
+                ? 'bg-surface hover:bg-surface-hover border-border text-slate-200'
+                : 'bg-surface/50 hover:bg-surface border-border/50 text-slate-400'
+            }`}
+            title={isHistoryOpen ? t('history.hide_sidebar') : t('history.show_sidebar')}
+          >
+            {isHistoryOpen ? (
+              <PanelLeftClose className="w-4 h-4 text-slate-300" />
+            ) : (
+              <PanelLeftOpen className="w-4 h-4 text-slate-400" />
+            )}
+          </button>
+
           <div className="p-2 bg-accent text-white rounded-xl shadow-lg">
             <BookOpen className="w-5 h-5" />
           </div>
@@ -559,19 +576,6 @@ export function App() {
             <span className="text-slate-200">{PROVIDER_NAMES[activeProvider]}</span>
           </div>
 
-          {/* History Sidebar Toggle */}
-          <button
-            onClick={() => setIsHistoryOpen((prev) => !prev)}
-            className={`p-2 border rounded-xl transition cursor-pointer ${
-              isHistoryOpen
-                ? 'bg-surface hover:bg-surface-hover border-border text-slate-200'
-                : 'bg-surface/50 hover:bg-surface border-border/50 text-slate-400'
-            }`}
-            title={isHistoryOpen ? t('history.hide_sidebar', { defaultValue: 'Verlauf ausblenden' }) : t('history.show_sidebar', { defaultValue: 'Verlauf einblenden' })}
-          >
-            <History className="w-4 h-4" />
-          </button>
-
           <button
             onClick={() => setIsKeyModalOpen(true)}
             className="p-2 bg-surface hover:bg-surface-hover border border-border text-slate-300 rounded-xl transition cursor-pointer"
@@ -584,7 +588,26 @@ export function App() {
 
       {/* Main Content Layout - Full window width with flexible sidebar */}
       <main className="flex-1 px-6 py-5 flex flex-col lg:flex-row gap-6 w-full items-stretch h-[calc(100vh-76px)] min-h-0">
-        {/* Left / Main Column: Dropzone & Active Progress / Preview (Full remaining width) */}
+        {/* Left Column: History Sidebar (Pinned to left, responsive fixed width) */}
+        {isHistoryOpen && (
+          <div className="w-full lg:w-80 shrink-0 flex flex-col h-full min-h-0">
+            <HistorySidebar
+              items={history}
+              selectedItemId={selectedHistoryId}
+              onSelect={async (item) => {
+                setSelectedHistoryId(item.id);
+                setPreviewFileName(item.fileName.replace('.pdf', '.md'));
+                setPreviewPdfPath(item.filePath || null);
+                const content = await loadHistoryItemContent(item);
+                setMarkdownResult(content);
+              }}
+              onClear={handleClearHistory}
+              onResolveContent={(item) => loadHistoryItemContent(item)}
+            />
+          </div>
+        )}
+
+        {/* Right / Main Column: Dropzone & Active Progress / Preview (Full remaining width) */}
         <div className="flex-1 min-w-0 flex flex-col h-full space-y-6">
           {/* State 1: Dropzone (No files in queue and no preview) */}
           {queue.length === 0 && !markdownResult && (
@@ -627,25 +650,6 @@ export function App() {
             </Suspense>
           )}
         </div>
-
-        {/* Right Column: History Sidebar (Pinned to right, responsive fixed width) */}
-        {isHistoryOpen && (
-          <div className="w-full lg:w-80 shrink-0 flex flex-col h-full min-h-0">
-            <HistorySidebar
-              items={history}
-              selectedItemId={selectedHistoryId}
-              onSelect={async (item) => {
-                setSelectedHistoryId(item.id);
-                setPreviewFileName(item.fileName.replace('.pdf', '.md'));
-                setPreviewPdfPath(item.filePath || null);
-                const content = await loadHistoryItemContent(item);
-                setMarkdownResult(content);
-              }}
-              onClear={handleClearHistory}
-              onResolveContent={(item) => loadHistoryItemContent(item)}
-            />
-          </div>
-        )}
       </main>
 
       {/* Multi-Provider API Key Modal */}
