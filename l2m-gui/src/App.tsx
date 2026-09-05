@@ -354,12 +354,10 @@ export function App() {
 
   const handleOpenQueueItemPreview = async (item: BatchQueueItem) => {
     let content = item.markdownResult || '';
-    if (!content && item.filePath) {
-      try {
-        const autoSavePath = item.filePath.replace(/\.pdf$/i, '.md');
-        content = await invoke<string>('read_text_file_native', { filePath: autoSavePath });
-      } catch (e) {
-        console.warn('Auto-Save Datei konnte nicht geladen werden:', e);
+    if (!content) {
+      const historyItem = history.find((h) => h.id === item.id || (item.filePath && h.filePath === item.filePath));
+      if (historyItem) {
+        content = await loadHistoryItemContent(historyItem);
       }
     }
     if (content) {
@@ -468,17 +466,6 @@ export function App() {
             },
           }
         );
-
-        // Automatically save Markdown file next to PDF!
-        const autoSavePath = currentItem.filePath.replace(/\.pdf$/i, '.md');
-        try {
-          await invoke('save_text_file_native', {
-            filePath: autoSavePath,
-            content: markdown,
-          });
-        } catch (saveErr) {
-          console.warn('Auto-Save fehlgeschlagen:', saveErr);
-        }
 
         // Update queue item
         setQueue((prev) =>

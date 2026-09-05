@@ -150,15 +150,6 @@ export const QuickDropOverlay: React.FC<QuickDropOverlayProps> = ({
 
       // Automatically copy markdown file descriptor to native clipboard
       const cleanName = fileName.replace(/\.pdf$/i, '');
-      const targetMdPath = pdfPath.replace(/\.pdf$/i, '.md');
-
-      // Auto-save markdown file next to source PDF
-      try {
-        await invoke('save_text_file_native', {
-          filePath: targetMdPath,
-          content: markdown,
-        });
-      } catch {}
 
       // Copy to clipboard as native file object
       try {
