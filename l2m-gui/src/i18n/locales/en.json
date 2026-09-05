@@ -107,7 +107,10 @@
     "cached_badge": "0.00 $ (Cache)",
     "hide_sidebar": "Hide history",
     "show_sidebar": "Show history",
-    "loaded_count": "{{current}} of {{total}} loaded"
+    "loaded_count": "{{current}} of {{total}} loaded",
+    "slide_1_preview": "Slide 1 (Title Slide)",
+    "loading_preview": "Loading preview...",
+    "click_to_open": "Click to open"
   },
   "settings": {
     "title": "AI Providers & Settings",

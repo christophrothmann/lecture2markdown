@@ -107,7 +107,10 @@
     "cached_badge": "0.00 € (Cache)",
     "hide_sidebar": "Verlauf ausblenden",
     "show_sidebar": "Verlauf einblenden",
-    "loaded_count": "{{current}} von {{total}} geladen"
+    "loaded_count": "{{current}} von {{total}} geladen",
+    "slide_1_preview": "Folie 1 (Deckblatt)",
+    "loading_preview": "Lade Vorschau...",
+    "click_to_open": "Klicken zum Öffnen"
   },
   "settings": {
     "title": "KI-Provider & Einstellungen",
