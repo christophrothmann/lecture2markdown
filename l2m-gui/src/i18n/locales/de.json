@@ -247,7 +247,15 @@
     "occlusion_prompt_generic": "Welcher Begriff ist auf Folie {{number}} verdeckt?",
     "occlusion_structure": "Struktur #{{index}}",
     "slide_prefix": "Folie {{number}}",
-    "lecture_default": "Vorlesung"
+    "lecture_default": "Vorlesung",
+    "layout_split": "Geteilt",
+    "layout_cards_only": "Nur Karten",
+    "edit_card": "Bearbeiten",
+    "done_editing": "Fertig",
+    "insert_cloze": "Lücke ({{index}})",
+    "insert_cloze_tooltip": "Markierten Text als Anki-Lücke ({{index}}) formatieren",
+    "question_label": "Frage / Vorderseite",
+    "answer_label": "Antwort / Rückseite"
   },
   "occlusion": {
     "draw_active": "Maske zeichnen: Aktiv",

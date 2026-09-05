@@ -19,6 +19,8 @@ import {
   CheckCircle2,
   AlertCircle,
   Edit3,
+  Columns,
+  Maximize2,
 } from 'lucide-react';
 import { useTranslation, Trans } from 'react-i18next';
 import { save as saveFileDialog } from '@tauri-apps/plugin-dialog';
@@ -75,6 +77,13 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
   const [slideOcclusionMode, setSlideOcclusionMode] = useState<Record<number, 'hide_one' | 'hide_all'>>({});
   const [isOcclusionCanvasActive, setIsOcclusionCanvasActive] = useState<boolean>(false);
   const [selectedMaskId, setSelectedMaskId] = useState<string | null>(null);
+
+  // Layout mode: 'split' (side-by-side) or 'cards_only' (full width cards)
+  const [layoutMode, setLayoutMode] = useState<'split' | 'cards_only'>('split');
+  const [editingCardId, setEditingCardId] = useState<string | null>(null);
+  const [activeTextareaField, setActiveTextareaField] = useState<{ cardId: string; field: 'front' | 'back' } | null>(null);
+  const frontTextareaRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
+  const backTextareaRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
 
   // Filtering & Search
   const [scopeFilter, setScopeFilter] = useState<'current_slide' | 'all'>('all');
@@ -301,6 +310,9 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
 
   const handleDeleteCard = (cardId: string) => {
     setCards((prev) => prev.filter((c) => c.id !== cardId));
+    if (editingCardId === cardId) {
+      setEditingCardId(null);
+    }
   };
 
   const handleUpdateCardField = (cardId: string, field: 'front' | 'back', value: string) => {
@@ -309,9 +321,80 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
     );
   };
 
+  const autoGrowTextarea = (el: HTMLTextAreaElement | null) => {
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.max(68, el.scrollHeight)}px`;
+  };
+
+  const getNextClozeIndex = (card: AnkiCard) => {
+    const combined = `${card.front} ${card.back}`;
+    const matches = combined.match(/\{\{c(\d+)::/g);
+    if (!matches || matches.length === 0) return 1;
+    const indices = matches.map((m) => parseInt(m.replace(/\D/g, ''), 10));
+    return Math.max(...indices) + 1;
+  };
+
+  const handleInsertCloze = (cardId: string) => {
+    const card = cards.find((c) => c.id === cardId);
+    if (!card) return;
+
+    const targetField = activeTextareaField?.cardId === cardId ? activeTextareaField.field : 'front';
+    const textarea = targetField === 'front'
+      ? frontTextareaRefs.current[cardId]
+      : backTextareaRefs.current[cardId];
+
+    const currentText = targetField === 'front' ? card.front : card.back;
+    const nextIdx = getNextClozeIndex(card);
+
+    let start = 0;
+    let end = 0;
+    let selected = '';
+
+    if (textarea) {
+      start = textarea.selectionStart;
+      end = textarea.selectionEnd;
+      selected = currentText.substring(start, end);
+    }
+
+    const clozeText = selected.trim() ? selected : 'Begriff';
+    const replacement = `{{c${nextIdx}::${clozeText}}}`;
+
+    let newText: string;
+    let newCursorPos: number;
+
+    if (textarea && end > start) {
+      newText = currentText.substring(0, start) + replacement + currentText.substring(end);
+      newCursorPos = start + replacement.length;
+    } else if (textarea) {
+      newText = currentText.substring(0, start) + replacement + currentText.substring(start);
+      newCursorPos = start + replacement.length;
+    } else {
+      newText = currentText ? `${currentText} ${replacement}` : replacement;
+      newCursorPos = newText.length;
+    }
+
+    handleUpdateCardField(cardId, targetField, newText);
+
+    if (card.type !== 'cloze' && card.type !== 'image_occlusion') {
+      setCards((prev) =>
+        prev.map((c) => (c.id === cardId ? { ...c, type: 'cloze', [targetField]: newText } : c))
+      );
+    }
+
+    setTimeout(() => {
+      if (textarea) {
+        textarea.focus();
+        textarea.setSelectionRange(newCursorPos, newCursorPos);
+        autoGrowTextarea(textarea);
+      }
+    }, 0);
+  };
+
   const handleAddNewCard = () => {
+    const newId = `manual-${Date.now()}`;
     const newCard: AnkiCard = {
-      id: `manual-${Date.now()}`,
+      id: newId,
       type: 'definition',
       front: t('flashcards.new_card_front', { number: currentSlideNumber }),
       back: t('flashcards.new_card_back'),
@@ -321,6 +404,7 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
       enabled: true,
     };
     setCards((prev) => [newCard, ...prev]);
+    setEditingCardId(newId);
   };
 
   // Filtered Cards List
@@ -531,128 +615,135 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
         </div>
       )}
 
-      {/* Main Split Grid */}
-      <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4 min-h-0">
+      {/* Main Container: Split Grid or Full-Width Cards */}
+      <div className={`flex-1 min-h-0 gap-4 ${layoutMode === 'split' ? 'grid grid-cols-1 md:grid-cols-2' : 'flex flex-col'}`}>
         {/* Left Column: Visual PDF Slide + Interactive Image Occlusion Overlay */}
-        <div className="flex flex-col bg-background/80 p-4 rounded-xl border border-border/50 min-h-0 space-y-3">
-          {/* Slide Navigator Toolbar */}
-          <div className="flex items-center justify-between border-b border-border/60 pb-2 shrink-0">
-            <div className="flex items-center space-x-2">
-              <span className="text-xs font-bold text-slate-200">
-                {t('flashcards.slide_counter', { current: currentSlideNumber, total: totalSlideCount })}
-              </span>
-              <span className="text-[10px] text-slate-400 truncate max-w-[150px]">
-                {currentSlideTitle}
-              </span>
-            </div>
+        {layoutMode === 'split' && (
+          <div className="flex flex-col bg-background/80 p-4 rounded-xl border border-border/50 min-h-0 space-y-3">
+            {/* Slide Navigator Toolbar */}
+            <div className="flex items-center justify-between border-b border-border/60 pb-2 shrink-0">
+              <div className="flex items-center space-x-2">
+                <span className="text-xs font-bold text-slate-200">
+                  {t('flashcards.slide_counter', { current: currentSlideNumber, total: totalSlideCount })}
+                </span>
+                <span className="text-[10px] text-slate-400 truncate max-w-[150px]">
+                  {currentSlideTitle}
+                </span>
+              </div>
 
-            <div className="flex items-center space-x-2">
-              {/* Image Occlusion Toggle */}
-              <button
-                type="button"
-                onClick={() => setIsOcclusionCanvasActive(!isOcclusionCanvasActive)}
-                className={`px-2.5 py-1 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition cursor-pointer border ${
-                  isOcclusionCanvasActive
-                    ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
-                    : 'bg-surface hover:bg-surface-hover border-border text-slate-300'
-                }`}
-                title={t('flashcards.masks_button_title')}
-              >
-                <EyeOff className="w-3.5 h-3.5 text-rose-400" />
-                <span>{t('flashcards.masks_button')} {currentSlideMasks.length > 0 ? `(${currentSlideMasks.length})` : ''}</span>
-              </button>
-
-              {/* Prev / Next Slide */}
-              <div className="flex items-center space-x-1">
+              <div className="flex items-center space-x-2">
+                {/* Image Occlusion Toggle */}
                 <button
                   type="button"
-                  onClick={() => setCurrentSlideNumber((prev) => Math.max(1, prev - 1))}
-                  disabled={currentSlideNumber <= 1}
-                  className="p-1.5 bg-surface hover:bg-surface-hover border border-border text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition cursor-pointer"
-                  title={t('flashcards.prev_slide')}
+                  onClick={() => {
+                    if (!isOcclusionCanvasActive && layoutMode === 'cards_only') {
+                      setLayoutMode('split');
+                    }
+                    setIsOcclusionCanvasActive(!isOcclusionCanvasActive);
+                  }}
+                  className={`px-2.5 py-1 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition cursor-pointer border ${
+                    isOcclusionCanvasActive
+                      ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                      : 'bg-surface hover:bg-surface-hover border-border text-slate-300'
+                  }`}
+                  title={t('flashcards.masks_button_title')}
                 >
-                  <ChevronLeft className="w-3.5 h-3.5" />
+                  <EyeOff className="w-3.5 h-3.5 text-rose-400" />
+                  <span>{t('flashcards.masks_button')} {currentSlideMasks.length > 0 ? `(${currentSlideMasks.length})` : ''}</span>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setCurrentSlideNumber((prev) => Math.min(totalSlideCount, prev + 1))}
-                  disabled={currentSlideNumber >= totalSlideCount}
-                  className="p-1.5 bg-surface hover:bg-surface-hover border border-border text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition cursor-pointer"
-                  title={t('flashcards.next_slide')}
-                >
-                  <ChevronRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-          </div>
 
-          {/* Slide Visual Container */}
-          <div className="flex-1 flex items-center justify-center bg-black/40 rounded-lg border border-border/30 overflow-hidden min-h-0 relative p-2">
-            {isPdfLoading && (
-              <div className="absolute inset-0 bg-background/70 backdrop-blur-xs flex flex-col items-center justify-center space-y-2 text-slate-300 z-30">
-                <Loader2 className="w-6 h-6 animate-spin text-accent" />
-                <span className="text-xs">{t('flashcards.loading_slide', { current: currentSlideNumber })}</span>
-              </div>
-            )}
-
-            {/* Relative wrapper holding both the slide canvas and the ImageOcclusionCanvas overlay */}
-            <div className="relative inline-flex items-center justify-center max-w-full max-h-full">
-              <canvas
-                ref={canvasRef}
-                className={`max-w-full max-h-full object-contain rounded shadow-md ${
-                  activePdfPath && pdfRenderedOk ? 'block' : 'hidden'
-                }`}
-              />
-
-              {!pdfRenderedOk && currentSlideFallbackImage && (
-                <img
-                  src={currentSlideFallbackImage}
-                  alt={t('flashcards.slide_prefix', { number: currentSlideNumber })}
-                  className="max-w-full max-h-full object-contain rounded shadow-md"
-                />
-              )}
-
-              {/* Image Occlusion Overlay */}
-              {isOcclusionCanvasActive && (
-                <ImageOcclusionCanvas
-                  masks={currentSlideMasks}
-                  activeMaskId={selectedMaskId}
-                  mode={currentMode}
-                  isDrawingMode={isOcclusionCanvasActive}
-                  onAddMask={handleAddMask}
-                  onUpdateMask={handleUpdateMask}
-                  onDeleteMask={handleDeleteMask}
-                  onSelectMask={setSelectedMaskId}
-                  onChangeMode={handleChangeMode}
-                  onToggleDrawingMode={() => setIsOcclusionCanvasActive(!isOcclusionCanvasActive)}
-                  onClearSlideMasks={handleClearSlideMasks}
-                />
-              )}
-            </div>
-
-            {!activePdfPath && (
-              <div className="text-center p-6 text-slate-500 space-y-3">
-                <FileText className="w-10 h-10 mx-auto opacity-40 text-accent" />
-                <div>
-                  <p className="text-xs font-semibold text-slate-300">
-                    {t('flashcards.slide_prefix', { number: currentSlideNumber })}: {currentSlideTitle}
-                  </p>
-                  <p className="text-[11px] text-slate-400 mt-1">{t('flashcards.no_pdf_linked')}</p>
+                {/* Prev / Next Slide */}
+                <div className="flex items-center space-x-1">
+                  <button
+                    type="button"
+                    onClick={() => setCurrentSlideNumber((prev) => Math.max(1, prev - 1))}
+                    disabled={currentSlideNumber <= 1}
+                    className="p-1.5 bg-surface hover:bg-surface-hover border border-border text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition cursor-pointer"
+                    title={t('flashcards.prev_slide')}
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCurrentSlideNumber((prev) => Math.min(totalSlideCount, prev + 1))}
+                    disabled={currentSlideNumber >= totalSlideCount}
+                    className="p-1.5 bg-surface hover:bg-surface-hover border border-border text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition cursor-pointer"
+                    title={t('flashcards.next_slide')}
+                  >
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={onLinkPdfRequested}
-                  className="px-3 py-1.5 bg-surface hover:bg-surface-hover border border-border text-slate-200 rounded-xl text-xs font-semibold transition inline-flex items-center gap-1.5 cursor-pointer shadow-sm"
-                >
-                  <FileText className="w-3.5 h-3.5 text-accent" /> {t('flashcards.link_pdf')}
-                </button>
               </div>
-            )}
+            </div>
+
+            {/* Slide Visual Container */}
+            <div className="flex-1 flex items-center justify-center bg-black/40 rounded-lg border border-border/30 overflow-hidden min-h-0 relative p-2">
+              {isPdfLoading && (
+                <div className="absolute inset-0 bg-background/70 backdrop-blur-xs flex flex-col items-center justify-center space-y-2 text-slate-300 z-30">
+                  <Loader2 className="w-6 h-6 animate-spin text-accent" />
+                  <span className="text-xs">{t('flashcards.loading_slide', { current: currentSlideNumber })}</span>
+                </div>
+              )}
+
+              {/* Relative wrapper holding both the slide canvas and the ImageOcclusionCanvas overlay */}
+              <div className="relative inline-flex items-center justify-center max-w-full max-h-full">
+                <canvas
+                  ref={canvasRef}
+                  className={`max-w-full max-h-full object-contain rounded shadow-md ${
+                    activePdfPath && pdfRenderedOk ? 'block' : 'hidden'
+                  }`}
+                />
+
+                {!pdfRenderedOk && currentSlideFallbackImage && (
+                  <img
+                    src={currentSlideFallbackImage}
+                    alt={t('flashcards.slide_prefix', { number: currentSlideNumber })}
+                    className="max-w-full max-h-full object-contain rounded shadow-md"
+                  />
+                )}
+
+                {/* Image Occlusion Overlay */}
+                {isOcclusionCanvasActive && (
+                  <ImageOcclusionCanvas
+                    masks={currentSlideMasks}
+                    activeMaskId={selectedMaskId}
+                    mode={currentMode}
+                    isDrawingMode={isOcclusionCanvasActive}
+                    onAddMask={handleAddMask}
+                    onUpdateMask={handleUpdateMask}
+                    onDeleteMask={handleDeleteMask}
+                    onSelectMask={setSelectedMaskId}
+                    onChangeMode={handleChangeMode}
+                    onToggleDrawingMode={() => setIsOcclusionCanvasActive(!isOcclusionCanvasActive)}
+                    onClearSlideMasks={handleClearSlideMasks}
+                  />
+                )}
+              </div>
+
+              {!activePdfPath && (
+                <div className="text-center p-6 text-slate-500 space-y-3">
+                  <FileText className="w-10 h-10 mx-auto opacity-40 text-accent" />
+                  <div>
+                    <p className="text-xs font-semibold text-slate-300">
+                      {t('flashcards.slide_prefix', { number: currentSlideNumber })}: {currentSlideTitle}
+                    </p>
+                    <p className="text-[11px] text-slate-400 mt-1">{t('flashcards.no_pdf_linked')}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={onLinkPdfRequested}
+                    className="px-3 py-1.5 bg-surface hover:bg-surface-hover border border-border text-slate-200 rounded-xl text-xs font-semibold transition inline-flex items-center gap-1.5 cursor-pointer shadow-sm"
+                  >
+                    <FileText className="w-3.5 h-3.5 text-accent" /> {t('flashcards.link_pdf')}
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Right Column: Flashcard Inspector & Inline Editor */}
-        <div className="flex flex-col bg-background/80 p-4 rounded-xl border border-border/50 min-h-0 space-y-3">
+        <div className="flex-1 flex flex-col bg-background/80 p-4 rounded-xl border border-border/50 min-h-0 space-y-3">
           {/* Header & Filter Controls */}
           <div className="space-y-2 border-b border-border/60 pb-3 shrink-0">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -682,14 +773,46 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
                 </button>
               </div>
 
-              {/* Add Card to current slide Button */}
-              <button
-                type="button"
-                onClick={handleAddNewCard}
-                className="px-3 py-1 bg-surface hover:bg-surface-hover border border-border hover:border-accent text-slate-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5 text-accent" /> {t('flashcards.add_card')}
-              </button>
+              <div className="flex items-center gap-2">
+                {/* Layout Switcher: Split vs Cards Only */}
+                <div className="flex items-center bg-slate-900/80 p-1 rounded-xl border border-slate-700/80 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setLayoutMode('split')}
+                    className={`px-2 py-1 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                      layoutMode === 'split'
+                        ? 'bg-accent text-white shadow-xs'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                    title={t('flashcards.layout_split')}
+                  >
+                    <Columns className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">{t('flashcards.layout_split')}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLayoutMode('cards_only')}
+                    className={`px-2 py-1 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                      layoutMode === 'cards_only'
+                        ? 'bg-accent text-white shadow-xs'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                    title={t('flashcards.layout_cards_only')}
+                  >
+                    <Maximize2 className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">{t('flashcards.layout_cards_only')}</span>
+                  </button>
+                </div>
+
+                {/* Add Card to current slide Button */}
+                <button
+                  type="button"
+                  onClick={handleAddNewCard}
+                  className="px-3 py-1 bg-surface hover:bg-surface-hover border border-border hover:border-accent text-slate-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5 text-accent" /> {t('flashcards.add_card')}
+                </button>
+              </div>
             </div>
 
             {/* Live Search & Type Filters */}
@@ -787,30 +910,150 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
                 </p>
               </div>
             ) : (
-              filteredCards.map((card) => (
-                <div
-                  key={card.id}
-                  className={`p-3.5 rounded-xl border transition flex items-start space-x-3 ${
-                    card.enabled
-                      ? 'bg-surface border-border/80 hover:border-accent/40 shadow-xs'
-                      : 'bg-surface/30 border-border/40 opacity-50'
-                  }`}
-                >
-                  {/* Enable / Disable Toggle */}
-                  <input
-                    type="checkbox"
-                    checked={card.enabled}
-                    onChange={() => handleToggleCard(card.id)}
-                    className="mt-1 h-4 w-4 rounded border-border text-accent focus:ring-accent cursor-pointer"
-                    title={card.enabled ? t('flashcards.card_active') : t('flashcards.card_disabled')}
-                  />
+              filteredCards.map((card) => {
+                const isEditing = editingCardId === card.id;
 
-                  {/* Card Content & Inline Editing */}
-                  <div className="flex-1 min-w-0 space-y-2 text-xs">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-2">
+                if (isEditing) {
+                  return (
+                    <div
+                      key={card.id}
+                      className="p-4 rounded-xl border-2 border-accent/70 bg-surface/95 shadow-lg space-y-3 transition"
+                    >
+                      {/* Active Edit Mode Header */}
+                      <div className="flex items-center justify-between gap-2 border-b border-border/60 pb-2.5">
+                        <div className="flex items-center space-x-2">
+                          <span
+                            className={`text-[10px] px-2 py-0.5 rounded-md font-semibold border ${getBadgeStyle(
+                              card.type
+                            )}`}
+                          >
+                            {getTypeLabel(card.type)}
+                          </span>
+                          <span className="text-[11px] text-slate-300 font-medium truncate">
+                            {t('flashcards.slide_prefix', { number: card.slideNumber })}: {card.slideTitle}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center space-x-2">
+                          {/* Cloze Helper Button */}
+                          <button
+                            type="button"
+                            onClick={() => handleInsertCloze(card.id)}
+                            className="px-2.5 py-1 text-xs bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 rounded-lg transition cursor-pointer font-medium flex items-center gap-1.5 shadow-xs"
+                            title={t('flashcards.insert_cloze_tooltip', { index: getNextClozeIndex(card) })}
+                          >
+                            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                            <span>{t('flashcards.insert_cloze', { index: getNextClozeIndex(card) })}</span>
+                          </button>
+
+                          {/* Done Button */}
+                          <button
+                            type="button"
+                            onClick={() => setEditingCardId(null)}
+                            className="px-3 py-1 text-xs bg-accent hover:bg-accent-hover text-white rounded-lg transition cursor-pointer font-bold flex items-center gap-1 shadow-sm"
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                            <span>{t('flashcards.done_editing')}</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Editable Inputs with Auto-Grow */}
+                      <div className="space-y-3 text-xs">
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                              {card.type === 'image_occlusion'
+                                ? t('flashcards.front_occlusion_label')
+                                : t('flashcards.question_label')}
+                            </span>
+                            <span className="text-[10px] text-slate-500 font-mono">Markdown / MathJax</span>
+                          </div>
+                          <textarea
+                            ref={(el) => {
+                              frontTextareaRefs.current[card.id] = el;
+                              if (el) autoGrowTextarea(el);
+                            }}
+                            value={card.front}
+                            onChange={(e) => {
+                              handleUpdateCardField(card.id, 'front', e.target.value);
+                              autoGrowTextarea(e.currentTarget);
+                            }}
+                            onFocus={(e) => {
+                              setActiveTextareaField({ cardId: card.id, field: 'front' });
+                              autoGrowTextarea(e.currentTarget);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Escape') setEditingCardId(null);
+                            }}
+                            className="w-full p-3 text-xs bg-background border border-border/80 rounded-xl text-slate-100 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent leading-relaxed resize-y font-sans transition"
+                            placeholder={t('flashcards.front_placeholder')}
+                            style={{ minHeight: '70px' }}
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                              {card.type === 'image_occlusion'
+                                ? t('flashcards.back_occlusion_label')
+                                : t('flashcards.answer_label')}
+                            </span>
+                            <span className="text-[10px] text-slate-500 font-mono">Markdown / MathJax</span>
+                          </div>
+                          <textarea
+                            ref={(el) => {
+                              backTextareaRefs.current[card.id] = el;
+                              if (el) autoGrowTextarea(el);
+                            }}
+                            value={card.back}
+                            onChange={(e) => {
+                              handleUpdateCardField(card.id, 'back', e.target.value);
+                              autoGrowTextarea(e.currentTarget);
+                            }}
+                            onFocus={(e) => {
+                              setActiveTextareaField({ cardId: card.id, field: 'back' });
+                              autoGrowTextarea(e.currentTarget);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Escape') setEditingCardId(null);
+                            }}
+                            className="w-full p-3 text-xs bg-background border border-border/80 rounded-xl text-slate-100 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent leading-relaxed resize-y font-sans transition"
+                            placeholder={t('flashcards.back_placeholder')}
+                            style={{ minHeight: '70px' }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+
+                // Default: Preview-First Read Mode
+                return (
+                  <div
+                    key={card.id}
+                    onClick={() => setEditingCardId(card.id)}
+                    className={`p-4 rounded-xl border transition group cursor-pointer ${
+                      card.enabled
+                        ? 'bg-surface/80 hover:bg-surface border-border/70 hover:border-accent/40 shadow-xs'
+                        : 'bg-surface/30 border-border/40 opacity-50'
+                    }`}
+                  >
+                    {/* Header Bar */}
+                    <div className="flex items-center justify-between gap-2 border-b border-border/40 pb-2.5">
+                      <div className="flex items-center space-x-2.5 min-w-0">
+                        <input
+                          type="checkbox"
+                          checked={card.enabled}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            handleToggleCard(card.id);
+                          }}
+                          className="h-4 w-4 rounded border-border text-accent focus:ring-accent cursor-pointer shrink-0"
+                          title={card.enabled ? t('flashcards.card_active') : t('flashcards.card_disabled')}
+                        />
                         <span
-                          className={`text-[10px] px-2 py-0.5 rounded-md font-semibold border ${getBadgeStyle(
+                          className={`text-[10px] px-2 py-0.5 rounded-md font-semibold border shrink-0 ${getBadgeStyle(
                             card.type
                           )}`}
                         >
@@ -821,47 +1064,57 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
                         </span>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteCard(card.id)}
-                        className="p-1 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition cursor-pointer"
-                        title={t('flashcards.delete_card')}
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      <div className="flex items-center space-x-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          onClick={() => setEditingCardId(card.id)}
+                          className="px-2 py-1 text-xs text-slate-400 hover:text-slate-100 hover:bg-surface-hover rounded-lg transition cursor-pointer flex items-center gap-1 border border-transparent hover:border-border"
+                          title={t('flashcards.edit_card')}
+                        >
+                          <Edit3 className="w-3.5 h-3.5 text-accent" />
+                          <span className="hidden sm:inline text-[11px]">{t('flashcards.edit_card')}</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteCard(card.id)}
+                          className="p-1 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition cursor-pointer"
+                          title={t('flashcards.delete_card')}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
 
-                    {/* Front & Back Editable inputs */}
-                    <div className="space-y-2">
+                    {/* Content Presentation */}
+                    <div className="space-y-2.5 pt-2.5 text-xs">
+                      {/* Front */}
                       <div className="space-y-1">
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                          {card.type === 'image_occlusion' ? t('flashcards.front_occlusion_label') : t('flashcards.front_label')}
+                          {card.type === 'image_occlusion'
+                            ? t('flashcards.front_occlusion_label')
+                            : t('flashcards.question_label')}
                         </span>
-                        <textarea
-                          rows={2}
-                          value={card.front}
-                          onChange={(e) => handleUpdateCardField(card.id, 'front', e.target.value)}
-                          className="w-full p-2 text-xs bg-slate-950/60 border border-border/60 rounded-lg text-slate-200 focus:outline-none focus:border-accent resize-y font-mono leading-relaxed"
-                          placeholder={t('flashcards.front_placeholder')}
-                        />
+                        <div className="text-xs font-semibold text-slate-100 whitespace-pre-wrap leading-relaxed">
+                          {card.front || <span className="italic text-slate-500">{t('flashcards.front_placeholder')}</span>}
+                        </div>
                       </div>
 
+                      {/* Back */}
                       <div className="space-y-1">
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                          {card.type === 'image_occlusion' ? t('flashcards.back_occlusion_label') : t('flashcards.back_label')}
+                          {card.type === 'image_occlusion'
+                            ? t('flashcards.back_occlusion_label')
+                            : t('flashcards.answer_label')}
                         </span>
-                        <textarea
-                          rows={2}
-                          value={card.back}
-                          onChange={(e) => handleUpdateCardField(card.id, 'back', e.target.value)}
-                          className="w-full p-2 text-xs bg-slate-950/60 border border-border/60 rounded-lg text-slate-300 focus:outline-none focus:border-accent resize-y font-mono leading-relaxed"
-                          placeholder={t('flashcards.back_placeholder')}
-                        />
+                        <div className="text-xs text-slate-200 bg-background/60 p-3 rounded-xl border border-border/50 whitespace-pre-wrap leading-relaxed shadow-inner">
+                          {card.back || <span className="italic text-slate-500">{t('flashcards.back_placeholder')}</span>}
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>

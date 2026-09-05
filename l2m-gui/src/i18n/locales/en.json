@@ -247,7 +247,15 @@
     "occlusion_prompt_generic": "Which term is occluded on slide {{number}}?",
     "occlusion_structure": "Structure #{{index}}",
     "slide_prefix": "Slide {{number}}",
-    "lecture_default": "Lecture"
+    "lecture_default": "Lecture",
+    "layout_split": "Split",
+    "layout_cards_only": "Cards Only",
+    "edit_card": "Edit",
+    "done_editing": "Done",
+    "insert_cloze": "Cloze ({{index}})",
+    "insert_cloze_tooltip": "Format selected text as Anki cloze ({{index}})",
+    "question_label": "Question / Front",
+    "answer_label": "Answer / Back"
   },
   "occlusion": {
     "draw_active": "Draw mask: Active",
