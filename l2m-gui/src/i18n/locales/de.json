@@ -124,7 +124,9 @@
     "deselect_all": "Alle abwählen",
     "delete_selected": "Löschen ({{count}})",
     "delete_selected_confirm": "Möchtest du die {{count}} ausgewählten Vorlesungen wirklich aus dem Verlauf löschen?",
-    "selected_count": "{{count}} ausgewählt"
+    "selected_count": "{{count}} ausgewählt",
+    "open": "Öffnen",
+    "more_slides": "weitere Folien"
   },
   "settings": {
     "title": "KI-Provider & Einstellungen",

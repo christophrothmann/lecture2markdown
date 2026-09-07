@@ -124,7 +124,9 @@
     "deselect_all": "Deselect all",
     "delete_selected": "Delete ({{count}})",
     "delete_selected_confirm": "Do you really want to delete the {{count}} selected lectures from history?",
-    "selected_count": "{{count}} selected"
+    "selected_count": "{{count}} selected",
+    "open": "Open",
+    "more_slides": "more slides"
   },
   "settings": {
     "title": "AI Providers & Settings",

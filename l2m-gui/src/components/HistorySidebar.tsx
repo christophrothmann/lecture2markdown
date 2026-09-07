@@ -46,19 +46,41 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [isCopyingId, setIsCopyingId] = useState<string | null>(null);
 
-  // 300ms Debounced Hover Preview State (Deckblatt / Slide 1)
+  // Hover Preview State (Interactive Flyout with Slide 1, 2 & scrollable slides)
+  interface PreviewSlide {
+    slideNumber: number;
+    title: string;
+    content: string;
+  }
+
   interface PreviewInfo {
     item: HistoryItem;
     title: string;
-    slideContent: string;
+    slides: PreviewSlide[];
     totalSlides: number;
     targetTop: number;
   }
   const [previewInfo, setPreviewInfo] = useState<PreviewInfo | null>(null);
   const [isPreviewLoading, setIsPreviewLoading] = useState<boolean>(false);
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const cacheRef = useRef<Map<string, { title: string; slideContent: string; totalSlides: number }>>(new Map());
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cacheRef = useRef<Map<string, { title: string; slides: PreviewSlide[]; totalSlides: number }>>(new Map());
   const previewCardRef = useRef<HTMLDivElement | null>(null);
+
+  const cancelCloseTimer = () => {
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+  };
+
+  const scheduleClosePreview = (delay = 300) => {
+    cancelCloseTimer();
+    closeTimerRef.current = setTimeout(() => {
+      setPreviewInfo(null);
+      closeTimerRef.current = null;
+    }, delay);
+  };
 
   // Dynamically clamp preview card position with generous bottom margin (56px) directly via DOM style (no re-render loop)
   useLayoutEffect(() => {
@@ -85,11 +107,14 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
-  // Clean up timer on unmount
+  // Clean up timers on unmount
   useEffect(() => {
     return () => {
       if (hoverTimerRef.current) {
         clearTimeout(hoverTimerRef.current);
+      }
+      if (closeTimerRef.current) {
+        clearTimeout(closeTimerRef.current);
       }
     };
   }, []);
@@ -145,6 +170,7 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
       clearTimeout(hoverTimerRef.current);
       hoverTimerRef.current = null;
     }
+    cancelCloseTimer();
     if (previewInfo) {
       setPreviewInfo(null);
     }
@@ -196,6 +222,13 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
   const handleItemMouseEnter = (e: React.MouseEvent<HTMLDivElement>, item: HistoryItem) => {
     if (isSelectMode || item.status === 'processing') return;
 
+    cancelCloseTimer();
+
+    // If already showing preview for this item, keep it active
+    if (previewInfo && previewInfo.item.id === item.id) {
+      return;
+    }
+
     if (hoverTimerRef.current) {
       clearTimeout(hoverTimerRef.current);
     }
@@ -212,7 +245,7 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
         setPreviewInfo({
           item,
           title: cached.title,
-          slideContent: cached.slideContent,
+          slides: cached.slides,
           totalSlides: cached.totalSlides,
           targetTop,
         });
@@ -224,7 +257,7 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
       setPreviewInfo({
         item,
         title: item.fileName.replace(/\.(pdf|md)$/i, ''),
-        slideContent: '',
+        slides: [],
         totalSlides: item.totalPages || 1,
         targetTop,
       });
@@ -236,22 +269,38 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
         }
 
         let title = item.fileName.replace(/\.(pdf|md)$/i, '');
-        let slideContent = '';
+        let previewSlides: PreviewSlide[] = [];
         let totalSlides = item.totalPages || 1;
 
         if (content && content.trim()) {
-          const slides = parseMarkdownSlides(content);
-          if (slides.length > 0) {
-            totalSlides = slides.length;
-            if (slides[0].title) title = slides[0].title;
-            slideContent = slides[0].content.trim();
+          const parsed = parseMarkdownSlides(content);
+          if (parsed.length > 0) {
+            totalSlides = parsed.length;
+            if (parsed[0].title) title = parsed[0].title;
+            // Provide parsed slides (up to 12) so user can scroll through slide 1, slide 2, etc.
+            previewSlides = parsed.slice(0, 12).map((s) => {
+              const cleanContent = s.content
+                .replace(/^##\s*\[?(?:Folie|Slide)?\s*\d+\]?[^\n]*\n*/i, '')
+                .trim();
+              return {
+                slideNumber: s.slideNumber,
+                title: s.title,
+                content: cleanContent || s.content.trim(),
+              };
+            });
           } else {
-            const lines = content.split('\n').slice(0, 12).join('\n').trim();
-            slideContent = lines;
+            const lines = content.split('\n').slice(0, 25).join('\n').trim();
+            previewSlides = [
+              {
+                slideNumber: 1,
+                title: 'Folie 1',
+                content: lines,
+              },
+            ];
           }
         }
 
-        const resolved = { title, slideContent, totalSlides };
+        const resolved = { title, slides: previewSlides, totalSlides };
         cacheRef.current.set(item.id, resolved);
 
         setPreviewInfo((current) => {
@@ -259,7 +308,7 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
           return {
             item,
             title,
-            slideContent,
+            slides: previewSlides,
             totalSlides,
             targetTop,
           };
@@ -269,7 +318,7 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
       } finally {
         setIsPreviewLoading(false);
       }
-    }, 300);
+    }, 250);
   };
 
   const handleItemMouseLeave = () => {
@@ -277,7 +326,15 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
       clearTimeout(hoverTimerRef.current);
       hoverTimerRef.current = null;
     }
-    setPreviewInfo(null);
+    scheduleClosePreview(300);
+  };
+
+  const handlePreviewMouseEnter = () => {
+    cancelCloseTimer();
+  };
+
+  const handlePreviewMouseLeave = () => {
+    scheduleClosePreview(300);
   };
 
   const handleCopyItem = async (e: React.MouseEvent, item: HistoryItem) => {
@@ -591,18 +648,23 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
         )}
       </div>
 
-      {/* Floating Teaser Hover Preview for Slide 1 (Deckblatt) */}
+      {/* Floating Interactive Hover Preview for Slide 1, 2 & scrollable slides */}
       {previewInfo && (
         <div
           ref={previewCardRef}
+          onMouseEnter={handlePreviewMouseEnter}
+          onMouseLeave={handlePreviewMouseLeave}
           style={{
             top: `${Math.max(24, Math.min(previewInfo.targetTop, window.innerHeight - 450))}px`,
           }}
-          className="fixed right-[calc(24rem+1rem)] w-[28rem] max-w-[calc(100vw-26rem)] max-h-[calc(100vh-6rem)] z-50 pointer-events-none transition-all duration-150 flex flex-col"
+          className="fixed right-[calc(24rem+0.5rem)] w-[28rem] max-w-[calc(100vw-26rem)] max-h-[calc(100vh-6rem)] z-50 transition-all duration-150 flex flex-col pointer-events-auto"
         >
-          <div className="bg-card rounded-2xl p-5 border border-border shadow-2xl space-y-3.5 pointer-events-auto overflow-hidden flex flex-col max-h-full">
-            {/* Top Bar: File Info */}
-            <div className="flex items-center justify-between gap-3 border-b border-border/60 pb-3 shrink-0">
+          {/* Invisible hit-test bridge extending 16px to the right towards the sidebar drawer */}
+          <div className="absolute top-0 -right-4 w-6 h-full pointer-events-auto" />
+
+          <div className="bg-card rounded-2xl p-4 border border-border shadow-2xl space-y-3 pointer-events-auto overflow-hidden flex flex-col max-h-full">
+            {/* Top Bar: File Info & Quick Open Button */}
+            <div className="flex items-center justify-between gap-2 border-b border-border/60 pb-2.5 shrink-0">
               <div className="flex items-center space-x-2 min-w-0 flex-1">
                 <span className="p-1.5 bg-accent/15 text-accent rounded-lg shrink-0">
                   <FileText className="w-3.5 h-3.5" />
@@ -611,38 +673,74 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
                   {previewInfo.item.fileName}
                 </span>
               </div>
+
+              <div className="flex items-center space-x-2 shrink-0">
+                <span className="text-[10px] text-slate-400 font-medium bg-surface px-2 py-0.5 rounded-full border border-border">
+                  {t('history.slides_label', { count: previewInfo.totalSlides })}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    cancelCloseTimer();
+                    setPreviewInfo(null);
+                    onSelect(previewInfo.item);
+                  }}
+                  className="px-2.5 py-1 bg-accent hover:bg-accent-hover text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-sm shadow-accent/20 shrink-0"
+                  title={t('history.click_to_open')}
+                >
+                  <span>{t('history.open', { defaultValue: 'Öffnen' })}</span>
+                </button>
+              </div>
             </div>
 
-            {/* Slide Content */}
+            {/* Slides Content */}
             {isPreviewLoading ? (
-              <div className="py-8 flex flex-col items-center justify-center space-y-2">
+              <div className="py-10 flex flex-col items-center justify-center space-y-2">
                 <Loader2 className="w-5 h-5 animate-spin text-accent" />
                 <span className="text-[10px] text-slate-400">
                   {t('history.loading_preview')}
                 </span>
               </div>
             ) : (
-              <div className="space-y-2 flex-1 min-h-0 flex flex-col">
-                {previewInfo.title && (
-                  <h4 className="text-xs font-bold text-slate-200 line-clamp-2 leading-snug px-0.5 shrink-0">
-                    {previewInfo.title}
-                  </h4>
-                )}
-                {previewInfo.slideContent ? (
-                  <div className="text-[11px] font-mono text-slate-300 bg-background p-3.5 rounded-xl border border-border/60 flex-1 min-h-0 max-h-56 overflow-y-auto custom-scrollbar whitespace-pre-wrap leading-relaxed break-words shadow-inner">
-                    {previewInfo.slideContent}
-                  </div>
+              <div className="space-y-3 flex-1 min-h-0 max-h-[30rem] overflow-y-auto overscroll-contain pr-1.5 custom-scrollbar">
+                {previewInfo.slides && previewInfo.slides.length > 0 ? (
+                  previewInfo.slides.map((slide) => (
+                    <div
+                      key={slide.slideNumber}
+                      className="space-y-2 bg-surface/40 p-3 rounded-xl border border-border/60 hover:border-border transition"
+                    >
+                      <div className="flex items-center justify-between text-[11px] font-semibold text-slate-200 px-0.5">
+                        <span className="flex items-center gap-1.5 text-accent font-bold truncate">
+                          <span className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" />
+                          <span className="truncate">{slide.title}</span>
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-mono bg-background/80 px-1.5 py-0.5 rounded border border-border/40 shrink-0">
+                          #{slide.slideNumber}
+                        </span>
+                      </div>
+                      <div className="text-[11px] font-mono text-slate-300 bg-background/90 p-2.5 rounded-lg border border-border/40 whitespace-pre-wrap leading-relaxed break-words shadow-inner">
+                        {slide.content}
+                      </div>
+                    </div>
+                  ))
                 ) : (
-                  <div className="text-[11px] italic text-slate-400 bg-background p-3 rounded-xl border border-border/50 shrink-0">
+                  <div className="text-[11px] italic text-slate-400 bg-background p-3 rounded-xl border border-border/50">
                     {previewInfo.item.fileName}
+                  </div>
+                )}
+
+                {previewInfo.totalSlides > previewInfo.slides.length && (
+                  <div className="py-2 text-center text-[10px] text-slate-500 font-medium">
+                    + {previewInfo.totalSlides - previewInfo.slides.length} {t('history.more_slides', { defaultValue: 'weitere Folien' })}
                   </div>
                 )}
               </div>
             )}
 
             {/* Footer: Quick Hint */}
-            <div className="flex items-center justify-between text-[10px] text-slate-400 pt-2 border-t border-border/40 px-0.5 shrink-0">
-              <span>{t('history.slides_label', { count: previewInfo.totalSlides })}</span>
+            <div className="flex items-center justify-between text-[10px] text-slate-500 pt-2 border-t border-border/40 px-0.5 shrink-0">
+              <span>{t('history.click_to_open')}</span>
+              <span className="font-mono">{previewInfo.item.timestamp}</span>
             </div>
           </div>
         </div>
