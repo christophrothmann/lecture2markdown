@@ -2,6 +2,42 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.6.0] - 2026-09-07 "native-apkg-and-learning-suite"
+
+### Added
+- **🃏 Native Rust `.apkg` Deck Engine (Zero Python / Zero AnkiConnect Required)**:
+  - High-performance, pure-Rust `.apkg` packager (`anki_apkg.rs`) built using `rusqlite`, `zip`, and `sha1`.
+  - Generates 100% compliant Anki `.apkg` packages containing SQLite databases (`col`, `notes`, `cards`), `media` mappings, and embedded high-resolution WebP slide images.
+  - Native note types: `Lecture2Markdown - Active Recall` (with collapsible slide context on back) and `Lecture2Markdown - Image Occlusion`.
+  - 1-Click "In Anki öffnen" directly launches the default Anki installation across macOS and Windows with the generated `.apkg` package.
+  - Optional AnkiConnect sync (`localhost:8765`) preserved as 1-click alternative.
+- **🖥️ Integrated Flashcard Inspector Tab (`FlashcardInspectorTab.tsx`)**:
+  - Replaced isolated export modals with a first-class segmented control view: `[ 📝 Markdown | 🔀 Split-Screen | 🃏 Lernkarten (count) ]`.
+  - Slide-synchronized view: left side displays the PDF slide via Mozilla PDF.js, right side provides editable flashcards for that slide.
+  - Card type filters (Definitions, Cloze deletions, LaTeX Formulas, Image Occlusion), inline front/back editing, card toggling, and addition/deletion.
+- **🖼️ Visual Image Occlusion Builder (`ImageOcclusionCanvas.tsx`)**:
+  - Interactive SVG/Canvas overlay directly over the rendered PDF slide canvas.
+  - Draw custom rectangular occlusion masks over complex diagrams, anatomical illustrations, and architectural schematics.
+  - Supports "Hide One, Guess One" and "Hide All, Guess One" mask modes with direct native `.apkg` export.
+- **🔍 Interactive Multi-Slide History Hover Preview**:
+  - Hovering over entries in the History Sidebar reveals an interactive flyout that persists when moving the mouse into the preview card (300 ms close grace period + hit-test bridge).
+  - Displays Slide 1, Slide 2, and subsequent slides in a smooth, scrollable container (`overscroll-contain`).
+  - Includes quick "Öffnen" button in the preview header to immediately load the selected document.
+
+### Improved & Fixed
+- **📂 Multi-File Batch Queue Usability**:
+  - Batch queue remains persistently visible during conversion so students can monitor overall progress across multiple files.
+  - Real-time pipeline status (`Wird konvertiert (3/40)` and `In Warteschlange`) is visible directly within the History Sidebar.
+  - Pending items can be individually deleted from the queue even while conversion is actively running.
+  - Completed batch rows are directly clickable anywhere on the card to open their detail view.
+  - "Zurück zur Batch-Übersicht" button automatically hides once all documents in the batch have finished.
+- **🛡️ Deactivation of Automatic Background File Saving**:
+  - Completely stopped writing automatic `.md` files into the source PDF folder in the background to prevent cluttering downloads, cloud sync folders (Dropbox, OneDrive, iCloud), or read-only network shares.
+  - Files are now persisted to disk only when explicitly chosen via the "Speichern" button.
+- **🏗️ Rust Backend & Frontend Modularization**:
+  - Refactored monolithic `main.rs` into specialized command modules under `commands/`: `transcription.rs`, `fs.rs`, `export.rs`, `keys.rs`, `cache.rs`, `pdf.rs`.
+  - Extracted modular subcomponents for the flashcard inspector under `components/flashcards/` (`FlashcardHeader.tsx`, `FlashcardList.tsx`, `FlashcardSlideViewer.tsx`, `OcclusionToolbar.tsx`).
+
 ## [1.5.3] - 2026-09-04 "anki-export-and-base64-fix"
 
 ### Fixed

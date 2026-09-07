@@ -30,9 +30,12 @@ https://github.com/user-attachments/assets/9d2eef38-209f-44ea-a1a8-a077e3f6b167
 ## ✨ Features
 
 - 🌐 **Full Internationalization (i18n)**: Seamless 1-click toggle between **German 🇩🇪** and **English 🇬🇧** with automatic OS language detection.
+- 🃏 **Native Rust `.apkg` Deck Engine & 1-Click Anki Import**: Generates 100% compliant `.apkg` packages with SQLite databases (`col`, `notes`, `cards`), custom Active Recall note templates with collapsible slide context, and embedded slide images without Python or AnkiConnect dependencies.
+- 🖥️ **Integrated Flashcard Inspector & Split-Screen View**: First-class segmented control tab (`[ 📝 Markdown | 🔀 Split-Screen | 🃏 Lernkarten ]`) with slide-synchronized card editing, type filters (definitions, cloze deletions, LaTeX formulas), and 1-click launch in Anki.
+- 🖼️ **Visual Image Occlusion Builder**: Interactive SVG mask editor directly over lecture diagrams and anatomy schematics, supporting "Hide One" and "Hide All" modes with native `.apkg` export.
+- 🔍 **Interactive Multi-Slide History Hover Preview**: Smooth hover flyout over history entries that persists when moving the cursor into the preview, letting students scroll through Slide 1, Slide 2, and beyond before opening.
 - ⚡ **Spotlight Quick-Drop Widget (`⌘ + ⇧ + L` / `Ctrl + Shift + L`)**: Convert lectures from anywhere on your system without switching windows — drops the result directly as an attached document into your clipboard for instant `⌘ + V` pasting into ChatGPT & Gemini.
 - 🖥️ **Synchronized Split-Screen View (Mozilla PDF.js)**: 100% zero-config client-side slide canvas viewer synchronized 1:1 with extracted Markdown notes (requires **0 Python** or external dependencies on student machines).
-- 🃏 **1-Click Anki Deck Export**: Automatically generates high-quality Anki flashcard decks (`.txt` TSV) containing definitions, formulas with KaTeX math, and key takeaways.
 - 📁 **Direct-Drag & Native OS Clipboard**: Copy lectures as genuine file descriptors (`public.file-url`) to attach them cleanly as uploaded files in ChatGPT, Gemini, and Claude.
 - 🌐 **Multi-Provider Support**: Choose between 4 leading multimodal AI providers:
   - **OpenAI**: `gpt-4o` & `gpt-4o-mini` (with adaptive detail tiling)

@@ -12,15 +12,33 @@ lecture2markdown/
 │   ├── src/                          # React + TypeScript Frontend
 │   │   ├── components/
 │   │   │   ├── ApiKeyModal.tsx       # Multi-Provider API-Key & Cache-Verwaltung
+│   │   │   ├── BatchQueue.tsx        # Multi-File Batch-Warteschlange mit Seitenbereichs-Filtern
 │   │   │   ├── Dropzone.tsx          # Drag & Drop PDF Uploader
-│   │   │   ├── HistorySidebar.tsx    # Verlaufs-Sidebar mit Live-In-Progress-Badge
-│   │   │   ├── MarkdownPreview.tsx   # Live-Markdown-Editor & Export-Dialoge
-│   │   │   └── ProgressDashboard.tsx # Echtzeit-Fortschritt, Kostenrechner & Abbrechen-Button
-│   │   └── App.tsx                   # Hauptkomponente & Tauri Event-Listener
+│   │   │   ├── FlashcardInspectorTab.tsx # Slide-synchronisierter Lernkarten-Editor
+│   │   │   ├── flashcards/           # Subkomponenten für Lernkarten-Inspektor
+│   │   │   │   ├── FlashcardHeader.tsx
+│   │   │   │   ├── FlashcardList.tsx
+│   │   │   │   ├── FlashcardSlideViewer.tsx
+│   │   │   │   └── OcclusionToolbar.tsx
+│   │   │   ├── HistorySidebar.tsx    # Verlaufs-Sidebar mit interaktiver Multi-Slide-Hover-Vorschau
+│   │   │   ├── ImageOcclusionCanvas.tsx # Visueller Image-Occlusion Masken-Editor
+│   │   │   ├── MarkdownPreview.tsx   # Live-Markdown & Split-Screen Viewer
+│   │   │   ├── ProgressDashboard.tsx # Echtzeit-Fortschritt & Kostenrechner
+│   │   │   └── QuickDropOverlay.tsx  # Spotlight-inspiriertes Schnell-Drop-Overlay
+│   │   └── App.tsx                   # Hauptkomponente & State-Management
 │   └── src-tauri/src/                # Nativer Pure-Rust Core
-│       ├── main.rs                   # App-Einstiegspunkt, State, Concurrency & Commands
+│       ├── main.rs                   # App-Einstiegspunkt, State & IPC-Setup
+│       ├── anki_apkg.rs              # Native Rust .apkg Deck-Engine (SQLite col/notes/cards, zip, WebP)
 │       ├── cache.rs                  # Content-Addressed SHA-256 Slide-Cache (180 Tage TTL)
 │       ├── pdf.rs                    # In-Memory WebP Renderer & Smart Visual Heuristic
+│       ├── commands/                 # Modulare Tauri IPC Command Handler
+│       │   ├── mod.rs
+│       │   ├── transcription.rs      # LLM-Konvertierung & Cancellation
+│       │   ├── export.rs             # .apkg & TSV Native Export Handlers
+│       │   ├── fs.rs                 # Native Datei-I/O & Clipboard Hand-off
+│       │   ├── keys.rs               # Sichere API-Key Persistierung
+│       │   ├── cache.rs              # Cache-Statistiken & Bereinigung
+│       │   └── pdf.rs                # PDF-Rendering IPC
 │       └── providers/                # Native Multi-Provider API Clients
 │           ├── mod.rs                # BaseProvider Trait & System-Prompts
 │           ├── openai.rs             # OpenAI Client (gpt-4o & gpt-4o-mini, adaptive Tiling)
