@@ -32,7 +32,7 @@ jobs:
 
       - name: Python Code Security Scan (Bandit)
         run: |
-          uvx bandit -r lecture2md.py
+          uvx bandit -r lecture2md.py l2m_core/
 
       - name: Dependency Security Audit (pip-audit)
         run: |
@@ -82,11 +82,44 @@ jobs:
 
       - name: Setup Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin' || '' }}
+
+      - name: Rust Cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './l2m-gui/src-tauri -> target'
 
       - name: Install Frontend Dependencies
         run: |
           cd l2m-gui
           bun install
+
+      - name: Run Frontend Unit Tests
+        run: |
+          cd l2m-gui
+          bun test
+
+      - name: Extract Release Notes from CHANGELOG.md
+        shell: bash
+        run: |
+          TAG="${{ github.ref_name }}"
+          VERSION="${TAG#v}"
+          python3 -c "
+          import re
+          version = '${VERSION}'
+          with open('CHANGELOG.md', 'r', encoding='utf-8') as f:
+              content = f.read()
+          pattern = rf'## \[{re.escape(version)}\][^\n]*\n([\s\S]*?)(?=\n## \[|\Z)'
+          match = re.search(pattern, content)
+          notes = match.group(1).strip() if match else 'See CHANGELOG.md for release details.'
+          with open('release_notes.md', 'w', encoding='utf-8') as out:
+              out.write(notes)
+          "
+          echo "RELEASE_NOTES<<EOF" >> $GITHUB_ENV
+          cat release_notes.md >> $GITHUB_ENV
+          echo "" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
 
       - name: Build Tauri Desktop App (.msi / .dmg)
         uses: tauri-apps/tauri-action@v0
@@ -96,8 +129,9 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: './l2m-gui'
+          args: ${{ matrix.args }}
           tagName: ${{ github.ref_name }}
           releaseName: 'Lecture2Markdown ${{ github.ref_name }}'
-          releaseBody: 'See CHANGELOG.md for release details.'
+          releaseBody: ${{ env.RELEASE_NOTES }}
           releaseDraft: false
           prerelease: false

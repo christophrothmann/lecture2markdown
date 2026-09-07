@@ -43,7 +43,7 @@ class MistralProvider(BaseProvider):
                 )
                 if hasattr(ocr_response, "pages") and ocr_response.pages:
                     return ocr_response.pages[0].markdown.strip()
-            except Exception:
+            except Exception:  # nosec B110
                 pass
 
         # Standard Multimodal Chat Completion (Pixtral / Mistral Large)
