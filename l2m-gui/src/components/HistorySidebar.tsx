@@ -11,6 +11,7 @@ interface HistorySidebarProps {
   items: HistoryItem[];
   queueItems?: BatchQueueItem[];
   selectedItemId?: string | null;
+  isOpen?: boolean;
   onSelect: (item: HistoryItem) => void | Promise<void>;
   onClear: () => void;
   onDeleteItems?: (itemIds: string[]) => void;
@@ -27,6 +28,7 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
   items,
   queueItems,
   selectedItemId,
+  isOpen,
   onSelect,
   onClear,
   onDeleteItems,
@@ -74,6 +76,15 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
     }
   };
 
+  const forceClosePreview = () => {
+    if (hoverTimerRef.current) {
+      clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+    cancelCloseTimer();
+    setPreviewInfo(null);
+  };
+
   const scheduleClosePreview = (delay = 300) => {
     cancelCloseTimer();
     closeTimerRef.current = setTimeout(() => {
@@ -81,6 +92,13 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
       closeTimerRef.current = null;
     }, delay);
   };
+
+  // Force close preview immediately whenever the sidebar drawer closes
+  useEffect(() => {
+    if (isOpen === false) {
+      forceClosePreview();
+    }
+  }, [isOpen]);
 
   // Dynamically clamp preview card position with generous bottom margin (56px) directly via DOM style (no re-render loop)
   useLayoutEffect(() => {
@@ -220,7 +238,7 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
   };
 
   const handleItemMouseEnter = (e: React.MouseEvent<HTMLDivElement>, item: HistoryItem) => {
-    if (isSelectMode || item.status === 'processing') return;
+    if (isOpen === false || isSelectMode || item.status === 'processing') return;
 
     cancelCloseTimer();
 
@@ -339,6 +357,7 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
   };
 
   const handlePreviewMouseEnter = () => {
+    if (isOpen === false) return;
     cancelCloseTimer();
   };
 
@@ -411,7 +430,10 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
 
             {onClose && (
               <button
-                onClick={onClose}
+                onClick={() => {
+                  forceClosePreview();
+                  onClose();
+                }}
                 className="text-slate-400 hover:text-slate-200 p-1 hover:bg-surface-hover rounded-lg transition cursor-pointer"
                 title={t('common.close', { defaultValue: 'Schließen' })}
               >
@@ -492,6 +514,7 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
                   <div
                     key={`queue-${qItem.id}`}
                     onClick={() => {
+                      forceClosePreview();
                       if (onOpenBatchQueue) {
                         onOpenBatchQueue();
                       }
@@ -559,6 +582,7 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
                     if (isSelectMode) {
                       handleToggleItemSelect(item.id);
                     } else {
+                      forceClosePreview();
                       onSelect(item);
                     }
                   }}
@@ -690,8 +714,7 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
                 <button
                   type="button"
                   onClick={() => {
-                    cancelCloseTimer();
-                    setPreviewInfo(null);
+                    forceClosePreview();
                     onSelect(previewInfo.item);
                   }}
                   className="px-2.5 py-1 bg-accent hover:bg-accent-hover text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-sm shadow-accent/20 shrink-0"

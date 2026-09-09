@@ -747,6 +747,7 @@ export function App() {
           items={history}
           queueItems={queue}
           selectedItemId={selectedHistoryId}
+          isOpen={isHistoryOpen}
           onSelect={async (item) => {
             setSelectedHistoryId(item.id);
             setPreviewFileName(item.fileName.replace('.pdf', '.md'));
