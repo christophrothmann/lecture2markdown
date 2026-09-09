@@ -6,6 +6,7 @@ except ImportError:
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 from ..config import PROVIDER_MODELS, PROVIDER_MISTRAL
 from ..security import get_system_prompt
+from ..pdf import detect_mime_type
 from .base import BaseProvider
 
 class MistralProvider(BaseProvider):
@@ -30,6 +31,7 @@ class MistralProvider(BaseProvider):
             "Task: Transcribe ALL text, bullet points, numbered lists, formulas, and diagrams visible on this lecture slide image into structured Markdown. "
             "Do NOT summarize, condense, or omit any details. Transcribe every learning item verbatim in the slide's language."
         )
+        mime = detect_mime_type(base64_image)
         
         # If model is mistral-ocr-latest and OCR endpoint is available
         if model == "mistral-ocr-latest" and hasattr(self.client, "ocr"):
@@ -38,7 +40,7 @@ class MistralProvider(BaseProvider):
                     model="mistral-ocr-latest",
                     document={
                         "type": "image_url",
-                        "image_url": f"data:image/png;base64,{base64_image}"
+                        "image_url": f"data:{mime};base64,{base64_image}"
                     }
                 )
                 if hasattr(ocr_response, "pages") and ocr_response.pages:
@@ -56,7 +58,7 @@ class MistralProvider(BaseProvider):
                     "role": "user",
                     "content": [
                         {"type": "text", "text": user_prompt},
-                        {"type": "image_url", "image_url": f"data:image/png;base64,{base64_image}"}
+                        {"type": "image_url", "image_url": f"data:{mime};base64,{base64_image}"}
                     ]
                 }
             ],

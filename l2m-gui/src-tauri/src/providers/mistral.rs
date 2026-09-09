@@ -66,10 +66,11 @@ impl BaseProvider for MistralProvider {
         let mut attempts = 0;
         let max_attempts = 15;
 
+        let mime = super::detect_mime_type(webp_base64);
         let image_url = if webp_base64.starts_with("data:") {
             webp_base64.to_string()
         } else {
-            format!("data:image/jpeg;base64,{}", webp_base64)
+            format!("data:{};base64,{}", mime, webp_base64)
         };
 
         // 1. First try dedicated Mistral Document OCR endpoint if visual

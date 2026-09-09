@@ -242,6 +242,9 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
       // Check cache first for 0ms response
       if (cacheRef.current.has(item.id)) {
         const cached = cacheRef.current.get(item.id)!;
+        // Refresh position in Map for LRU order
+        cacheRef.current.delete(item.id);
+        cacheRef.current.set(item.id, cached);
         setPreviewInfo({
           item,
           title: cached.title,
@@ -301,6 +304,12 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
         }
 
         const resolved = { title, slides: previewSlides, totalSlides };
+        // Enforce LRU cap of 50 items to keep memory footprint minimal
+        while (cacheRef.current.size >= 50) {
+          const oldestKey = cacheRef.current.keys().next().value;
+          if (oldestKey) cacheRef.current.delete(oldestKey);
+          else break;
+        }
         cacheRef.current.set(item.id, resolved);
 
         setPreviewInfo((current) => {

@@ -96,7 +96,7 @@ impl BaseProvider for ClaudeProvider {
                                 "type": "image",
                                 "source": {
                                     "type": "base64",
-                                    "media_type": "image/jpeg",
+                                    "media_type": super::detect_mime_type(clean_base64),
                                     "data": clean_base64
                                 }
                             },

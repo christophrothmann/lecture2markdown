@@ -107,7 +107,7 @@ impl BaseProvider for GeminiProvider {
                         "parts": [
                             {
                                 "inline_data": {
-                                    "mime_type": "image/jpeg",
+                                    "mime_type": super::detect_mime_type(clean_base64),
                                     "data": clean_base64
                                 }
                             },

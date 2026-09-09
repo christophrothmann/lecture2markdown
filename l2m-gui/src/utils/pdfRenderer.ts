@@ -10,12 +10,30 @@ export interface LoadedPdf {
   numPages: number;
 }
 
-// In-memory cache for loaded PDF documents
+// In-memory cache for loaded PDF documents with LRU eviction (cap at 2 to limit worker RAM)
+const MAX_CACHED_PDFS = 2;
 const pdfDocCache = new Map<string, LoadedPdf>();
+
+export function clearPdfDocCache(exceptPath?: string): void {
+  for (const [path, loaded] of Array.from(pdfDocCache.entries())) {
+    if (!exceptPath || path !== exceptPath) {
+      try {
+        loaded.doc.destroy();
+      } catch {
+        // ignore
+      }
+      pdfDocCache.delete(path);
+    }
+  }
+}
 
 export async function loadPdfDocument(filePath: string): Promise<LoadedPdf> {
   if (pdfDocCache.has(filePath)) {
-    return pdfDocCache.get(filePath)!;
+    const existing = pdfDocCache.get(filePath)!;
+    // Mark as most recently used in Map iteration order
+    pdfDocCache.delete(filePath);
+    pdfDocCache.set(filePath, existing);
+    return existing;
   }
 
   // Load raw binary bytes from filesystem via Rust (zero-copy binary IPC)
@@ -36,6 +54,24 @@ export async function loadPdfDocument(filePath: string): Promise<LoadedPdf> {
     doc,
     numPages: doc.numPages,
   };
+
+  // Evict least recently used PDF if cache limit reached
+  while (pdfDocCache.size >= MAX_CACHED_PDFS) {
+    const oldestKey = pdfDocCache.keys().next().value;
+    if (oldestKey) {
+      const oldest = pdfDocCache.get(oldestKey);
+      if (oldest) {
+        try {
+          oldest.doc.destroy();
+        } catch {
+          // ignore
+        }
+      }
+      pdfDocCache.delete(oldestKey);
+    } else {
+      break;
+    }
+  }
 
   pdfDocCache.set(filePath, result);
   return result;
@@ -72,18 +108,19 @@ export async function renderSlideToCanvas(
 }
 
 /**
- * Renders a specific slide to a base64 JPEG / WebP / PNG data URL.
+ * Renders a specific slide to a base64 WebP / JPEG / PNG data URL.
+ * Defaults to WebP quality 0.82 with 1600px max width for optimal speed and payload compression.
  */
 export async function renderSlideToDataUrl(
   doc: pdfjsLib.PDFDocumentProxy,
   pageNumber: number,
-  format: 'image/jpeg' | 'image/webp' | 'image/png' = 'image/jpeg',
-  quality: number = 0.85
+  format: 'image/jpeg' | 'image/webp' | 'image/png' = 'image/webp',
+  quality: number = 0.82
 ): Promise<string> {
   const page = await doc.getPage(pageNumber);
   const baseViewport = page.getViewport({ scale: 1.0 });
 
-  const targetWidth = Math.min(2048, Math.max(800, baseViewport.width * 1.5));
+  const targetWidth = Math.min(1600, Math.max(800, baseViewport.width * 1.5));
   const scale = targetWidth / baseViewport.width;
   const viewport = page.getViewport({ scale });
 
@@ -94,7 +131,7 @@ export async function renderSlideToDataUrl(
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Canvas context could not be created');
 
-  // Fill crisp white background so transparent PDF backgrounds don't render black in JPEG
+  // Fill crisp white background so transparent PDF backgrounds don't render black
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -107,7 +144,7 @@ export async function renderSlideToDataUrl(
 }
 
 /**
- * Extracts and renders all slides from a PDF as base64 images (100% Zero-Config client-side).
+ * Extracts and renders all slides from a PDF as base64 WebP images (100% Zero-Config client-side).
  */
 export async function extractPdfSlidesWebp(
   filePath: string,
@@ -124,7 +161,7 @@ export async function extractPdfSlidesWebp(
   let done = 0;
 
   for (let pageNum = sPage; pageNum <= ePage; pageNum++) {
-    const dataUrl = await renderSlideToDataUrl(doc, pageNum, 'image/jpeg', 0.85);
+    const dataUrl = await renderSlideToDataUrl(doc, pageNum, 'image/webp', 0.82);
     const commaIdx = dataUrl.indexOf(',');
     const base64Data = commaIdx !== -1 ? dataUrl.slice(commaIdx + 1) : dataUrl;
 
@@ -183,8 +220,8 @@ export async function streamTranscribePdfSlides(
     while (nextIdx < pageNumbers.length) {
       const pageNum = pageNumbers[nextIdx++];
       try {
-        // 1. Render single slide on demand
-        const dataUrl = await renderSlideToDataUrl(doc, pageNum, 'image/jpeg', 0.85);
+        // 1. Render single slide on demand (WebP 0.82)
+        const dataUrl = await renderSlideToDataUrl(doc, pageNum, 'image/webp', 0.82);
         const commaIdx = dataUrl.indexOf(',');
         const base64Data = commaIdx !== -1 ? dataUrl.slice(commaIdx + 1) : dataUrl;
 

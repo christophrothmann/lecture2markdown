@@ -46,7 +46,18 @@ def render_page_to_base64(page: fitz.Page, dpi: int = 200) -> str:
 
     transformation_matrix = fitz.Matrix(zoom_factor, zoom_factor)
     pixmap = page.get_pixmap(matrix=transformation_matrix)
-    return base64.b64encode(pixmap.tobytes("png")).decode("utf-8")
+    # Output optimized JPEG quality 85 for ~70% reduction in base64 payload
+    return base64.b64encode(pixmap.tobytes("jpg", jpg_quality=85)).decode("utf-8")
+
+def detect_mime_type(base64_data: str) -> str:
+    clean = base64_data.strip()
+    if clean.startswith("/9j/"):
+        return "image/jpeg"
+    if clean.startswith("UklGR"):
+        return "image/webp"
+    if clean.startswith("iVBORw0"):
+        return "image/png"
+    return "image/jpeg"
 
 def is_page_visual(page: fitz.Page) -> bool:
     rect = page.rect

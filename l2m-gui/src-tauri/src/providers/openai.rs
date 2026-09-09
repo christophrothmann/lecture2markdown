@@ -81,10 +81,11 @@ impl BaseProvider for OpenAIProvider {
         };
 
         let user_prompt = get_user_prompt(page_number);
+        let mime = super::detect_mime_type(webp_base64);
         let image_url = if webp_base64.starts_with("data:") {
             webp_base64.to_string()
         } else {
-            format!("data:image/jpeg;base64,{}", webp_base64)
+            format!("data:{};base64,{}", mime, webp_base64)
         };
         let mut detail_level = if is_visual { "high" } else { "low" };
 

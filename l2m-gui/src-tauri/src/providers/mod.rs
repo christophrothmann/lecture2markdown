@@ -88,6 +88,24 @@ pub trait BaseProvider: Send + Sync {
     async fn validate_key(&self) -> Result<bool, String>;
 }
 
+pub fn detect_mime_type(base64_data: &str) -> &'static str {
+    let clean = if let Some(idx) = base64_data.find(',') {
+        &base64_data[idx + 1..]
+    } else {
+        base64_data
+    };
+    let trimmed = clean.trim();
+    if trimmed.starts_with("/9j/") {
+        "image/jpeg"
+    } else if trimmed.starts_with("UklGR") {
+        "image/webp"
+    } else if trimmed.starts_with("iVBORw0KGgo") {
+        "image/png"
+    } else {
+        "image/jpeg"
+    }
+}
+
 pub fn get_provider(provider_name: &str, api_key: &str) -> Box<dyn BaseProvider> {
     match provider_name.to_lowercase().as_str() {
         "google" => Box::new(gemini::GeminiProvider::new(api_key)),

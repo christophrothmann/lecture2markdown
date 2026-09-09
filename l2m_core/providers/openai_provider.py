@@ -2,6 +2,7 @@ from openai import OpenAI
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 from ..config import PROVIDER_MODELS, PROVIDER_OPENAI
 from ..security import get_system_prompt
+from ..pdf import detect_mime_type
 from .base import BaseProvider
 
 class OpenAIProvider(BaseProvider):
@@ -26,6 +27,7 @@ class OpenAIProvider(BaseProvider):
             "Task: Transcribe ALL text, bullet points, numbered lists, formulas, and diagrams visible on this lecture slide image into structured Markdown. "
             "Do NOT summarize, condense, or omit any details. Transcribe every learning item verbatim in the slide's language."
         )
+        mime = detect_mime_type(base64_image)
         response = self.client.chat.completions.create(
             model=model,
             messages=[
@@ -34,7 +36,7 @@ class OpenAIProvider(BaseProvider):
                     "role": "user",
                     "content": [
                         {"type": "text", "text": user_prompt},
-                        {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{base64_image}"}}
+                        {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{base64_image}"}}
                     ]
                 }
             ],

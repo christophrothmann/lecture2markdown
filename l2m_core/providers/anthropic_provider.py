@@ -2,6 +2,7 @@ from anthropic import Anthropic
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 from ..config import PROVIDER_MODELS, PROVIDER_ANTHROPIC
 from ..security import get_system_prompt
+from ..pdf import detect_mime_type
 from .base import BaseProvider
 
 class AnthropicProvider(BaseProvider):
@@ -26,7 +27,7 @@ class AnthropicProvider(BaseProvider):
             "Task: Transcribe ALL text, bullet points, numbered lists, formulas, and diagrams visible on this lecture slide image into structured Markdown. "
             "Do NOT summarize, condense, or omit any details. Transcribe every learning item verbatim in the slide's language."
         )
-        
+        mime = detect_mime_type(base64_image)
         response = self.client.messages.create(
             model=model,
             max_tokens=4096,
@@ -40,7 +41,7 @@ class AnthropicProvider(BaseProvider):
                             "type": "image",
                             "source": {
                                 "type": "base64",
-                                "media_type": "image/png",
+                                "media_type": mime,
                                 "data": base64_image
                             }
                         },

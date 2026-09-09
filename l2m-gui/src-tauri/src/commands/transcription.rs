@@ -299,7 +299,12 @@ pub async fn transcribe_slides_native(
         let total_pages_val = total_selected_pages;
         let is_visual_val = slide.is_visual.unwrap_or(true);
         let page_num = slide.page_number;
-        let base64_clean = slide.webp_base64.trim().strip_prefix("data:image/webp;base64,").unwrap_or(&slide.webp_base64).to_string();
+        let base64_raw = slide.webp_base64.trim();
+        let base64_clean = if let Some(idx) = base64_raw.find(',') {
+            base64_raw[idx + 1..].to_string()
+        } else {
+            base64_raw.to_string()
+        };
 
         let task = tokio::spawn(async move {
             let _permit = sem_clone.acquire().await.unwrap();
@@ -308,10 +313,14 @@ pub async fn transcribe_slides_native(
                 return Err("Abgebrochen".to_string());
             }
 
-            // 1. Compute SHA-256 hash of slide image
+            // 1. Compute SHA-256 hash of binary slide image
+            use base64::Engine;
             use sha2::{Digest, Sha256};
+            let image_bytes = base64::engine::general_purpose::STANDARD
+                .decode(&base64_clean)
+                .unwrap_or_else(|_| base64_clean.as_bytes().to_vec());
             let mut hasher = Sha256::new();
-            hasher.update(base64_clean.as_bytes());
+            hasher.update(&image_bytes);
             let hash_bytes = hasher.finalize();
             let slide_hash: String = hash_bytes.iter().map(|b| format!("{:02x}", b)).collect();
 
@@ -428,16 +437,20 @@ pub async fn transcribe_single_slide_native(
     let chosen_provider = provider.unwrap_or_else(|| "openai".to_string()).to_lowercase();
     let prov = providers::get_provider(&chosen_provider, &api_key);
     let base64_raw = slide.webp_base64.trim();
-    let base64_clean = base64_raw
-        .strip_prefix("data:image/webp;base64,")
-        .or_else(|| base64_raw.strip_prefix("data:image/jpeg;base64,"))
-        .or_else(|| base64_raw.strip_prefix("data:image/png;base64,"))
-        .unwrap_or(base64_raw);
+    let base64_clean = if let Some(idx) = base64_raw.find(',') {
+        &base64_raw[idx + 1..]
+    } else {
+        base64_raw
+    };
 
-    // 1. Compute SHA-256 hash of slide image
+    // 1. Compute SHA-256 hash of binary slide image
+    use base64::Engine;
     use sha2::{Digest, Sha256};
+    let image_bytes = base64::engine::general_purpose::STANDARD
+        .decode(base64_clean)
+        .unwrap_or_else(|_| base64_clean.as_bytes().to_vec());
     let mut hasher = Sha256::new();
-    hasher.update(base64_clean.as_bytes());
+    hasher.update(&image_bytes);
     let hash_bytes = hasher.finalize();
     let slide_hash: String = hash_bytes.iter().map(|b| format!("{:02x}", b)).collect();
 

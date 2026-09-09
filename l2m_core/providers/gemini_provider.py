@@ -4,6 +4,7 @@ from google.genai import types
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 from ..config import PROVIDER_MODELS, PROVIDER_GOOGLE
 from ..security import get_system_prompt
+from ..pdf import detect_mime_type
 from .base import BaseProvider
 
 class GeminiProvider(BaseProvider):
@@ -24,6 +25,7 @@ class GeminiProvider(BaseProvider):
     )
     def _execute_api_call(self, model: str, base64_image: str, page_number: int) -> str:
         image_bytes = base64.b64decode(base64_image)
+        mime = detect_mime_type(base64_image)
         user_prompt = (
             f"<slide_metadata>\nSlide Number: {page_number}\n</slide_metadata>\n\n"
             "Task: Transcribe ALL text, bullet points, numbered lists, formulas, and diagrams visible on this lecture slide image into structured Markdown. "
@@ -33,7 +35,7 @@ class GeminiProvider(BaseProvider):
         response = self.client.models.generate_content(
             model=model,
             contents=[
-                types.Part.from_bytes(data=image_bytes, mime_type="image/png"),
+                types.Part.from_bytes(data=image_bytes, mime_type=mime),
                 user_prompt
             ],
             config=types.GenerateContentConfig(
