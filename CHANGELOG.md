@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.6.1] - 2026-09-10 "perf-compression-and-history-cleanup"
+
+### Added & Improved
+- **⚡ SQLite Slide-Cache with WAL Mode (`slide_cache.db`)**:
+  - Replaced the file-based `.l2m_slide_cache.json` with an atomic, thread-safe SQLite database (`slide_cache.db`) powered by `rusqlite`.
+  - Configured with `PRAGMA journal_mode = WAL;` and `PRAGMA synchronous = NORMAL;` to support parallel worker streams without race conditions.
+  - Automatic, non-destructive migration on first launch: existing entries in `.l2m_slide_cache.json` are seamlessly imported while leaving the JSON file intact on disk as a rollback safety net.
+  - Automatic LRU eviction capped at 2,000 entries and 180-day TTL cleanup on writes, with `VACUUM;` compaction support.
+- **📦 Client-Streaming WebP Compression & Dynamic Multi-Provider MIME Detection**:
+  - Standardized client-side slide rendering on WebP format with quality `0.82` and maximum dimension `1600px`, reducing network payload per slide by **~35–40%** while preserving pristine OCR accuracy.
+  - Implemented dynamic magic-byte MIME detection (`detect_mime_type`) in Rust (`providers/mod.rs`) and Python (`l2m_core/pdf.py`).
+  - Corrected all four vision providers (OpenAI, Anthropic Claude, Google Gemini, Mistral AI) to transmit precise MIME types, preventing API errors with strict providers like Claude and Gemini.
+- **🐍 Python CLI Payload Optimization (`l2m_core/pdf.py`)**:
+  - Switched PyMuPDF slide rasterization from uncompressed PNG to JPEG quality `85` (`pixmap.tobytes("jpg", jpg_quality=85)`), reducing Base64 upload payload by **~70%**.
+- **🧠 Bounded Memory Management (LRU & Explicit Teardown)**:
+  - `pdfDocCache` in `pdfRenderer.ts` now enforces an LRU limit of **2 loaded PDF documents**; evicted documents explicitly call `doc.destroy()` to immediately release worker threads and memory buffers.
+  - History hover preview cache (`cacheRef`) is now bounded to an LRU cap of **50 entries**.
+
+### Fixed
+- **🎯 Immediate History Hover Preview Cleanup on Item Selection**:
+  - Fixed an issue where selecting a history entry left the floating hover preview visible over the opened detail view.
+  - Added `forceClosePreview()` to immediately abort active hover/close timers and destroy the preview state on click.
+  - Bound the preview lifecycle directly to the sidebar drawer state (`isOpen={isHistoryOpen}`), guaranteeing instant teardown whenever the sidebar closes.
+
 ## [1.6.0] - 2026-09-07 "native-apkg-and-learning-suite"
 
 ### Added

@@ -29,7 +29,7 @@ lecture2markdown/
 │   └── src-tauri/src/                # Nativer Pure-Rust Core
 │       ├── main.rs                   # App-Einstiegspunkt, State & IPC-Setup
 │       ├── anki_apkg.rs              # Native Rust .apkg Deck-Engine (SQLite col/notes/cards, zip, WebP)
-│       ├── cache.rs                  # Content-Addressed SHA-256 Slide-Cache (180 Tage TTL)
+│       ├── cache.rs                  # Content-Addressed SHA-256 SQLite Slide-Cache (WAL-Modus, 180 Tage TTL)
 │       ├── pdf.rs                    # In-Memory WebP Renderer & Smart Visual Heuristic
 │       ├── commands/                 # Modulare Tauri IPC Command Handler
 │       │   ├── mod.rs
@@ -70,7 +70,7 @@ lecture2markdown/
 ## 1. Nativer Pure-Rust Core (`l2m-gui/src-tauri/src/`)
 
 - **`main.rs`**: Verwaltet den Anwendungszustand (`AppState`), steuert providerspezifisch kalibrierte Concurrency-Semaphoren, streamt Echtzeit-Events an die UI und bietet Abbruch-Handler (`cancel_conversion_native`).
-- **`cache.rs`**: Implementiert einen **Content-Addressed Slide Cache**. Bilddaten werden deterministisch per SHA-256 gehasht. Identische Folien werden sofort in 0 ms ohne API-Kosten aus dem Cache geladen (TTL: 180 Tage, LRU-Eviction).
+- **`cache.rs`**: Implementiert einen **Content-Addressed SQLite Slide Cache (`slide_cache.db`)**. Bilddaten werden deterministisch per SHA-256 gehasht und in einer atomaren SQLite-Datenbank im WAL-Modus verwaltet. Identische Folien werden sofort in 0 ms ohne API-Kosten aus dem Cache geladen (TTL: 180 Tage, LRU-Eviction bei 2.000 Einträgen, automatische Migration von Legacy-JSON).
 - **`pdf.rs`**: High-Speed In-Memory PDF-Rendering direkt zu WebP-Puffern. Verhindert Festplatten-I/O und führt eine leichtgewichtige **Smart Visual Heuristic** (< 2 ms) zur Erkennung von echten Diagrammen vs. Textfolien durch.
 - **`providers/`**:
   - **`openai.rs`**: Parallele async Requests mit adaptiver Kachelauflösung (`detail: low` vs `high`) für 4-fach schnellere Inferenz.
