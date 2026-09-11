@@ -13,11 +13,18 @@
   <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.10%2B-blue" alt="Python Version"></a>
   <a href="https://github.com/astral-sh/uv"><img src="https://img.shields.io/badge/package%20manager-uv-de5b43.svg" alt="Package Manager: uv"></a>
   <a href="https://tauri.app/"><img src="https://img.shields.io/badge/Desktop%20App-Tauri%20v2-24C8D8.svg?logo=tauri&logoColor=white" alt="Tauri v2"></a>
+  <img src="https://img.shields.io/badge/Status-Feature%20Complete%20%7C%20Maintenance%20Mode-brightgreen.svg" alt="Status: Feature Complete">
 </p>
 
 A high-performance tool designed to convert academic PDF lecture slides into clean, structured, and LLM-optimized Markdown using leading Multimodal Vision APIs (OpenAI, Gemini, Claude, Mistral).
 
 Specially engineered for students and researchers to upload lecture content into ChatGPT, Claude, Notion, or Obsidian with **zero hallucinations** and maximum context fidelity.
+
+> [!NOTE]
+> **Project Status: Feature-Complete & Production-Ready (Maintenance Mode)**  
+> `Lecture2Markdown` has reached its full intended scope and architectural maturity.
+> 
+> The project is now in **Active Maintenance Mode**: core features are locked to maintain high stability and avoid bloat. It will continue to receive routine dependency bumps, security patches, and updates for newly released vision LLM models. If you have any suggestions or feature requests, please open an issue or leave a comment in the [discussions](https://github.com/christophrothmann/lecture2markdown/discussions).
 
 ---
 
