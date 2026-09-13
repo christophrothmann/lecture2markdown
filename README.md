@@ -30,7 +30,7 @@ Specially engineered for students and researchers to upload lecture content into
 
 ## 🎬 Demo
 
-https://github.com/user-attachments/assets/eb16e66c-eee7-4f86-8750-1f25c9ed254d
+[https://github.com/user-attachments/assets/eb16e66c-eee7-4f86-8750-1f25c9ed254d](https://github.com/user-attachments/assets/144ced78-cad3-4265-8d6b-7222da484bcf)
 
 ---
 
