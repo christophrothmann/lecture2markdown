@@ -209,7 +209,7 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
 
   const handleCopyAsFile = async () => {
     try {
-      const cleanName = fileName ? fileName.replace(/\.pdf$/i, '') : t('flashcards.lecture_default');
+      const cleanName = fileName ? fileName.replace(/\.(pdf|md)$/i, '') : t('flashcards.lecture_default');
       await invoke('copy_file_to_clipboard_native', {
         fileName: `${cleanName}.md`,
         content,

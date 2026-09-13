@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.6.2] - 2026-09-13 "native-clipboard-crossplatform"
+
+### Fixed & Improved
+- **📋 Native Dual-Format Cocoa Pasteboard Bridge on macOS (`macos_clipboard.m`)**:
+  - Replaced the short-lived `osascript` subprocess with a native Objective-C Cocoa bridge compiled directly via `cc` and linked against `AppKit`.
+  - Fixes clipboard loss on modern macOS (Sonoma / Sequoia) where `osascript` process exit immediately caused macOS `pboard` to purge lazy file URL promises.
+  - Registers both file representations (`public.file-url`, `NSFilenamesPboardType`) and full UTF-8 Markdown text (`public.utf8-plain-text`, `NSStringPboardType`) simultaneously via `[NSPasteboard writeObjects:]`.
+  - Guarantees seamless file attachments (file upload pill) in web apps and messengers (ChatGPT, Claude, Gemini, Slack, Discord) while supporting direct Markdown text pasting in standard editors.
+- **🪟 Hardened Dual-Format Windows Clipboard Hand-off (`commands/fs.rs`)**:
+  - Upgraded Windows clipboard integration to `.NET System.Windows.Forms.DataObject` in STA mode, registering both FileDrop (`CF_HDROP`) and UTF-8 text (`CF_UNICODETEXT`).
+  - Switched to `-LiteralPath` with single-quote escaping to prevent PowerShell syntax and wildcard errors on paths containing brackets, apostrophes, or wildcards (e.g. `[CS101] Vorlesung.md`).
+  - Automatic fallback to `Set-Clipboard -LiteralPath` in restricted shell environments.
+- **🏷️ Clean Filename Stem Normalization**:
+  - Fixed duplicate extensions (`.md.md`) in `MarkdownPreview.tsx` and `QuickDropOverlay.tsx` by stripping both `.pdf` and `.md` prior to appending the file extension.
+
 ## [1.6.1] - 2026-09-10 "perf-compression-and-history-cleanup"
 
 ### Added & Improved

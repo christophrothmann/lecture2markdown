@@ -30,12 +30,13 @@ lecture2markdown/
 │       ├── main.rs                   # App-Einstiegspunkt, State & IPC-Setup
 │       ├── anki_apkg.rs              # Native Rust .apkg Deck-Engine (SQLite col/notes/cards, zip, WebP)
 │       ├── cache.rs                  # Content-Addressed SHA-256 SQLite Slide-Cache (WAL-Modus, 180 Tage TTL)
+│       ├── macos_clipboard.m         # Nativer Objective-C Cocoa Pasteboard Bridge (Duales Datei/Text-Format)
 │       ├── pdf.rs                    # In-Memory WebP Renderer & Smart Visual Heuristic
 │       ├── commands/                 # Modulare Tauri IPC Command Handler
 │       │   ├── mod.rs
 │       │   ├── transcription.rs      # LLM-Konvertierung & Cancellation
 │       │   ├── export.rs             # .apkg & TSV Native Export Handlers
-│       │   ├── fs.rs                 # Native Datei-I/O & Clipboard Hand-off
+│       │   ├── fs.rs                 # Native Datei-I/O & Cross-Platform Clipboard Hand-off
 │       │   ├── keys.rs               # Sichere API-Key Persistierung
 │       │   ├── cache.rs              # Cache-Statistiken & Bereinigung
 │       │   └── pdf.rs                # PDF-Rendering IPC

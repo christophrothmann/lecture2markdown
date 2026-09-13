@@ -149,7 +149,7 @@ export const QuickDropOverlay: React.FC<QuickDropOverlayProps> = ({
       );
 
       // Automatically copy markdown file descriptor to native clipboard
-      const cleanName = fileName.replace(/\.pdf$/i, '');
+      const cleanName = fileName.replace(/\.(pdf|md)$/i, '');
 
       // Copy to clipboard as native file object
       try {

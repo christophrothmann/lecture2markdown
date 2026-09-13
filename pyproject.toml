@@ -1,7 +1,7 @@
 [project]
 name = "lecture2markdown"
-version = "1.6.1"
-description = "Convert academic PDF lecture slides into structured Markdown using OpenAI Vision API & Hybrid Routing"
+version = "1.6.2"
+description = "High-performance CLI and SDK to convert lecture slide PDFs into structured, clean Markdown with AI vision models."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [

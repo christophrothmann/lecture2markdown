@@ -116,12 +116,22 @@ pub fn open_anki_import_native(deck_name: String, tsv_content: String) -> Result
     Ok(abs_path)
 }
 
+#[cfg(target_os = "macos")]
+extern "C" {
+    fn copy_file_and_text_to_pasteboard(
+        path: *const std::os::raw::c_char,
+        content: *const std::os::raw::c_char,
+    ) -> std::os::raw::c_int;
+}
+
 #[tauri::command]
 pub fn copy_file_to_clipboard_native(file_name: String, content: String) -> Result<String, String> {
-    let clean_name = if file_name.ends_with(".md") {
-        file_name
+    let raw_name = file_name.trim();
+    let clean_stem = raw_name.trim_end_matches(".md").trim_end_matches(".pdf").trim();
+    let clean_name = if clean_stem.is_empty() {
+        "Vorlesung.md".to_string()
     } else {
-        format!("{}.md", file_name)
+        format!("{}.md", clean_stem)
     };
 
     let temp_dir = std::env::temp_dir().join("lecture2markdown");
@@ -133,21 +143,40 @@ pub fn copy_file_to_clipboard_native(file_name: String, content: String) -> Resu
 
     #[cfg(target_os = "macos")]
     {
-        let script = format!(r#"set the clipboard to (POSIX file "{}")"#, abs_path);
-        let _ = std::process::Command::new("osascript")
-            .arg("-e")
-            .arg(&script)
-            .output();
+        use std::ffi::CString;
+        let c_path = CString::new(abs_path.clone()).map_err(|e| e.to_string())?;
+        let c_content = CString::new(content.clone()).map_err(|e| e.to_string())?;
+        let res = unsafe {
+            copy_file_and_text_to_pasteboard(c_path.as_ptr(), c_content.as_ptr())
+        };
+        if res != 0 {
+            return Err(format!("Fehler beim Kopieren in die macOS-Zwischenablage: Code {}", res));
+        }
     }
 
     #[cfg(target_os = "windows")]
     {
-        let ps_cmd = format!(r#"Set-Clipboard -Path '{}'"#, abs_path);
-        let _ = crate::pdf::create_hidden_command("powershell")
+        let escaped_path = abs_path.replace('\'', "''");
+        let ps_cmd = format!(
+            r#"Add-Type -AssemblyName System.Windows.Forms; $p = '{}'; $d = New-Object System.Windows.Forms.DataObject; $d.SetFileDropList(@($p)); $d.SetText([System.IO.File]::ReadAllText($p, [System.Text.Encoding]::UTF8)); [System.Windows.Forms.Clipboard]::SetDataObject($d, $true)"#,
+            escaped_path
+        );
+        let res = crate::pdf::create_hidden_command("powershell")
             .arg("-NoProfile")
+            .arg("-STA")
             .arg("-Command")
             .arg(&ps_cmd)
             .output();
+
+        // Fallback to Set-Clipboard with LiteralPath if System.Windows.Forms failed
+        if res.is_err() || !res.as_ref().unwrap().status.success() {
+            let fallback_cmd = format!(r#"Set-Clipboard -LiteralPath '{}'"#, escaped_path);
+            let _ = crate::pdf::create_hidden_command("powershell")
+                .arg("-NoProfile")
+                .arg("-Command")
+                .arg(&fallback_cmd)
+                .output();
+        }
     }
 
     #[cfg(target_os = "linux")]
@@ -167,4 +196,18 @@ pub fn copy_file_to_clipboard_native(file_name: String, content: String) -> Resu
     }
 
     Ok(abs_path)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_copy_file_to_clipboard_native() {
+        let res = copy_file_to_clipboard_native("TestLecture.pdf".to_string(), "# Hello".to_string());
+        assert!(res.is_ok());
+        let path = res.unwrap();
+        assert!(path.ends_with("TestLecture.md"));
+        assert!(std::path::Path::new(&path).exists());
+    }
 }

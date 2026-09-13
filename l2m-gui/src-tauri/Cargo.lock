@@ -2601,10 +2601,11 @@ dependencies = [
 
 [[package]]
 name = "l2m-gui"
-version = "1.6.1"
+version = "1.6.2"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
+ "cc",
  "futures-util",
  "image",
  "lopdf",
