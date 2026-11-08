@@ -1,6 +1,7 @@
 use std::path::Path;
 use std::process::Command;
 
+#[allow(dead_code)]
 pub struct RenderedSlide {
     pub page_number: usize,
     pub webp_base64: String,
@@ -21,7 +22,15 @@ pub fn create_hidden_command<P: AsRef<std::ffi::OsStr>>(program: P) -> Command {
     cmd
 }
 
-pub fn execute_python_code(script: &str, py_bin: Option<&Path>) -> Result<std::process::Output, String> {
+pub fn execute_python_code_with_args<I, S>(
+    script: &str,
+    args: I,
+    py_bin: Option<&Path>,
+) -> Result<std::process::Output, String>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<std::ffi::OsStr>,
+{
     if let Some(bin) = py_bin {
         let bin_name = bin.file_name().and_then(|n| n.to_str()).unwrap_or("");
         if bin_name == "uv" || bin_name == "uv.exe" {
@@ -34,12 +43,14 @@ pub fn execute_python_code(script: &str, py_bin: Option<&Path>) -> Result<std::p
                 .arg("python")
                 .arg("-c")
                 .arg(script)
+                .args(args)
                 .output()
                 .map_err(|e| format!("Fehler beim Ausführen von uv ({:?}): {}", bin, e));
         }
         return create_hidden_command(bin)
             .arg("-c")
             .arg(script)
+            .args(args)
             .output()
             .map_err(|e| format!("Fehler beim Ausführen von Python ({:?}): {}", bin, e));
     }
@@ -47,6 +58,7 @@ pub fn execute_python_code(script: &str, py_bin: Option<&Path>) -> Result<std::p
     create_hidden_command("python3")
         .arg("-c")
         .arg(script)
+        .args(args)
         .output()
         .map_err(|e| format!("Fehler beim Ausführen von python3: {}", e))
 }
@@ -59,13 +71,15 @@ pub fn render_pdf_slide_to_webp(
 ) -> Result<RenderedSlide, String> {
     let page_number = page_index + 1;
 
-    let script = format!(
-        r#"
-import fitz, base64, io, hashlib
+    let script = r#"
+import sys, fitz, base64, io, hashlib
 from PIL import Image
 
-doc = fitz.open(r'{}')
-page = doc[{}]
+pdf_path = sys.argv[1]
+page_index = int(sys.argv[2])
+
+doc = fitz.open(pdf_path)
+page = doc[page_index]
 rect = page.rect
 zoom = 200 / 72
 if rect.width * zoom > 4096 or rect.height * zoom > 4096:
@@ -95,12 +109,14 @@ is_vis = bool((img_count > 0 and text_len < 300) or math_count >= 4)
 doc.close()
 
 print(str(int(is_vis)) + ":::" + slide_hash + ":::" + base64.b64encode(raw_bytes).decode('utf-8'))
-"#,
-        pdf_path.display(),
-        page_index
-    );
+"#;
 
-    let output = execute_python_code(&script, py_bin)?;
+    let page_index_str = page_index.to_string();
+    let output = execute_python_code_with_args(
+        script,
+        [pdf_path.as_os_str(), page_index_str.as_ref()],
+        py_bin,
+    )?;
 
     if !output.status.success() {
         let err = String::from_utf8_lossy(&output.stderr);
@@ -141,17 +157,14 @@ pub fn get_pdf_page_count(pdf_path: &Path, py_bin: Option<&Path>) -> Result<usiz
     }
 
     // 2. Fallback to Python if lopdf encounters unusual encryption
-    let script = format!(
-        r#"
-import fitz
-doc = fitz.open(r'{}')
+    let script = r#"
+import sys, fitz
+doc = fitz.open(sys.argv[1])
 print(len(doc))
 doc.close()
-"#,
-        pdf_path.display()
-    );
+"#;
 
-    let output = execute_python_code(&script, py_bin)?;
+    let output = execute_python_code_with_args(script, [pdf_path.as_os_str()], py_bin)?;
 
     if !output.status.success() {
         let err = String::from_utf8_lossy(&output.stderr);

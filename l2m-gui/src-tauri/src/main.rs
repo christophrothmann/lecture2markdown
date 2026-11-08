@@ -48,8 +48,6 @@ fn main() {
             commands::get_slide_image_native,
             commands::read_file_binary_native,
             commands::read_text_file_native,
-            commands::convert_lecture_native,
-            commands::transcribe_slides_native,
             commands::transcribe_single_slide_native,
             commands::cancel_conversion_native,
             commands::save_text_file_native,

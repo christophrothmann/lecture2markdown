@@ -37,7 +37,7 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
   fileName,
   pdfPath,
   onSaveFile,
-  onNewConversion,
+  _onNewConversion,
   onDelete,
   onReturnToBatch,
   queueProgress,

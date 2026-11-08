@@ -46,48 +46,63 @@ pub fn get_legacy_json_path(app: &tauri::AppHandle) -> PathBuf {
     config_dir.join(".l2m_slide_cache.json")
 }
 
+static DB_INIT_ONCE: std::sync::Once = std::sync::Once::new();
+
 fn open_connection(app: &tauri::AppHandle) -> Result<Connection, String> {
     let db_path = get_cache_db_path(app);
     let conn = Connection::open(&db_path)
         .map_err(|e| format!("Fehler beim Öffnen der SQLite Cache-DB: {}", e))?;
 
-    conn.execute_batch(
-        "PRAGMA journal_mode = WAL;
-         PRAGMA synchronous = NORMAL;
-         CREATE TABLE IF NOT EXISTS slide_cache (
-             hash TEXT PRIMARY KEY,
-             markdown TEXT NOT NULL,
-             created_at INTEGER NOT NULL,
-             last_accessed INTEGER NOT NULL
-         );
-         CREATE INDEX IF NOT EXISTS idx_slide_cache_accessed ON slide_cache(last_accessed);
-         CREATE INDEX IF NOT EXISTS idx_slide_cache_created ON slide_cache(created_at);",
-    )
-    .map_err(|e| format!("Fehler beim Initialisieren der Cache-Tabellen: {}", e))?;
+    conn.busy_timeout(std::time::Duration::from_secs(5))
+        .map_err(|e| format!("Fehler beim Setzen von busy_timeout: {}", e))?;
 
-    // One-time automatic migration from legacy JSON file if DB is empty,
-    // keeping the JSON file intact as a backup/fallback as requested.
-    let count: i64 = conn
-        .query_row("SELECT COUNT(*) FROM slide_cache;", [], |r| r.get(0))
-        .unwrap_or(0);
+    let mut init_err = None;
+    DB_INIT_ONCE.call_once(|| {
+        let res = conn.execute_batch(
+            "PRAGMA journal_mode = WAL;
+             PRAGMA synchronous = NORMAL;
+             CREATE TABLE IF NOT EXISTS slide_cache (
+                 hash TEXT PRIMARY KEY,
+                 markdown TEXT NOT NULL,
+                 created_at INTEGER NOT NULL,
+                 last_accessed INTEGER NOT NULL
+             );
+             CREATE INDEX IF NOT EXISTS idx_slide_cache_accessed ON slide_cache(last_accessed);
+             CREATE INDEX IF NOT EXISTS idx_slide_cache_created ON slide_cache(created_at);",
+        );
+        if let Err(e) = res {
+            init_err = Some(format!("Fehler beim Initialisieren der Cache-Tabellen: {}", e));
+            return;
+        }
 
-    if count == 0 {
-        let legacy_path = get_legacy_json_path(app);
-        if legacy_path.exists() {
-            if let Ok(content) = fs::read_to_string(&legacy_path) {
-                if let Ok(store) = serde_json::from_str::<LegacySlideCacheStore>(&content) {
-                    if let Ok(tx) = conn.unchecked_transaction() {
-                        for (_, entry) in store.entries {
-                            let _ = tx.execute(
-                                "INSERT OR IGNORE INTO slide_cache (hash, markdown, created_at, last_accessed) VALUES (?1, ?2, ?3, ?4);",
-                                params![entry.hash, entry.markdown, entry.created_at, entry.last_accessed],
-                            );
+        // One-time automatic migration from legacy JSON file if DB is empty,
+        // keeping the JSON file intact as a backup/fallback as requested.
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM slide_cache;", [], |r| r.get(0))
+            .unwrap_or(0);
+
+        if count == 0 {
+            let legacy_path = get_legacy_json_path(app);
+            if legacy_path.exists() {
+                if let Ok(content) = fs::read_to_string(&legacy_path) {
+                    if let Ok(store) = serde_json::from_str::<LegacySlideCacheStore>(&content) {
+                        if let Ok(tx) = conn.unchecked_transaction() {
+                            for (_, entry) in store.entries {
+                                let _ = tx.execute(
+                                    "INSERT OR IGNORE INTO slide_cache (hash, markdown, created_at, last_accessed) VALUES (?1, ?2, ?3, ?4);",
+                                    params![entry.hash, entry.markdown, entry.created_at, entry.last_accessed],
+                                );
+                            }
+                            let _ = tx.commit();
                         }
-                        let _ = tx.commit();
                     }
                 }
             }
         }
+    });
+
+    if let Some(err) = init_err {
+        return Err(err);
     }
 
     Ok(conn)

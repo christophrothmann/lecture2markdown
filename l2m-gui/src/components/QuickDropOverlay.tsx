@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, X, FileText, Loader2, CheckCircle2, Zap, UploadCloud } from 'lucide-react';
+import { Sparkles, X, Loader2, CheckCircle2, Zap, UploadCloud } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWebview } from '@tauri-apps/api/webview';

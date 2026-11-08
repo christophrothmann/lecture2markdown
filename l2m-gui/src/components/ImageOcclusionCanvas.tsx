@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Trash2, Check, EyeOff, Move } from 'lucide-react';
+import { Trash2, Check, EyeOff } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { ImageOcclusionMask } from '../utils/anki';
 

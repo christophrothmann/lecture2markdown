@@ -458,7 +458,7 @@ export function App() {
               );
               setHistory((prev) =>
                 prev.map((h) =>
-                  h.id === currentItem.id
+                  h.id === jobId
                     ? { ...h, progressCurrent: completed, progressTotal: total }
                     : h
                 )

@@ -219,27 +219,23 @@ export async function streamTranscribePdfSlides(
   async function worker() {
     while (nextIdx < pageNumbers.length) {
       const pageNum = pageNumbers[nextIdx++];
-      try {
-        // 1. Render single slide on demand (WebP 0.82)
-        const dataUrl = await renderSlideToDataUrl(doc, pageNum, 'image/webp', 0.82);
-        const commaIdx = dataUrl.indexOf(',');
-        const base64Data = commaIdx !== -1 ? dataUrl.slice(commaIdx + 1) : dataUrl;
+      // 1. Render single slide on demand (WebP 0.82)
+      const dataUrl = await renderSlideToDataUrl(doc, pageNum, 'image/webp', 0.82);
+      const commaIdx = dataUrl.indexOf(',');
+      const base64Data = commaIdx !== -1 ? dataUrl.slice(commaIdx + 1) : dataUrl;
 
-        // 2. Transcribe slide immediately via native Rust handler
-        const result = await invoke<SingleSlideResult>('transcribe_single_slide_native', {
-          slide: { page_number: pageNum, webp_base64: base64Data },
-          provider,
-          apiKey,
-        });
+      // 2. Transcribe slide immediately via native Rust handler
+      const result = await invoke<SingleSlideResult>('transcribe_single_slide_native', {
+        slide: { page_number: pageNum, webp_base64: base64Data },
+        provider,
+        apiKey,
+      });
 
-        results.set(pageNum, result);
-        completedCount++;
+      results.set(pageNum, result);
+      completedCount++;
 
-        if (options?.onSlideCompleted) {
-          options.onSlideCompleted(completedCount, total, pageNum, result.model_used);
-        }
-      } catch (err) {
-        throw err;
+      if (options?.onSlideCompleted) {
+        options.onSlideCompleted(completedCount, total, pageNum, result.model_used);
       }
     }
   }
