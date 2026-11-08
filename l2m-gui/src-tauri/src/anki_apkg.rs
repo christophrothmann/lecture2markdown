@@ -953,7 +953,7 @@ mod tests {
 
         for i in 0..archive.len() {
             let file = archive.by_index(i).unwrap();
-            let name = file.name();
+            let name = file.name().map(|n| n.to_string()).unwrap_or_default();
             if name == "collection.anki2" {
                 has_col = true;
             } else if name == "media" {

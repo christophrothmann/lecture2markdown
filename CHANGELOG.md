@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.6.3] - 2026-11-08 "security-hardening-and-stability"
+
+### Security & Hardening
+- **🛡️ Python Command/Argument Injection Neutralization (`pdf.rs`)**:
+  - Eliminated string interpolation of PDF file paths in Python script templates executed by `execute_python_code`.
+  - Implemented `execute_python_code_with_args` to pass PDF file paths and page numbers as safe, native CLI arguments via `sys.argv[1]` and `sys.argv[2]`.
+  - Prevents arbitrary code execution and syntax crashes on PDF filenames containing quotes, apostrophes, backslashes, or control characters.
+- **🔒 Content Security Policy (CSP) Hardening (`tauri.conf.json`)**:
+  - Replaced the permissive `csp: null` configuration with an explicit, secure Content Security Policy in the Tauri v2 desktop application.
+  - Restricted script execution and network boundaries while safely permitting WebAssembly (`'wasm-unsafe-eval'`), local AnkiConnect (`http://127.0.0.1:8765`), Mozilla PDF.js web workers (`blob:`), and dynamic Tailwind styling (`'unsafe-inline'`).
+
+### Fixed & Performance
+- **📊 Real-Time History Progress Tracking (`App.tsx`)**:
+  - Fixed a state identifier mismatch in the `onSlideCompleted` callback during batch conversion where `h.id === currentItem.id` was checked instead of the active history entry `h.id === jobId`.
+  - Restores real-time slide-by-slide progress bar updates in the History sidebar during active conversions.
+- **⚡ SQLite Slide Cache Concurrency & Startup Optimization (`cache.rs`)**:
+  - Added a 5-second `busy_timeout` to the SQLite connection to eliminate `sqlite_busy` / database lock contention during parallel slide processing.
+  - Refactored schema initialization, PRAGMA adjustments, and legacy JSON migration to execute once per application lifecycle via `std::sync::Once`, removing redundant table checks on every single slide write/lookup.
+
+### Cleanups & Tooling
+- **🧹 Dead Code Elimination (`transcription.rs`, `main.rs`)**:
+  - Removed ~380 lines of unused legacy conversion commands (`convert_lecture_native`, `transcribe_slides_native`) in favor of the lightweight, streaming `transcribe_single_slide_native` architecture.
+- **📦 Dependency Cleanup & Linting Suite**:
+  - Removed unused `pdfium-render = "0.9.3"` dependency from `Cargo.toml`.
+  - Added ESLint 8 and TypeScript linter tooling to `l2m-gui`, configured `.eslintrc.cjs`, and cleaned up unused imports and variables across the frontend codebase.
+
 ## [1.6.2] - 2026-09-13 "native-clipboard-crossplatform"
 
 ### Fixed & Improved
