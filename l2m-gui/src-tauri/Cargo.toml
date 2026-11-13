@@ -30,9 +30,10 @@ tokio = { version = "1.53.1", features = ["full"] }
 base64 = "0.23.1"
 rand = "0.10.2"
 lopdf = "0.44.0"
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { version = "0.41", features = ["bundled"] }
 zip = { version = "9.4", default-features = false, features = ["deflate"] }
 sha1 = "0.10"
+open = "5"
 
 [features]
 default = ["custom-protocol"]

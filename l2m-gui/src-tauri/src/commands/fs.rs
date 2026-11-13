@@ -28,32 +28,7 @@ pub fn save_file_native(file_path: String, content: String) -> Result<(), String
 }
 
 pub fn open_path_with_default_app(path: &str) -> Result<(), String> {
-    #[cfg(target_os = "macos")]
-    {
-        std::process::Command::new("open")
-            .arg(path)
-            .spawn()
-            .map_err(|e| format!("Fehler beim Öffnen: {}", e))?;
-        Ok(())
-    }
-
-    #[cfg(target_os = "windows")]
-    {
-        std::process::Command::new("cmd")
-            .args(["/C", "start", "", path])
-            .spawn()
-            .map_err(|e| format!("Fehler beim Öffnen: {}", e))?;
-        Ok(())
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        std::process::Command::new("xdg-open")
-            .arg(path)
-            .spawn()
-            .map_err(|e| format!("Fehler beim Öffnen: {}", e))?;
-        Ok(())
-    }
+    open::that(path).map_err(|e| format!("Fehler beim Öffnen: {}", e))
 }
 
 #[tauri::command]

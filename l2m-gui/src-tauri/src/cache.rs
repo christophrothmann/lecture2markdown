@@ -90,7 +90,7 @@ fn open_connection(app: &tauri::AppHandle) -> Result<Connection, String> {
                             for (_, entry) in store.entries {
                                 let _ = tx.execute(
                                     "INSERT OR IGNORE INTO slide_cache (hash, markdown, created_at, last_accessed) VALUES (?1, ?2, ?3, ?4);",
-                                    params![entry.hash, entry.markdown, entry.created_at, entry.last_accessed],
+                                    params![entry.hash, entry.markdown, entry.created_at as i64, entry.last_accessed as i64],
                                 );
                             }
                             let _ = tx.commit();
@@ -121,7 +121,7 @@ pub fn get_cached_slide(app: &tauri::AppHandle, hash: &str) -> Option<String> {
     // Atomically update last_accessed timestamp
     let _ = conn.execute(
         "UPDATE slide_cache SET last_accessed = ?1 WHERE hash = ?2;",
-        params![now, hash],
+        params![now as i64, hash],
     );
 
     Some(markdown)
@@ -135,13 +135,13 @@ pub fn store_cached_slide(app: &tauri::AppHandle, hash: &str, markdown: &str) {
         // Insert or replace slide cache entry
         let _ = conn.execute(
             "INSERT OR REPLACE INTO slide_cache (hash, markdown, created_at, last_accessed) VALUES (?1, ?2, ?3, ?4);",
-            params![hash, markdown, now, now],
+            params![hash, markdown, now as i64, now as i64],
         );
 
         // Periodic maintenance: Prune entries older than TTL and enforce LRU max cap
         let _ = conn.execute(
             "DELETE FROM slide_cache WHERE created_at < ?1;",
-            params![cutoff],
+            params![cutoff as i64],
         );
 
         let _ = conn.execute(
@@ -155,7 +155,7 @@ pub fn store_cached_slide(app: &tauri::AppHandle, hash: &str, markdown: &str) {
 
 pub fn clear_slide_cache(app: &tauri::AppHandle) -> Result<usize, String> {
     let conn = open_connection(app)?;
-    let count: usize = conn
+    let count: i64 = conn
         .query_row("SELECT COUNT(*) FROM slide_cache;", [], |r| r.get(0))
         .unwrap_or(0);
 
@@ -164,12 +164,12 @@ pub fn clear_slide_cache(app: &tauri::AppHandle) -> Result<usize, String> {
 
     let _ = conn.execute("VACUUM;", []);
 
-    Ok(count)
+    Ok(count.max(0) as usize)
 }
 
 pub fn get_cache_stats(app: &tauri::AppHandle) -> (usize, u64) {
     if let Ok(conn) = open_connection(app) {
-        let count: usize = conn
+        let count: i64 = conn
             .query_row("SELECT COUNT(*) FROM slide_cache;", [], |r| r.get(0))
             .unwrap_or(0);
 
@@ -182,7 +182,7 @@ pub fn get_cache_stats(app: &tauri::AppHandle) -> (usize, u64) {
         size_bytes += fs::metadata(&wal_path).map(|m| m.len()).unwrap_or(0);
         size_bytes += fs::metadata(&shm_path).map(|m| m.len()).unwrap_or(0);
 
-        (count, size_bytes)
+        (count.max(0) as usize, size_bytes)
     } else {
         (0, 0)
     }
