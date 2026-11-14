@@ -44,7 +44,6 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            commands::get_pdf_page_count_native,
             commands::get_slide_image_native,
             commands::read_file_binary_native,
             commands::read_text_file_native,

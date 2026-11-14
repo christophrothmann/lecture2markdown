@@ -145,37 +145,3 @@ print(str(int(is_vis)) + ":::" + slide_hash + ":::" + base64.b64encode(raw_bytes
         is_visual,
     })
 }
-
-/// Reads the total page count of a PDF in 100% Pure Rust without any Python dependency.
-pub fn get_pdf_page_count(pdf_path: &Path, py_bin: Option<&Path>) -> Result<usize, String> {
-    // 1. Pure Rust parsing via lopdf (Instant, 0 dependencies, 100% reliable)
-    if let Ok(doc) = lopdf::Document::load(pdf_path) {
-        let pages = doc.get_pages();
-        if !pages.is_empty() {
-            return Ok(pages.len());
-        }
-    }
-
-    // 2. Fallback to Python if lopdf encounters unusual encryption
-    let script = r#"
-import sys, fitz
-doc = fitz.open(sys.argv[1])
-print(len(doc))
-doc.close()
-"#;
-
-    let output = execute_python_code_with_args(script, [pdf_path.as_os_str()], py_bin)?;
-
-    if !output.status.success() {
-        let err = String::from_utf8_lossy(&output.stderr);
-        if err.contains("No module named 'fitz'") {
-            return Err("PyMuPDF ('fitz') fehlt in deiner Python-Umgebung. Bitte 'pip install pymupdf pillow' ausführen.".to_string());
-        }
-        return Err(format!("PDF-Fehler: {}", err.trim()));
-    }
-
-    let out_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    out_str
-        .parse::<usize>()
-        .map_err(|_| "Ungültige Seitenzahl".to_string())
-}

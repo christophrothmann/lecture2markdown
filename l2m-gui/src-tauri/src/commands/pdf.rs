@@ -119,24 +119,6 @@ pub fn find_python_binary() -> Option<PathBuf> {
 }
 
 #[tauri::command]
-pub async fn get_pdf_page_count_native(pdf_path: String) -> Result<usize, String> {
-    let path = Path::new(&pdf_path);
-    if !path.exists() {
-        return Err(format!("PDF-Datei nicht gefunden: {}", pdf_path));
-    }
-    // 1. Fast pure-Rust PDF parser (0 Python!)
-    if let Ok(doc) = lopdf::Document::load(path) {
-        let pages = doc.get_pages();
-        if !pages.is_empty() {
-            return Ok(pages.len());
-        }
-    }
-    // 2. Fallback
-    let py_bin = find_python_binary();
-    pdf::get_pdf_page_count(path, py_bin.as_deref())
-}
-
-#[tauri::command]
 pub async fn get_slide_image_native(
     pdf_path: String,
     page_index: usize,

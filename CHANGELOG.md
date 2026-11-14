@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.6.4] - 2026-11-14 "smart-hybrid-routing-and-pure-rust"
+
+### Added & Improved
+- **🧠 Client-Side Smart Hybrid Routing (`slideClassifier.ts`, `pdfRenderer.ts`)**:
+  - Implemented real-time heuristics inside the client-side PDF.js rendering pipeline to classify slides as visual vs. text-dominant based on mathematical formula density ($\sum, \int, \partial, \sqrt{}, \le, \ge$), vector path complexity, embedded images, and shading fills.
+  - Dynamically routes text-only slides to lightweight, fast models (`gpt-4o-mini`, `claude-3-5-haiku`) while reserving vision-grade flagship models (`gpt-4o`, `claude-3-7-sonnet`) for diagram-heavy slides, saving ~60–80% in API costs.
+- **⚡ Domain-Separated Slide Cache Architecture (`transcription.rs`)**:
+  - Replaced naive SHA-256 image hashes with domain-separated cache keys incorporating image bytes, provider identity, and the routing class (`l2m-slide-cache-v2\0`), preventing collisions between mini and flagship outputs.
+- **🚀 Dynamic Rate Limiting & Backoff for Google Gemini (`gemini.rs`)**:
+  - Removed the static 4.1-second sleep delay, enabling full unthrottled inference throughput and concurrent workers for paid/high-quota API keys.
+  - Added robust dynamic rate-limit recovery parsing `Retry-After` headers and Gemini error payloads with exponential backoff and randomized jitter.
+- **📄 Raw Text View as Default (`MarkdownPreview.tsx`)**:
+  - Configured raw Markdown view as default upon opening converted lectures from history or queue, keeping structured view accessible via quick-toggle.
+
+### Security & Architecture
+- **🛡️ Secure Native Path Opening on Windows (`commands/fs.rs`)**:
+  - Replaced `cmd.exe /C start` with cross-platform `open`-crate invocation (`open::that`), eliminating Windows command injection risks through crafted file paths.
+- **🔒 SQLite Vulnerability Mitigation & Typing Fixes (`cache.rs`, `Cargo.toml`)**:
+  - Upgraded `rusqlite` to `0.41` (`libsqlite3-sys 0.39.1`) to resolve **RUSTSEC-2026-0459 (CVE-2026-119375)**.
+  - Hardened database integer casting for Unix timestamps and LRU entry limits.
+- **🦀 100% Zero-Python Desktop Core (`commands/export.rs`, `pdf.rs`)**:
+  - Migrated slide image rendering for Anki exports entirely to client-side PDF.js, eliminating hidden background Python subprocesses.
+  - Removed unused `lopdf` crate and legacy page counting commands.
+- **🧩 Architecture Refactoring (`useBatchQueue.ts`, `App.tsx`)**:
+  - Extracted batch conversion and progress queue management into a dedicated `useBatchQueue` custom React hook.
+
 ## [1.6.3] - 2026-11-08 "security-hardening-and-stability"
 
 ### Security & Hardening

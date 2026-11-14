@@ -2,8 +2,6 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use crate::anki_apkg;
-use crate::pdf;
-use super::pdf::find_python_binary;
 #[cfg(any(target_os = "windows", target_os = "linux"))]
 use super::fs::open_path_with_default_app;
 
@@ -12,7 +10,6 @@ pub async fn export_anki_apkg_native(
     deck_name: String,
     cards: Vec<anki_apkg::ApkgExportCard>,
     slide_images: Option<HashMap<String, String>>,
-    pdf_path: Option<String>,
     output_path: Option<String>,
 ) -> Result<String, String> {
     tokio::task::spawn_blocking(move || {
@@ -48,32 +45,6 @@ pub async fn export_anki_apkg_native(
                 use base64::Engine;
                 if let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(clean_b64) {
                     binary_slide_images.insert(name, bytes);
-                }
-            }
-        }
-
-        // If pdf_path is provided, automatically render any missing slide images for active cards
-        if let Some(pdf_file) = pdf_path {
-            let pdf_p = PathBuf::from(&pdf_file);
-            if pdf_p.exists() {
-                let py_bin = find_python_binary();
-                for card in &cards {
-                    if !card.enabled {
-                        continue;
-                    }
-                    let img_name = format!("slide_{}.webp", card.slide_number);
-                    if !binary_slide_images.contains_key(&img_name) && card.slide_number > 0 {
-                        if let Ok(rendered) =
-                            pdf::render_pdf_slide_to_webp(&pdf_p, card.slide_number - 1, py_bin.as_deref())
-                        {
-                            use base64::Engine;
-                            if let Ok(bytes) =
-                                base64::engine::general_purpose::STANDARD.decode(&rendered.webp_base64)
-                            {
-                                binary_slide_images.insert(img_name, bytes);
-                            }
-                        }
-                    }
                 }
             }
         }

@@ -158,8 +158,8 @@
         "portalLabel": "OpenAI API-Key erstellen"
       },
       "google": {
-        "badge": "Gemini 2.0 Flash & 1.5 Pro",
-        "description": "Extrem schnelles Gemini 2.0 Flash & Gemini 1.5 Pro.",
+        "badge": "Gemini Flash",
+        "description": "Schnelles Gemini-Flash-Modell zur Transkription von Folien.",
         "portalLabel": "Google AI Studio Key erstellen"
       },
       "anthropic": {

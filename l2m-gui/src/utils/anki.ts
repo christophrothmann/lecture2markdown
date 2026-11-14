@@ -468,11 +468,27 @@ export async function exportCardsToNativeApkg(
     throw new Error('Keine aktiven Lernkarten ausgewählt.');
   }
 
+  const slideImages: Record<string, string> = { ...options?.slideImages };
+  if (options?.pdfPath) {
+    const slideNumbers = [...new Set(activeCards.map((card) => card.slideNumber))];
+    const missingSlides = slideNumbers.filter((slideNumber) => !slideImages[`slide_${slideNumber}.webp`]);
+    if (missingSlides.length > 0) {
+      const { loadPdfDocument, renderSlideToDataUrl } = await import('./pdfRenderer');
+      const { doc } = await loadPdfDocument(options.pdfPath);
+      for (const slideNumber of missingSlides) {
+        slideImages[`slide_${slideNumber}.webp`] = await renderSlideToDataUrl(
+          doc,
+          slideNumber,
+          'image/webp'
+        );
+      }
+    }
+  }
+
   return await invoke<string>('export_anki_apkg_native', {
     deckName: deckName.trim() || 'Lecture2Markdown',
     cards: activeCards,
-    slideImages: options?.slideImages || {},
-    pdfPath: options?.pdfPath || null,
+    slideImages,
     outputPath: options?.outputPath || null,
   });
 }

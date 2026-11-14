@@ -1,6 +1,6 @@
 [project]
 name = "lecture2markdown"
-version = "1.6.3"
+version = "1.6.4"
 description = "High-performance CLI and SDK to convert lecture slide PDFs into structured, clean Markdown with AI vision models."
 readme = "README.md"
 requires-python = ">=3.10"

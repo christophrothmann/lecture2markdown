@@ -170,7 +170,7 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
             </div>
             <div>
               <h2 className="text-xl font-bold text-slate-100 flex items-center gap-2">
-                {t('settings.title')} <Sparkles className="w-4 h-4 text-amber-400" />
+                {t('settings.title')}
               </h2>
               <p className="text-xs text-slate-400">{t('settings.subtitle')}</p>
             </div>
@@ -199,22 +199,20 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
               <button
                 type="button"
                 onClick={() => i18n.changeLanguage('de')}
-                className={`px-3 py-1 text-xs font-semibold rounded-md transition cursor-pointer ${
-                  i18n.language.startsWith('de')
+                className={`px-3 py-1 text-xs font-semibold rounded-md transition cursor-pointer ${i18n.language.startsWith('de')
                     ? 'bg-accent text-white shadow-sm'
                     : 'text-slate-400 hover:text-slate-200'
-                }`}
+                  }`}
               >
                 🇩🇪 {t('settings.lang_de')}
               </button>
               <button
                 type="button"
                 onClick={() => i18n.changeLanguage('en')}
-                className={`px-3 py-1 text-xs font-semibold rounded-md transition cursor-pointer ${
-                  i18n.language.startsWith('en')
+                className={`px-3 py-1 text-xs font-semibold rounded-md transition cursor-pointer ${i18n.language.startsWith('en')
                     ? 'bg-accent text-white shadow-sm'
                     : 'text-slate-400 hover:text-slate-200'
-                }`}
+                  }`}
               >
                 🇬🇧 {t('settings.lang_en')}
               </button>
@@ -232,11 +230,10 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
                   key={provider.id}
                   type="button"
                   onClick={() => setSelectedTab(provider.id)}
-                  className={`py-2 px-2 rounded-lg text-xs font-semibold flex flex-col items-center gap-1 transition cursor-pointer relative ${
-                    isSelected
+                  className={`py-2 px-2 rounded-lg text-xs font-semibold flex flex-col items-center gap-1 transition cursor-pointer relative ${isSelected
                       ? 'bg-accent text-white shadow-md'
                       : 'text-slate-400 hover:text-slate-200 hover:bg-surface-hover'
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center gap-1">
                     <span>{provider.name}</span>
@@ -248,9 +245,8 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
                   </div>
                   {hasKey && (
                     <span
-                      className={`w-1.5 h-1.5 rounded-full ${
-                        isSelected ? 'bg-white' : 'bg-emerald-400'
-                      }`}
+                      className={`w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-white' : 'bg-emerald-400'
+                        }`}
                     />
                   )}
                 </button>
@@ -312,11 +308,10 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
 
             {testResult && (
               <div
-                className={`p-3 rounded-xl flex items-center space-x-2 text-xs font-medium ${
-                  testResult.success
+                className={`p-3 rounded-xl flex items-center space-x-2 text-xs font-medium ${testResult.success
                     ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
                     : 'bg-rose-500/10 text-rose-400 border border-rose-500/30'
-                }`}
+                  }`}
               >
                 {testResult.success ? (
                   <CheckCircle2 className="w-4 h-4 shrink-0" />

@@ -2,14 +2,11 @@ use super::{sanitize_markdown_output, BaseProvider, SYSTEM_PROMPT, get_user_prom
 use async_trait::async_trait;
 use regex::Regex;
 use serde_json::json;
-use std::sync::Arc;
-use std::time::{Duration, Instant};
-use tokio::sync::Mutex;
+use std::time::Duration;
 
 pub struct GeminiProvider {
     api_key: String,
     client: reqwest::Client,
-    last_request_time: Arc<Mutex<Instant>>,
 }
 
 impl GeminiProvider {
@@ -21,23 +18,34 @@ impl GeminiProvider {
         Self {
             api_key: api_key.to_string(),
             client,
-            last_request_time: Arc::new(Mutex::new(Instant::now() - Duration::from_secs(10))),
         }
     }
 }
 
-fn parse_gemini_retry_duration(error_msg: &str) -> Duration {
+fn parse_gemini_retry_duration(
+    retry_after: Option<&str>,
+    error_msg: &str,
+    attempt: u32,
+) -> Duration {
+    if let Some(seconds) = retry_after.and_then(|value| value.parse::<f64>().ok()) {
+        if seconds.is_finite() && seconds >= 0.0 {
+            return Duration::from_secs_f64(seconds.min(45.0));
+        }
+    }
+
     if let Ok(re_sec) = Regex::new(r"retry in ([0-9]+(?:\.[0-9]+)?)s") {
-        if let Some(caps) = re_sec.captures(error_msg) {
-            if let Some(m) = caps.get(1) {
-                if let Ok(secs) = m.as_str().parse::<f64>() {
-                    let wait_secs = secs.min(45.0);
-                    return Duration::from_millis(((wait_secs + 1.0) * 1000.0) as u64);
-                }
+        if let Some(seconds) = re_sec
+            .captures(error_msg)
+            .and_then(|caps| caps.get(1))
+            .and_then(|value| value.as_str().parse::<f64>().ok())
+        {
+            if seconds.is_finite() && seconds >= 0.0 {
+                return Duration::from_secs_f64(seconds.min(45.0));
             }
         }
     }
-    Duration::from_millis(4500)
+
+    Duration::from_secs(2_u64.saturating_pow(attempt.saturating_sub(1)).min(45))
 }
 
 #[async_trait]
@@ -85,17 +93,6 @@ impl BaseProvider for GeminiProvider {
         loop {
             attempts += 1;
 
-            // Enforce Free-Tier 15 RPM Pacing: minimum 4.1s spacing between outgoing requests
-            {
-                let mut last_call = self.last_request_time.lock().await;
-                let min_interval = Duration::from_millis(4100);
-                let elapsed = last_call.elapsed();
-                if elapsed < min_interval {
-                    tokio::time::sleep(min_interval - elapsed).await;
-                }
-                *last_call = Instant::now();
-            }
-
             let url = format!(
                 "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
                 model, self.api_key
@@ -138,15 +135,22 @@ impl BaseProvider for GeminiProvider {
                 Ok(res) => {
                     let status = res.status();
 
-                    // Handle 429 Rate Limits / Free Tier Quota Exhaustion
-                    if status.as_u16() == 429 || status == reqwest::StatusCode::TOO_MANY_REQUESTS || status.as_u16() == 503 {
+                    if status == reqwest::StatusCode::TOO_MANY_REQUESTS
+                        || status == reqwest::StatusCode::SERVICE_UNAVAILABLE
+                    {
+                        let retry_after = res
+                            .headers()
+                            .get(reqwest::header::RETRY_AFTER)
+                            .and_then(|value| value.to_str().ok())
+                            .map(str::to_owned);
                         let err_body = res.text().await.unwrap_or_default();
 
                         if attempts >= max_attempts {
                             return Err(format!("Google Gemini Rate-Limit: {}", err_body));
                         }
 
-                        let wait_duration = parse_gemini_retry_duration(&err_body);
+                        let wait_duration =
+                            parse_gemini_retry_duration(retry_after.as_deref(), &err_body, attempts);
                         let jitter = Duration::from_millis((rand::random::<u64>() % 1000) + 500);
                         tokio::time::sleep(wait_duration + jitter).await;
                         continue;
@@ -174,9 +178,40 @@ impl BaseProvider for GeminiProvider {
                         return Err(format!("Netzwerkfehler bei Folie {}: {}", page_number, e));
                     }
                     let jitter = Duration::from_millis((rand::random::<u64>() % 1000) + 500);
-                    tokio::time::sleep(Duration::from_millis(2000) + jitter).await;
+                    let backoff = Duration::from_secs(2_u64.saturating_pow(attempts - 1).min(45));
+                    tokio::time::sleep(backoff + jitter).await;
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_gemini_retry_duration;
+    use std::time::Duration;
+
+    #[test]
+    fn retry_after_header_takes_precedence() {
+        assert_eq!(
+            parse_gemini_retry_duration(Some("3"), "retry in 10s", 1),
+            Duration::from_secs(3)
+        );
+    }
+
+    #[test]
+    fn retry_duration_uses_gemini_message_or_exponential_fallback() {
+        assert_eq!(
+            parse_gemini_retry_duration(None, "please retry in 2.5s", 4),
+            Duration::from_millis(2500)
+        );
+        assert_eq!(
+            parse_gemini_retry_duration(None, "rate limited", 3),
+            Duration::from_secs(4)
+        );
+        assert_eq!(
+            parse_gemini_retry_duration(Some("999"), "rate limited", 3),
+            Duration::from_secs(45)
+        );
     }
 }

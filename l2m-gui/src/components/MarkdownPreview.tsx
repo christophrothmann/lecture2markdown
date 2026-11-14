@@ -91,7 +91,7 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
   const INITIAL_SLIDES_BATCH = 20;
   const SLIDES_BATCH_INCREMENT = 15;
   const [visibleSlideCount, setVisibleSlideCount] = useState<number>(INITIAL_SLIDES_BATCH);
-  const [markdownDisplayMode, setMarkdownDisplayMode] = useState<'structured' | 'raw'>('structured');
+  const [markdownDisplayMode, setMarkdownDisplayMode] = useState<'structured' | 'raw'>('raw');
   const markdownScrollRef = useRef<HTMLDivElement | null>(null);
   const markdownSentinelRef = useRef<HTMLDivElement | null>(null);
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { BookOpen, Settings, Sparkles, Zap, Loader2, PlusCircle, History } from 'lucide-react';
 import { save as saveFileDialog, open as openFileDialog } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
@@ -17,8 +17,8 @@ import {
   saveHistoryItemContent,
   deleteHistoryItemContent,
   clearAllHistoryStorage,
-  deduplicateHistory,
 } from './utils/historyStorage';
+import { useBatchQueue, type AppMainView } from './hooks/useBatchQueue';
 
 // Lazy-loaded heavy components for instant startup (0ms initial bundle delay)
 const MarkdownPreview = lazy(() =>
@@ -33,7 +33,7 @@ const QuickDropOverlay = lazy(() =>
 
 const PROVIDER_NAMES: Record<ProviderType, string> = {
   openai: 'OpenAI (GPT-4o)',
-  google: 'Google (Gemini 2.0 Flash)',
+  google: 'Google (Gemini Flash)',
   anthropic: 'Anthropic (Claude 3.7)',
   mistral: 'Mistral (Document OCR)',
 };
@@ -55,11 +55,6 @@ export function App() {
   const [updateAvailable, setUpdateAvailable] = useState<boolean>(false);
   const [isUpdating, setIsUpdating] = useState<boolean>(false);
 
-  // Batch Queue State
-  const [queue, setQueue] = useState<BatchQueueItem[]>([]);
-  const [isBatchRunning, setIsBatchRunning] = useState<boolean>(false);
-  const [activeQueueId, setActiveQueueId] = useState<string | null>(null);
-
   // Markdown Preview & Selected History item
   const [markdownResult, setMarkdownResult] = useState<string | null>(null);
   const [previewFileName, setPreviewFileName] = useState<string>('');
@@ -68,14 +63,31 @@ export function App() {
   const [history, setHistory] = useState<HistoryItem[]>(() => loadHistoryMeta());
 
   // Main View Navigation State
-  const [activeMainView, setActiveMainView] = useState<'dropzone' | 'batch' | 'preview'>('dropzone');
-  const queueRef = useRef<BatchQueueItem[]>([]);
-  useEffect(() => {
-    queueRef.current = queue;
-  }, [queue]);
-
-  const cancelBatchRef = useRef<boolean>(false);
-  const activeJobIdRef = useRef<string | null>(null);
+  const [activeMainView, setActiveMainView] = useState<AppMainView>('dropzone');
+  const batchQueue = useBatchQueue({
+    activeProvider,
+    apiKey: providerKeys[activeProvider] || '',
+    history,
+    activeMainView,
+    hasPreview: Boolean(markdownResult && previewFileName),
+    setHistory,
+    setMarkdownResult,
+    setPreviewFileName,
+    setPreviewPdfPath,
+    setSelectedHistoryId,
+    setActiveMainView,
+  });
+  const {
+    queue,
+    isBatchRunning,
+    addQueueItems,
+    updateItemRange: handleUpdateItemRange,
+    removeQueueItem: handleRemoveQueueItem,
+    clearQueue: handleClearQueue,
+    cancelBatch: handleCancelBatch,
+    startBatch: handleStartBatch,
+    openQueueItemPreview: handleOpenQueueItemPreview,
+  } = batchQueue;
 
   // Load API Keys from Rust backend on startup
   useEffect(() => {
@@ -149,55 +161,6 @@ export function App() {
       window.removeEventListener('keydown', handleLocalKey);
     };
   }, []);
-
-  // Listen to Tauri events from Pure-Rust backend
-  useEffect(() => {
-    let unlistenFn: (() => void) | null = null;
-
-    listen<string>('python-event', (event) => {
-      try {
-        const payload = JSON.parse(event.payload);
-        if (payload.type === 'start') {
-          if (activeJobIdRef.current) {
-            setHistory((prev) =>
-              prev.map((item) =>
-                item.id === activeJobIdRef.current
-                  ? { ...item, totalPages: payload.total_pages, progressTotal: payload.total_pages }
-                  : item
-              )
-            );
-          }
-        } else if (payload.type === 'progress') {
-          // Update active queue item progress
-          setQueue((prev) =>
-            prev.map((item) =>
-              item.id === activeQueueId
-                ? { ...item, progressCurrent: payload.completed, progressTotal: payload.total }
-                : item
-            )
-          );
-
-          if (activeJobIdRef.current) {
-            setHistory((prev) =>
-              prev.map((item) =>
-                item.id === activeJobIdRef.current
-                  ? { ...item, progressCurrent: payload.completed, progressTotal: payload.total }
-                  : item
-              )
-            );
-          }
-        }
-      } catch {
-        // Ignore parsing error
-      }
-    }).then((unlisten) => {
-      unlistenFn = unlisten;
-    });
-
-    return () => {
-      if (unlistenFn) unlistenFn();
-    };
-  }, [activeQueueId]);
 
   const handleSaveProviderKey = async (provider: ProviderType, key: string) => {
     setProviderKeys((prev) => ({ ...prev, [provider]: key }));
@@ -291,7 +254,7 @@ export function App() {
     setPreviewFileName('');
     setPreviewPdfPath(null);
     setSelectedHistoryId(null);
-    setQueue([]);
+    batchQueue.clearQueueItems();
     setActiveMainView('dropzone');
   };
 
@@ -306,18 +269,11 @@ export function App() {
       const id = `${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
       let totalPages = 1;
       try {
-        const count = await invoke<number>('get_pdf_page_count_native', { pdfPath: file.path });
-        if (count && count > 0) {
-          totalPages = count;
-        }
-      } catch {
-        try {
-          const { loadPdfDocument } = await import('./utils/pdfRenderer');
-          const { numPages } = await loadPdfDocument(file.path);
-          if (numPages && numPages > 0) totalPages = numPages;
-        } catch (e) {
-          console.error('Seitenzahl-Ermittlung fehlgeschlagen für:', file.name, e);
-        }
+        const { loadPdfDocument } = await import('./utils/pdfRenderer');
+        const { numPages } = await loadPdfDocument(file.path);
+        if (numPages && numPages > 0) totalPages = numPages;
+      } catch (e) {
+        console.error('Seitenzahl-Ermittlung fehlgeschlagen für:', file.name, e);
       }
 
       newItems.push({
@@ -332,196 +288,10 @@ export function App() {
       });
     }
 
-    setQueue((prev) => [...prev, ...newItems]);
-  };
-
-  const handleUpdateItemRange = (id: string, start: number, end: number, mode: 'all' | 'custom') => {
-    setQueue((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, startPage: start, endPage: end, rangeMode: mode } : item))
-    );
-  };
-
-  const handleRemoveQueueItem = (id: string) => {
-    setQueue((prev) => prev.filter((item) => item.id !== id));
-  };
-
-  const handleClearQueue = () => {
-    setQueue([]);
-    if (activeMainView === 'batch') {
-      setActiveMainView(markdownResult && previewFileName ? 'preview' : 'dropzone');
-    }
-  };
-
-  const handleOpenQueueItemPreview = async (item: BatchQueueItem) => {
-    let content = item.markdownResult || '';
-    if (!content) {
-      const historyItem = history.find((h) => h.id === item.id || (item.filePath && h.filePath === item.filePath));
-      if (historyItem) {
-        content = await loadHistoryItemContent(historyItem);
-      }
-    }
-    if (content) {
-      setMarkdownResult(content);
-      setPreviewFileName(item.fileName.replace(/\.pdf$/i, '.md'));
-      setPreviewPdfPath(item.filePath);
-      setActiveMainView('preview');
-    }
-  };
-
-  const handleCancelBatch = async () => {
-    cancelBatchRef.current = true;
-    try {
-      await invoke('cancel_conversion_native');
-    } catch (e) {
-      console.error('Fehler beim Abbrechen:', e);
-    }
-    setIsBatchRunning(false);
-    setActiveQueueId(null);
-    if (activeJobIdRef.current) {
-      setHistory((prev) => prev.filter((h) => h.id !== activeJobIdRef.current));
-    }
+    addQueueItems(newItems);
   };
 
   const currentActiveKey = providerKeys[activeProvider] || '';
-
-  // Sequentially execute batch queue
-  const handleStartBatch = async () => {
-    if (queue.length === 0 || !currentActiveKey) return;
-    setIsBatchRunning(true);
-    cancelBatchRef.current = false;
-    setActiveMainView('batch');
-
-    for (let i = 0; i < queue.length; i++) {
-      if (cancelBatchRef.current) break;
-      const itemSnapshot = queue[i];
-
-      // Check if item was deleted from queue while loop was running
-      const currentItem = queueRef.current.find((q) => q.id === itemSnapshot.id);
-      if (!currentItem || currentItem.status === 'completed') continue;
-
-      setActiveQueueId(currentItem.id);
-
-      const targetStart = currentItem.rangeMode === 'custom' ? currentItem.startPage : 1;
-      const targetEnd = currentItem.rangeMode === 'custom' ? currentItem.endPage : currentItem.totalPages;
-      const targetCount = Math.max(1, targetEnd - targetStart + 1);
-
-      // Update queue item status to processing
-      setQueue((prev) =>
-        prev.map((q) =>
-          q.id === currentItem.id
-            ? { ...q, status: 'processing', progressCurrent: 0, progressTotal: targetCount }
-            : q
-        )
-      );
-
-      const jobId = Date.now().toString();
-      activeJobIdRef.current = jobId;
-
-      const inProgressItem: HistoryItem = {
-        id: jobId,
-        fileName: currentItem.fileName,
-        filePath: currentItem.filePath,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        content: '',
-        totalPages: targetCount,
-        status: 'processing',
-        progressCurrent: 0,
-        progressTotal: targetCount,
-      };
-
-      const inProgressKey = (currentItem.filePath || currentItem.fileName.replace(/\.(pdf|md)$/i, '')).toLowerCase().trim();
-      setHistory((prev) => {
-        const filtered = prev.filter((h) => {
-          const hKey = (h.filePath || h.fileName.replace(/\.(pdf|md)$/i, '')).toLowerCase().trim();
-          return hKey !== inProgressKey && h.id !== jobId && h.status !== 'processing';
-        });
-        return [inProgressItem, ...filtered];
-      });
-
-      try {
-        const { streamTranscribePdfSlides } = await import('./utils/pdfRenderer');
-        const markdown = await streamTranscribePdfSlides(
-          currentItem.filePath,
-          activeProvider,
-          currentActiveKey,
-          currentItem.fileName,
-          {
-            startPage: currentItem.rangeMode === 'custom' ? targetStart : undefined,
-            endPage: currentItem.rangeMode === 'custom' ? targetEnd : undefined,
-            onSlideCompleted: (completed, total) => {
-              setQueue((prev) =>
-                prev.map((q) =>
-                  q.id === currentItem.id
-                    ? { ...q, progressCurrent: completed, progressTotal: total }
-                    : q
-                )
-              );
-              setHistory((prev) =>
-                prev.map((h) =>
-                  h.id === jobId
-                    ? { ...h, progressCurrent: completed, progressTotal: total }
-                    : h
-                )
-              );
-            },
-          }
-        );
-
-        // Update queue item
-        setQueue((prev) =>
-          prev.map((q) =>
-            q.id === currentItem.id
-              ? { ...q, status: 'completed', markdownResult: markdown }
-              : q
-          )
-        );
-
-        // Update history with strict deduplication
-        saveHistoryItemContent(jobId, markdown);
-        setHistory((prev) => {
-          const updated = prev.map((h) =>
-            h.id === jobId
-              ? {
-                  ...h,
-                  status: 'completed' as const,
-                  content: '',
-                  totalPages: targetCount,
-                  filePath: currentItem.filePath,
-                }
-              : h
-          );
-          const deduped = deduplicateHistory(updated);
-          saveHistoryMeta(deduped);
-          return deduped;
-        });
-
-        // Set last result for optional live preview without prematurely unmounting batch queue!
-        setMarkdownResult(markdown);
-        setPreviewFileName(currentItem.fileName.replace('.pdf', '.md'));
-        setPreviewPdfPath(currentItem.filePath);
-        setSelectedHistoryId(jobId);
-      } catch (err: any) {
-        if (cancelBatchRef.current || (err && err.includes('abgebrochen'))) {
-          setQueue((prev) =>
-            prev.map((q) => (q.id === currentItem.id ? { ...q, status: 'pending' } : q))
-          );
-          break;
-        } else {
-          setQueue((prev) =>
-            prev.map((q) =>
-              q.id === currentItem.id
-                ? { ...q, status: 'error', error: String(err) }
-                : q
-            )
-          );
-          alert(`Fehler bei "${currentItem.fileName}":\n${err}`);
-        }
-      }
-    }
-
-    setIsBatchRunning(false);
-    setActiveQueueId(null);
-  };
 
   const handleSaveFileLocally = async () => {
     if (!markdownResult || !previewFileName) return;
