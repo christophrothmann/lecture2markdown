@@ -1,6 +1,7 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { invoke } from '@tauri-apps/api/core';
+import { classifySlideContent } from './slideClassifier';
 
 // Configure offline worker bundled by Vite
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
@@ -118,6 +119,14 @@ export async function renderSlideToDataUrl(
   quality: number = 0.82
 ): Promise<string> {
   const page = await doc.getPage(pageNumber);
+  return renderPageToDataUrl(page, format, quality);
+}
+
+async function renderPageToDataUrl(
+  page: pdfjsLib.PDFPageProxy,
+  format: 'image/jpeg' | 'image/webp' | 'image/png',
+  quality: number
+): Promise<string> {
   const baseViewport = page.getViewport({ scale: 1.0 });
 
   const targetWidth = Math.min(1600, Math.max(800, baseViewport.width * 1.5));
@@ -143,6 +152,47 @@ export async function renderSlideToDataUrl(
   return dataUrl;
 }
 
+async function classifyPdfPage(page: pdfjsLib.PDFPageProxy): Promise<boolean> {
+  try {
+    const [textContent, operatorList] = await Promise.all([
+      page.getTextContent(),
+      page.getOperatorList(),
+    ]);
+    const text = textContent.items
+      .map((item) => ('str' in item && typeof item.str === 'string' ? item.str : ''))
+      .join(' ');
+
+    const imageOps = new Set([
+      pdfjsLib.OPS.paintImageMaskXObject,
+      pdfjsLib.OPS.paintImageMaskXObjectGroup,
+      pdfjsLib.OPS.paintImageXObject,
+      pdfjsLib.OPS.paintInlineImageXObject,
+      pdfjsLib.OPS.paintInlineImageXObjectGroup,
+      pdfjsLib.OPS.paintImageXObjectRepeat,
+      pdfjsLib.OPS.paintImageMaskXObjectRepeat,
+    ]);
+    let imageCount = 0;
+    let vectorComplexity = 0;
+    let shadingCount = 0;
+
+    operatorList.fnArray.forEach((operator, index) => {
+      if (imageOps.has(operator)) imageCount++;
+      if (operator === pdfjsLib.OPS.shadingFill) shadingCount++;
+      if (operator === pdfjsLib.OPS.constructPath) {
+        const pathData = operatorList.argsArray[index]?.[1]?.[0];
+        if (pathData && typeof pathData.length === 'number') {
+          vectorComplexity += pathData.length;
+        }
+      }
+    });
+
+    return classifySlideContent({ text, imageCount, vectorComplexity, shadingCount });
+  } catch (error) {
+    console.warn('Folienklassifikation fehlgeschlagen; verwende visuellen Modellpfad.', error);
+    return true;
+  }
+}
+
 /**
  * Extracts and renders all slides from a PDF as base64 WebP images (100% Zero-Config client-side).
  */
@@ -161,13 +211,18 @@ export async function extractPdfSlidesWebp(
   let done = 0;
 
   for (let pageNum = sPage; pageNum <= ePage; pageNum++) {
-    const dataUrl = await renderSlideToDataUrl(doc, pageNum, 'image/webp', 0.82);
+    const page = await doc.getPage(pageNum);
+    const [dataUrl, isVisual] = await Promise.all([
+      renderPageToDataUrl(page, 'image/webp', 0.82),
+      classifyPdfPage(page),
+    ]);
     const commaIdx = dataUrl.indexOf(',');
     const base64Data = commaIdx !== -1 ? dataUrl.slice(commaIdx + 1) : dataUrl;
 
     slides.push({
       page_number: pageNum,
       webp_base64: base64Data,
+      is_visual: isVisual,
     });
     done++;
     if (onProgress) onProgress(done, total);
@@ -219,14 +274,17 @@ export async function streamTranscribePdfSlides(
   async function worker() {
     while (nextIdx < pageNumbers.length) {
       const pageNum = pageNumbers[nextIdx++];
-      // 1. Render single slide on demand (WebP 0.82)
-      const dataUrl = await renderSlideToDataUrl(doc, pageNum, 'image/webp', 0.82);
+      const page = await doc.getPage(pageNum);
+      const [dataUrl, isVisual] = await Promise.all([
+        renderPageToDataUrl(page, 'image/webp', 0.82),
+        classifyPdfPage(page),
+      ]);
       const commaIdx = dataUrl.indexOf(',');
       const base64Data = commaIdx !== -1 ? dataUrl.slice(commaIdx + 1) : dataUrl;
 
       // 2. Transcribe slide immediately via native Rust handler
       const result = await invoke<SingleSlideResult>('transcribe_single_slide_native', {
-        slide: { page_number: pageNum, webp_base64: base64Data },
+        slide: { page_number: pageNum, webp_base64: base64Data, is_visual: isVisual },
         provider,
         apiKey,
       });
@@ -256,4 +314,3 @@ export async function streamTranscribePdfSlides(
   const header = `# Lecture: ${fileStem}\n**Source:** ${fileName} (${total} Folien)\n\n`;
   return `${header}${sections.join('\n\n---\n\n')}\n`;
 }
-
