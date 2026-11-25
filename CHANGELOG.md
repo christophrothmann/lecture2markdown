@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.6.6] - 2026-11-26 "fixed minor rust security issues"
+
+### Fixed
+- **🔄 Fixed minor security issues in rust code**
+
 ## [1.6.5] - 2026-11-25 "zero-python-cleanup-and-ci-hardening"
 
 ### Fixed
