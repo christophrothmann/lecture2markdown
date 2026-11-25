@@ -56,11 +56,6 @@ jobs:
           cd l2m-gui/src-tauri
           cargo audit --ignore RUSTSEC-2024-0429
 
-      - name: Run Rust Unit Tests
-        run: |
-          cd l2m-gui/src-tauri
-          cargo test
-
   build-tauri-gui:
     needs: [python-security-checks, rust-security-checks]
     strategy:
@@ -106,6 +101,11 @@ jobs:
           bun test
           bun run lint
           bun run build
+
+      - name: Run Rust Unit Tests
+        run: |
+          cd l2m-gui/src-tauri
+          cargo test
 
       - name: Extract Release Notes from CHANGELOG.md
         shell: bash
