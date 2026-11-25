@@ -37,6 +37,12 @@ fn slide_cache_key(image_bytes: &[u8], provider: &str, is_visual: bool) -> Strin
 }
 
 #[tauri::command]
+pub async fn reset_cancellation_native(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    state.cancel_requested.store(false, Ordering::SeqCst);
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn cancel_conversion_native(state: tauri::State<'_, AppState>) -> Result<(), String> {
     state.cancel_requested.store(true, Ordering::SeqCst);
     Ok(())

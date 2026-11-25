@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.6.5] - 2026-11-25 "zero-python-cleanup-and-ci-hardening"
+
+### Fixed
+- **🔄 Conversion Cancellation Reset (`transcription.rs`, `pdfRenderer.ts`)**:
+  - Added `reset_cancellation_native` Tauri command and invoked it at the start of `streamTranscribePdfSlides`, fixing a bug where cancelling a conversion permanently blocked all subsequent conversions until app restart.
+  - Added clean worker abort coordination in `streamTranscribePdfSlides` so parallel slide workers stop immediately on cancellation or error.
+
+### Cleanups & Architecture
+- **🦀 100% Python-Free Desktop Core (`MarkdownPreview.tsx`, `FlashcardInspectorTab.tsx`, `main.rs`)**:
+  - Removed the remaining `get_slide_image_native` Python/PyMuPDF fallback calls and deleted the obsolete `pdf.rs` and `commands/pdf.rs` modules.
+  - Inlined the Windows `create_hidden_command` helper directly into `commands/fs.rs`.
+  - Removed dead `python-event` listeners from `useBatchQueue.ts` and `QuickDropOverlay.tsx`.
+
+### Testing & CI/CD
+- **🧪 Headless-Safe Clipboard Unit Tests (`commands/fs.rs`)**:
+  - Extracted `prepare_clipboard_markdown_file` for deterministic unit testing and marked the OS pasteboard integration test `#[ignore]` so `cargo test` passes reliably in headless/CI environments.
+- **⚙️ Hardened Release Pipeline (`.github/workflows/release.yml`)**:
+  - Added `cargo test`, `bun run lint`, and `bun run build` (`tsc` + `vite build`) gates to the release workflow.
+
 ## [1.6.4] - 2026-11-14 "smart-hybrid-routing-and-pure-rust"
 
 ### Added & Improved

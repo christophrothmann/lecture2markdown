@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
 import type { ProviderType } from '../components/ApiKeyModal';
 import type { BatchQueueItem } from '../components/BatchQueue';
 import type { HistoryItem } from '../components/HistorySidebar';
@@ -50,53 +49,6 @@ export function useBatchQueue({
   useEffect(() => {
     queueRef.current = queue;
   }, [queue]);
-
-  useEffect(() => {
-    let unlistenFn: (() => void) | null = null;
-
-    listen<string>('python-event', (event) => {
-      try {
-        const payload = JSON.parse(event.payload);
-        if (payload.type === 'start') {
-          if (activeJobIdRef.current) {
-            setHistory((prev) =>
-              prev.map((item) =>
-                item.id === activeJobIdRef.current
-                  ? { ...item, totalPages: payload.total_pages, progressTotal: payload.total_pages }
-                  : item
-              )
-            );
-          }
-        } else if (payload.type === 'progress') {
-          setQueue((prev) =>
-            prev.map((item) =>
-              item.id === activeQueueId
-                ? { ...item, progressCurrent: payload.completed, progressTotal: payload.total }
-                : item
-            )
-          );
-
-          if (activeJobIdRef.current) {
-            setHistory((prev) =>
-              prev.map((item) =>
-                item.id === activeJobIdRef.current
-                  ? { ...item, progressCurrent: payload.completed, progressTotal: payload.total }
-                  : item
-              )
-            );
-          }
-        }
-      } catch {
-        // Ignore malformed progress events.
-      }
-    }).then((unlisten) => {
-      unlistenFn = unlisten;
-    });
-
-    return () => {
-      if (unlistenFn) unlistenFn();
-    };
-  }, [activeQueueId, setHistory]);
 
   const addQueueItems = (items: BatchQueueItem[]) => {
     setQueue((prev) => [...prev, ...items]);

@@ -99,8 +99,7 @@ extern "C" {
     ) -> std::os::raw::c_int;
 }
 
-#[tauri::command]
-pub fn copy_file_to_clipboard_native(file_name: String, content: String) -> Result<String, String> {
+fn prepare_clipboard_markdown_file(file_name: &str, content: &str) -> Result<std::path::PathBuf, String> {
     let raw_name = file_name.trim();
     let clean_stem = raw_name.trim_end_matches(".md").trim_end_matches(".pdf").trim();
     let clean_name = if clean_stem.is_empty() {
@@ -112,8 +111,13 @@ pub fn copy_file_to_clipboard_native(file_name: String, content: String) -> Resu
     let temp_dir = std::env::temp_dir().join("lecture2markdown");
     let _ = std::fs::create_dir_all(&temp_dir);
     let target_file = temp_dir.join(&clean_name);
-    std::fs::write(&target_file, &content).map_err(|e| format!("Fehler beim Schreiben: {}", e))?;
+    std::fs::write(&target_file, content).map_err(|e| format!("Fehler beim Schreiben: {}", e))?;
+    Ok(target_file)
+}
 
+#[tauri::command]
+pub fn copy_file_to_clipboard_native(file_name: String, content: String) -> Result<String, String> {
+    let target_file = prepare_clipboard_markdown_file(&file_name, &content)?;
     let abs_path = target_file.to_string_lossy().to_string();
 
     #[cfg(target_os = "macos")]
@@ -131,12 +135,20 @@ pub fn copy_file_to_clipboard_native(file_name: String, content: String) -> Resu
 
     #[cfg(target_os = "windows")]
     {
+        use std::os::windows::process::CommandExt;
+
+        fn create_hidden_command<P: AsRef<std::ffi::OsStr>>(program: P) -> std::process::Command {
+            let mut cmd = std::process::Command::new(program);
+            cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+            cmd
+        }
+
         let escaped_path = abs_path.replace('\'', "''");
         let ps_cmd = format!(
             r#"Add-Type -AssemblyName System.Windows.Forms; $p = '{}'; $d = New-Object System.Windows.Forms.DataObject; $d.SetFileDropList(@($p)); $d.SetText([System.IO.File]::ReadAllText($p, [System.Text.Encoding]::UTF8)); [System.Windows.Forms.Clipboard]::SetDataObject($d, $true)"#,
             escaped_path
         );
-        let res = crate::pdf::create_hidden_command("powershell")
+        let res = create_hidden_command("powershell")
             .arg("-NoProfile")
             .arg("-STA")
             .arg("-Command")
@@ -146,7 +158,7 @@ pub fn copy_file_to_clipboard_native(file_name: String, content: String) -> Resu
         // Fallback to Set-Clipboard with LiteralPath if System.Windows.Forms failed
         if res.is_err() || !res.as_ref().unwrap().status.success() {
             let fallback_cmd = format!(r#"Set-Clipboard -LiteralPath '{}'"#, escaped_path);
-            let _ = crate::pdf::create_hidden_command("powershell")
+            let _ = create_hidden_command("powershell")
                 .arg("-NoProfile")
                 .arg("-Command")
                 .arg(&fallback_cmd)
@@ -178,6 +190,16 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_prepare_clipboard_markdown_file() {
+        let res = prepare_clipboard_markdown_file("TestLecture.pdf", "# Hello");
+        assert!(res.is_ok());
+        let path = res.unwrap();
+        assert!(path.ends_with("TestLecture.md"));
+        assert!(path.exists());
+    }
+
+    #[test]
+    #[ignore = "Requires active desktop pasteboard session"]
     fn test_copy_file_to_clipboard_native() {
         let res = copy_file_to_clipboard_native("TestLecture.pdf".to_string(), "# Hello".to_string());
         assert!(res.is_ok());

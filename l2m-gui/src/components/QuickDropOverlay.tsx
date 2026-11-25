@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Sparkles, X, Loader2, CheckCircle2, Zap, UploadCloud } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { open as openFileDialog } from '@tauri-apps/plugin-dialog';
 import { sendNotification, isPermissionGranted, requestPermission } from '@tauri-apps/plugin-notification';
@@ -79,32 +78,6 @@ export const QuickDropOverlay: React.FC<QuickDropOverlayProps> = ({
       if (unlistenFn) unlistenFn();
     };
   }, [isOpen, apiKey, activeProvider]);
-
-  // Listen to real-time progress events from backend
-  useEffect(() => {
-    if (!isOpen || status !== 'processing') return;
-
-    let unlistenFn: (() => void) | null = null;
-
-    listen<string>('python-event', (event) => {
-      try {
-        const payload = JSON.parse(event.payload);
-        if (payload.type === 'start') {
-          setProgressTotal(payload.total_pages || 1);
-          setProgressCurrent(0);
-        } else if (payload.type === 'progress') {
-          setProgressCurrent(payload.completed || 0);
-          if (payload.total) setProgressTotal(payload.total);
-        }
-      } catch {}
-    }).then((unlisten) => {
-      unlistenFn = unlisten;
-    });
-
-    return () => {
-      if (unlistenFn) unlistenFn();
-    };
-  }, [isOpen, status]);
 
   const playSuccessChime = () => {
     try {

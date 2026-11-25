@@ -11,7 +11,6 @@ import {
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { save as saveFileDialog } from '@tauri-apps/plugin-dialog';
-import { invoke } from '@tauri-apps/api/core';
 import type { AnkiCard, AnkiCardType, ImageOcclusionMask } from '../utils/anki';
 import {
   generateAnkiCardsFromMarkdown,
@@ -262,22 +261,8 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
         }
       } catch {
         if (!isCancelled) {
-          try {
-            const b64 = await invoke<string>('get_slide_image_native', {
-              pdfPath: activePdfPath,
-              pageIndex: currentSlideNumber - 1,
-            });
-            if (!isCancelled && b64) {
-              const fullDataUrl = `data:image/webp;base64,${b64}`;
-              setCurrentSlideFallbackImage(fullDataUrl);
-              setPdfRenderedOk(false);
-            }
-          } catch {
-            if (!isCancelled) {
-              setPdfRenderedOk(false);
-              setCurrentSlideFallbackImage(null);
-            }
-          }
+          setPdfRenderedOk(false);
+          setCurrentSlideFallbackImage(null);
         }
       } finally {
         if (!isCancelled) {

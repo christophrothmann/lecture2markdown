@@ -3,7 +3,6 @@
 mod anki_apkg;
 mod cache;
 mod commands;
-mod pdf;
 mod providers;
 
 use std::sync::atomic::AtomicBool;
@@ -44,10 +43,10 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            commands::get_slide_image_native,
             commands::read_file_binary_native,
             commands::read_text_file_native,
             commands::transcribe_single_slide_native,
+            commands::reset_cancellation_native,
             commands::cancel_conversion_native,
             commands::save_text_file_native,
             commands::save_file_native,

@@ -256,6 +256,8 @@ export async function streamTranscribePdfSlides(
     onSlideCompleted?: (completed: number, total: number, pageNumber: number, modelUsed: string) => void;
   }
 ): Promise<string> {
+  await invoke('reset_cancellation_native');
+
   const { doc, numPages } = await loadPdfDocument(filePath);
   const sPage = Math.max(1, Math.min(options?.startPage || 1, numPages));
   const ePage = Math.max(sPage, Math.min(options?.endPage || numPages, numPages));
@@ -270,30 +272,38 @@ export async function streamTranscribePdfSlides(
   const concurrency = Math.min(options?.concurrency || 3, total);
 
   let nextIdx = 0;
+  let aborted = false;
 
   async function worker() {
-    while (nextIdx < pageNumbers.length) {
+    while (!aborted && nextIdx < pageNumbers.length) {
       const pageNum = pageNumbers[nextIdx++];
-      const page = await doc.getPage(pageNum);
-      const [dataUrl, isVisual] = await Promise.all([
-        renderPageToDataUrl(page, 'image/webp', 0.82),
-        classifyPdfPage(page),
-      ]);
-      const commaIdx = dataUrl.indexOf(',');
-      const base64Data = commaIdx !== -1 ? dataUrl.slice(commaIdx + 1) : dataUrl;
+      try {
+        const page = await doc.getPage(pageNum);
+        const [dataUrl, isVisual] = await Promise.all([
+          renderPageToDataUrl(page, 'image/webp', 0.82),
+          classifyPdfPage(page),
+        ]);
+        if (aborted) return;
 
-      // 2. Transcribe slide immediately via native Rust handler
-      const result = await invoke<SingleSlideResult>('transcribe_single_slide_native', {
-        slide: { page_number: pageNum, webp_base64: base64Data, is_visual: isVisual },
-        provider,
-        apiKey,
-      });
+        const commaIdx = dataUrl.indexOf(',');
+        const base64Data = commaIdx !== -1 ? dataUrl.slice(commaIdx + 1) : dataUrl;
 
-      results.set(pageNum, result);
-      completedCount++;
+        // 2. Transcribe slide immediately via native Rust handler
+        const result = await invoke<SingleSlideResult>('transcribe_single_slide_native', {
+          slide: { page_number: pageNum, webp_base64: base64Data, is_visual: isVisual },
+          provider,
+          apiKey,
+        });
 
-      if (options?.onSlideCompleted) {
-        options.onSlideCompleted(completedCount, total, pageNum, result.model_used);
+        results.set(pageNum, result);
+        completedCount++;
+
+        if (options?.onSlideCompleted) {
+          options.onSlideCompleted(completedCount, total, pageNum, result.model_used);
+        }
+      } catch (err) {
+        aborted = true;
+        throw err;
       }
     }
   }

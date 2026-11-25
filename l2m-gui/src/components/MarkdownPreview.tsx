@@ -145,23 +145,9 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
           setCurrentSlideImage(null);
         }
       } catch {
-        // Fallback to native backend rendering if PDF.js fails
         if (!isCancelled) {
-          try {
-            const base64 = await invoke<string>('get_slide_image_native', {
-              pdfPath: activePdfPath,
-              pageIndex: targetPage - 1,
-            });
-            if (!isCancelled && base64) {
-              setCurrentSlideImage(`data:image/webp;base64,${base64}`);
-              setIsPdfJsRendered(false);
-            }
-          } catch {
-            if (!isCancelled) {
-              setCurrentSlideImage(null);
-              setIsPdfJsRendered(false);
-            }
-          }
+          setCurrentSlideImage(null);
+          setIsPdfJsRendered(false);
         }
       } finally {
         if (!isCancelled) {
