@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.6.8] - 2026-11-26 "split-view-pdf-rendering-fix"
+
+### Fixed
+- **🖼️ Split-View & Flashcard PDF.js Slide Rendering (`MarkdownPreview.tsx`, `FlashcardInspectorTab.tsx`, `pdfRenderer.ts`)**:
+  - Unwrapped `LoadedPdf` (`{ doc, numPages }`) properly when calling `renderSlideToCanvas`, fixing a `doc.getPage is not a function` runtime error in Split-Screen and Flashcard Inspector views.
+  - Removed the stray extra scale argument in `renderSlideToCanvas` calls.
+  - Added the required `canvas` property to `pdfjs-dist` v6 `RenderParameters` in `renderSlideToCanvas` and `renderPageToDataUrl`.
+
 ## [1.6.6] - 2026-11-26 "fixed minor rust security issues"
 
 ### Fixed

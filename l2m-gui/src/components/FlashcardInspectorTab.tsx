@@ -247,19 +247,20 @@ export const FlashcardInspectorTab: React.FC<FlashcardInspectorTabProps> = ({
 
     async function renderCurrentSlide() {
       try {
-        const doc = await loadPdfDocument(activePdfPath!);
+        const { doc, numPages } = await loadPdfDocument(activePdfPath!);
         if (isCancelled) return;
 
-        if (doc.numPages && doc.numPages > 0) {
-          setTotalSlideCount((prev) => Math.max(prev, doc.numPages));
+        if (numPages > 0) {
+          setTotalSlideCount((prev) => Math.max(prev, numPages));
         }
 
         if (canvasRef.current) {
-          await renderSlideToCanvas(doc, currentSlideNumber, canvasRef.current, 1.8);
+          await renderSlideToCanvas(doc, currentSlideNumber, canvasRef.current);
           setPdfRenderedOk(true);
           setCurrentSlideFallbackImage(null);
         }
-      } catch {
+      } catch (err) {
+        console.error('PDF.js flashcard slide render error:', err);
         if (!isCancelled) {
           setPdfRenderedOk(false);
           setCurrentSlideFallbackImage(null);

@@ -102,6 +102,7 @@ export async function renderSlideToCanvas(
 
   const renderContext = {
     canvasContext: ctx,
+    canvas,
     viewport,
   };
 
@@ -144,7 +145,7 @@ async function renderPageToDataUrl(
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  await page.render({ canvasContext: ctx, viewport }).promise;
+  await page.render({ canvasContext: ctx, canvas, viewport }).promise;
   const dataUrl = canvas.toDataURL(format, quality);
   // Explicitly free GPU backing store immediately
   canvas.width = 0;

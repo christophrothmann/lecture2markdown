@@ -136,15 +136,16 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
     async function renderPage() {
       setIsLoadingSlideImage(true);
       try {
-        const pdfDoc = await loadPdfDocument(activePdfPath!);
+        const { doc: pdfDoc } = await loadPdfDocument(activePdfPath!);
         if (isCancelled) return;
 
         if (canvasRef.current) {
-          await renderSlideToCanvas(pdfDoc, targetPage, canvasRef.current, 1.8);
+          await renderSlideToCanvas(pdfDoc, targetPage, canvasRef.current);
           setIsPdfJsRendered(true);
           setCurrentSlideImage(null);
         }
-      } catch {
+      } catch (err) {
+        console.error('PDF.js slide render error:', err);
         if (!isCancelled) {
           setCurrentSlideImage(null);
           setIsPdfJsRendered(false);
