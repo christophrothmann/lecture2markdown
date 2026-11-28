@@ -87,6 +87,13 @@ jobs:
           bun run lint
           bun run build
 
+      - name: Upload Frontend Dist Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: l2m-gui/dist
+          retention-days: 1
+
   build-tauri-gui:
     needs: [python-security-checks, rust-security-checks, frontend-checks]
     strategy:
@@ -133,6 +140,12 @@ jobs:
         run: |
           cd l2m-gui
           bun install
+
+      - name: Download Frontend Dist Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: l2m-gui/dist
 
       - name: Run Rust Unit Tests
         run: |
