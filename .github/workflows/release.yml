@@ -56,8 +56,39 @@ jobs:
           cd l2m-gui/src-tauri
           cargo audit --ignore RUSTSEC-2024-0429
 
+  frontend-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache Bun Dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('l2m-gui/bun.lockb') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install Frontend Dependencies
+        run: |
+          cd l2m-gui
+          bun install
+
+      - name: Run Frontend Unit Tests, Lint & Build
+        run: |
+          cd l2m-gui
+          bun test
+          bun run lint
+          bun run build
+
   build-tauri-gui:
-    needs: [python-security-checks, rust-security-checks]
+    needs: [python-security-checks, rust-security-checks, frontend-checks]
     strategy:
       fail-fast: false
       matrix:
@@ -90,17 +121,18 @@ jobs:
         with:
           workspaces: './l2m-gui/src-tauri -> target'
 
+      - name: Cache Bun Dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('l2m-gui/bun.lockb') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
       - name: Install Frontend Dependencies
         run: |
           cd l2m-gui
           bun install
-
-      - name: Run Frontend Unit Tests, Lint & Typecheck
-        run: |
-          cd l2m-gui
-          bun test
-          bun run lint
-          bun run build
 
       - name: Run Rust Unit Tests
         run: |
