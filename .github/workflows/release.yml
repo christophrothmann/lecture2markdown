@@ -173,4 +173,4 @@ jobs:
           releaseName: 'Lecture2Markdown ${{ github.ref_name }}'
           releaseBody: ${{ env.RELEASE_NOTES }}
           releaseDraft: false
-          prerelease: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
